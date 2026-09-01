@@ -689,7 +689,7 @@ if ($plan_result) {
         /* Feature Cards Strip */
         .feature-strip-section {
             background: #ffffff;
-            padding: 0 5% 70px;
+            padding: 0 5% 100px;
             margin-top: -50px;
             position: relative;
             z-index: 10;
@@ -700,7 +700,7 @@ if ($plan_result) {
             margin: 0 auto;
             display: grid;
             grid-template-columns: 1fr 2.5fr;
-            gap: 24px;
+            gap: 40px;
         }
 
         .how-card {
@@ -761,10 +761,10 @@ if ($plan_result) {
         .consulting-cards-grid {
             background: var(--card-dark);
             border-radius: 20px;
-            padding: 24px 30px;
+            padding: 32px 40px;
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 24px;
+            gap: 50px;
             align-items: center;
         }
 
