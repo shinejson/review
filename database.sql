@@ -136,3 +136,23 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 ('site_name', 'Company Rating SaaS'),
 ('admin_email', 'admin@example.com'),
 ('ratings_per_page', '10');
+
+-- Quote requests from the public "Get Started" wizard (index.php)
+CREATE TABLE IF NOT EXISTS quote_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    company_name VARCHAR(255) NOT NULL,
+    contact_person VARCHAR(255) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    website VARCHAR(255),
+    category_id INT,
+    plan_id INT,
+    location VARCHAR(255),
+    num_companies INT,
+    expected_ratings INT,
+    notes TEXT,
+    status ENUM('pending', 'contacted', 'converted', 'rejected') DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (category_id) REFERENCES categories(id),
+    FOREIGN KEY (plan_id) REFERENCES subscription_plans(id)
+);

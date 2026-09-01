@@ -10,16 +10,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Collect form data
-$company_name = sanitize($_POST['company_name']);
-$contact_person = sanitize($_POST['contact_person']);
-$category = (int)$_POST['category'];
-$plan_id = (int)$_POST['plan_id'];
-$location = sanitize($_POST['location']);
-$email = sanitize($_POST['email']);
-$phone = sanitize($_POST['phone']);
+$company_name = sanitize($_POST['company_name'] ?? '');
+$contact_person = sanitize($_POST['contact_person'] ?? '');
+$category = !empty($_POST['category']) ? (int)$_POST['category'] : null;
+$plan_id = !empty($_POST['plan_id']) ? (int)$_POST['plan_id'] : null;
+$location = sanitize($_POST['location'] ?? '');
+$email = sanitize($_POST['email'] ?? '');
+$phone = sanitize($_POST['phone'] ?? '');
 $website = sanitize($_POST['website'] ?? '');
-$num_companies = (int)$_POST['num_companies'];
-$expected_ratings = (int)$_POST['expected_ratings'];
+$num_companies = (int)($_POST['num_companies'] ?? 0);
+$expected_ratings = (int)($_POST['expected_ratings'] ?? 0);
 $notes = sanitize($_POST['notes'] ?? '');
 
 // Validate required fields
