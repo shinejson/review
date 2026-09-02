@@ -1,0 +1,12 @@
+# Generated previews (tools/render-php-preview.js, tools/build-preview.js)
+.preview/
+.preview-build/
+
+# Local environment / editor noise
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# Local config overrides
+config/database.local.php

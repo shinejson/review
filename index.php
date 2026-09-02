@@ -1,6 +1,6 @@
 <?php
-require_once 'config/database.php';
-require_once 'includes/functions.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/includes/functions.php';
 
 $total_ratings = $conn->query("SELECT COUNT(*) as count FROM ratings")->fetch_assoc()['count'];
 $total_customers = $conn->query("SELECT COUNT(*) as count FROM customers")->fetch_assoc()['count'];

@@ -1,6 +1,6 @@
 <?php
-require_once '../config/database.php';
-require_once '../includes/functions.php';
+require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/includes/functions.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     die('Invalid request method');

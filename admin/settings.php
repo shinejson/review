@@ -1,7 +1,7 @@
 <?php
-require_once '../includes/auth.php';
-require_once '../config/database.php';
-require_once '../includes/functions.php';
+require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/includes/functions.php';
 
 requireLogin();
 
@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $stmt->execute();
             $curr_hash = $stmt->get_result()->fetch_assoc()['password'];
 
-            if (password_verify($current_password, $curr_hash) || $current_password === 'admin123' || $current_password === 'password') {
+            if (password_verify($current_password, $curr_hash)) {
                 $new_hash = password_hash($new_password, PASSWORD_DEFAULT);
                 $up_stmt = $conn->prepare("UPDATE tenants SET password = ? WHERE id = ?");
                 $up_stmt->bind_param("si", $new_hash, $tenant_id);
@@ -75,9 +75,11 @@ if ($is_tenant && $tenant_id) {
     $tenant = $stmt->get_result()->fetch_assoc();
 }
 
+$robots    = 'noindex, nofollow';
+
 $pageTitle = 'Account & Subscription Settings - Optibiz';
 $extraCss = ['/assets/css/auth.css'];
-include '../includes/header.php';
+include dirname(__DIR__) . '/includes/header.php';
 ?>
 
 <div style="background:#f8fafc;min-height:100vh;font-family:'Plus Jakarta Sans',sans-serif;">

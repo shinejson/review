@@ -1,7 +1,7 @@
 <?php
-require_once '../includes/auth.php';
-require_once '../config/database.php';
-require_once '../includes/functions.php';
+require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/includes/functions.php';
 
 requireLogin();
 
@@ -26,9 +26,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['name'])) {
 
 $categories = $conn->query("SELECT c.*, (SELECT COUNT(*) FROM customers WHERE category_id = c.id) as company_count FROM categories c ORDER BY c.name ASC");
 
+$robots    = 'noindex, nofollow';
+
 $pageTitle = 'Manage Categories - Optibiz';
 $extraCss = ['/assets/css/auth.css'];
-include '../includes/header.php';
+include dirname(__DIR__) . '/includes/header.php';
 ?>
 
 <div style="background:#f8fafc;min-height:100vh;font-family:'Plus Jakarta Sans',sans-serif;">

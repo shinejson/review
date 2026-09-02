@@ -1,62 +1,331 @@
 <?php
-require_once '../includes/auth.php';
-require_once '../config/database.php';
-require_once '../includes/functions.php';
+/**
+ * ============================================================
+ *  Super Admin — Subscriptions
+ * ============================================================
+ *  Billing overview: MRR/ARR, renewals due, auto-renew switches
+ *  and plan changes for every tenant.
+ */
+
+require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/sa_helpers.php';
 
 requireSuperAdminLogin();
 
-$pageTitle = 'Manage Subscriptions';
-include '../includes/header.php';
+/* ---------- POST handlers ---------- */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!sa_csrf_ok()) {
+        sa_flash('error', 'Your session expired. Please try again.');
+        redirect('subscriptions.php');
+    }
+    $action = isset($_POST['action']) ? $_POST['action'] : '';
+    $id = (int) ($_POST['tenant_id'] ?? 0);
 
-$subscriptions = $conn->query("
-    SELECT t.*, p.plan_name, p.price 
-    FROM tenants t 
-    LEFT JOIN subscription_plans p ON t.plan_id = p.id 
-    ORDER BY t.subscription_end_date DESC
-");
+    if ($action === 'auto_renew' && $id) {
+        $on = !empty($_POST['auto_renew']) ? 1 : 0;
+        $stmt = $conn->prepare("UPDATE tenants SET auto_renew = ? WHERE id = ?");
+        $stmt->bind_param("ii", $on, $id);
+        $stmt->execute();
+        $stmt->close();
+        sa_flash('success', $on ? 'Auto-renew switched on.' : 'Auto-renew switched off.');
+        redirect('subscriptions.php');
+    }
+
+    if ($action === 'update_status' && $id) {
+        $status = in_array($_POST['status'] ?? '', ['trial', 'active', 'inactive', 'cancelled'], true) ? $_POST['status'] : '';
+        if ($status) {
+            $stmt = $conn->prepare("UPDATE tenants SET subscription_status = ? WHERE id = ?");
+            $stmt->bind_param("si", $status, $id);
+            $stmt->execute();
+            $stmt->close();
+            sa_flash('success', 'Subscription marked ' . $status . '.');
+        }
+        redirect('subscriptions.php');
+    }
+
+    if ($action === 'extend' && $id) {
+        $months = max(1, min(60, (int) ($_POST['extend_months'] ?? 12)));
+        $conn->query(
+            "UPDATE tenants
+                SET subscription_end_date = DATE_ADD(
+                        COALESCE(subscription_end_date, CURDATE()),
+                        INTERVAL " . $months . " MONTH),
+                    subscription_status = 'active'
+              WHERE id = " . $id
+        );
+        sa_flash('success', 'Subscription extended by ' . $months . ' month' . ($months === 1 ? '' : 's') . '.');
+        redirect('subscriptions.php');
+    }
+}
+
+/* ---------- filters ---------- */
+$filter = isset($_GET['view']) ? preg_replace('/[^a-z_]/', '', strtolower($_GET['view'])) : 'all';
+$allowed = ['all', 'active', 'trial', 'inactive', 'cancelled', 'due'];
+if (!in_array($filter, $allowed, true)) {
+    $filter = 'all';
+}
+
+$where = '';
+if ($filter === 'due') {
+    $where = " WHERE t.subscription_status IN ('active','trial')
+                 AND t.subscription_end_date IS NOT NULL
+                 AND t.subscription_end_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)";
+} elseif ($filter !== 'all') {
+    $where = " WHERE t.subscription_status = '" . $filter . "'";
+}
+
+$rows = sa_query(
+    $conn,
+    "SELECT t.*, p.plan_name, p.price AS plan_price,
+            (SELECT COUNT(*) FROM customers c WHERE c.tenant_id = t.id) AS customer_count
+       FROM tenants t
+       LEFT JOIN subscription_plans p ON p.id = t.plan_id"
+    . $where . "
+      ORDER BY (t.subscription_end_date IS NULL), t.subscription_end_date ASC, t.company_name ASC",
+    ['tenants', 'subscription_plans', 'customers']
+);
+
+$m = sa_metrics($conn);
+$counts = sa_tenant_counts($conn);
+$due_count = (int) sa_scalar(
+    $conn,
+    "SELECT COUNT(*) FROM tenants
+      WHERE subscription_status IN ('active','trial')
+        AND subscription_end_date IS NOT NULL
+        AND subscription_end_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)",
+    0,
+    'tenants'
+);
+$auto_renew_on = (int) sa_scalar($conn, "SELECT COUNT(*) FROM tenants WHERE auto_renew = 1", 0, 'tenants');
+$mrr_visible = 0.0;
+foreach ($rows as $r) {
+    if ($r['subscription_status'] === 'active') {
+        $mrr_visible += (float) $r['subscription_price'];
+    }
+}
+
+/* ---------- page meta ---------- */
+$robots    = 'noindex, nofollow';
+$pageTitle = 'Subscriptions';
+$pageHeading = 'Subscriptions';
+$pageSubtitle = 'Billing status, renewals and auto-renew for every tenant.';
+$activePage = 'subscriptions';
+$BASE = '../';
+$extraCss = ['assets/css/superadmin.css'];
+$bodyClass    = 'sa-body';
+$searchTarget = '#subsTable';
+$searchPlaceholder = 'Filter subscriptions…';
+
+include dirname(__DIR__) . '/includes/header.php';
+include __DIR__ . '/_shell.php';
 ?>
 
-<div class="admin-content">
-    <h1>Manage Subscriptions</h1>
-    <a href="index.php">Back to Dashboard</a>
-    
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Tenant</th>
-                <th>Plan</th>
-                <th>Price</th>
-                <th>Status</th>
-                <th>Start Date</th>
-                <th>End Date</th>
-                <th>Auto Renew</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php while ($sub = $subscriptions->fetch_assoc()): ?>
-            <tr>
-                <td><?php echo htmlspecialchars($sub['company_name']); ?></td>
-                <td><?php echo htmlspecialchars($sub['plan_name'] ?? 'N/A'); ?></td>
-                <td>$<?php echo number_format($sub['price'] ?? 0, 2); ?></td>
-                <td><span class="status-<?php echo $sub['subscription_status']; ?>"><?php echo ucfirst($sub['subscription_status']); ?></span></td>
-                <td><?php echo $sub['subscription_start_date'] ? date('M d, Y', strtotime($sub['subscription_start_date'])) : 'N/A'; ?></td>
-                <td><?php echo $sub['subscription_end_date'] ? date('M d, Y', strtotime($sub['subscription_end_date'])) : 'N/A'; ?></td>
-                <td><?php echo $sub['auto_renew'] ? 'Yes' : 'No'; ?></td>
-                <td>
-                    <a href="tenant_details.php?id=<?php echo $sub['id']; ?>">Manage</a>
-                </td>
-            </tr>
-            <?php endwhile; ?>
-        </tbody>
-    </table>
+<div class="sa-page-head">
+    <div>
+        <div class="sa-crumbs">
+            <a href="index.php">Super admin</a>
+            <?php echo sa_icon('chevron-right'); ?>
+            <span>Subscriptions</span>
+        </div>
+        <h2>Subscriptions &amp; billing</h2>
+        <p><?php echo sa_e(sa_money($m['mrr'])); ?> monthly recurring revenue across
+           <?php echo sa_e(sa_num($m['paying'])); ?> paying tenants.</p>
+    </div>
+    <div class="sa-head-actions">
+        <button type="button" class="sa-btn sa-btn-ghost" data-sa-export="#subsTable" data-sa-export-name="optibiz-subscriptions">
+            <?php echo sa_icon('download'); ?> Export CSV
+        </button>
+        <a class="sa-btn sa-btn-primary" href="tenants.php"><?php echo sa_icon('plus'); ?> New tenant</a>
+    </div>
 </div>
 
-<style>
-.status-active { color: #28a745; font-weight: bold; }
-.status-inactive { color: #dc3545; font-weight: bold; }
-.status-trial { color: #ffc107; font-weight: bold; }
-</style>
+<?php echo sa_render_flash(); ?>
 
-</body>
-</html>
+<!-- ============ BILLING KPIs ============ -->
+<div class="sa-grid sa-kpis sa-anim">
+    <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-lime);--kpi-soft:var(--sa-accent-soft);--kpi-line:var(--sa-accent-line)">
+        <div class="sa-kpi-top">
+            <span class="sa-kpi-label">MRR</span>
+            <span class="sa-kpi-icon"><?php echo sa_icon('dollar'); ?></span>
+        </div>
+        <div class="sa-kpi-value"><?php echo sa_e(sa_money($m['mrr'])); ?></div>
+        <div class="sa-kpi-note"><?php echo sa_e(sa_money($m['arpu'])); ?> average per paying tenant</div>
+    </article>
+
+    <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-info);--kpi-soft:var(--sa-info-soft);--kpi-line:var(--sa-info-line)">
+        <div class="sa-kpi-top">
+            <span class="sa-kpi-label">ARR</span>
+            <span class="sa-kpi-icon"><?php echo sa_icon('trending-up'); ?></span>
+        </div>
+        <div class="sa-kpi-value"><?php echo sa_e(sa_money($m['arr'], 0)); ?></div>
+        <div class="sa-kpi-note">Annualised run rate at today's MRR</div>
+    </article>
+
+    <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-warning);--kpi-soft:var(--sa-warning-soft);--kpi-line:var(--sa-warning-line)">
+        <div class="sa-kpi-top">
+            <span class="sa-kpi-label">Due in 30 days</span>
+            <span class="sa-kpi-icon"><?php echo sa_icon('clock'); ?></span>
+        </div>
+        <div class="sa-kpi-value"><?php echo sa_e(sa_num($due_count)); ?></div>
+        <div class="sa-kpi-note"><?php echo sa_e(sa_num($m['expired'])); ?> already past their end date</div>
+    </article>
+
+    <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-success);--kpi-soft:var(--sa-success-soft);--kpi-line:var(--sa-success-line)">
+        <div class="sa-kpi-top">
+            <span class="sa-kpi-label">Auto-renew on</span>
+            <span class="sa-kpi-icon"><?php echo sa_icon('refresh'); ?></span>
+        </div>
+        <div class="sa-kpi-value"><?php echo sa_e(sa_num($auto_renew_on)); ?></div>
+        <div class="sa-kpi-note"><?php echo sa_e(number_format(sa_pct($auto_renew_on, $counts['all'], 0))); ?>% of all tenants</div>
+    </article>
+</div>
+
+<!-- ============ FILTER CHIPS ============ -->
+<section class="sa-card sa-mb">
+    <div class="sa-filters">
+        <div class="sa-chips">
+<?php
+$chips = [
+    'all'       => ['label' => 'All', 'count' => $counts['all']],
+    'active'    => ['label' => 'Active', 'count' => $counts['active']],
+    'trial'     => ['label' => 'Trial', 'count' => $counts['trial']],
+    'due'       => ['label' => 'Due in 30 days', 'count' => $due_count],
+    'inactive'  => ['label' => 'Inactive', 'count' => $counts['inactive']],
+    'cancelled' => ['label' => 'Cancelled', 'count' => $counts['cancelled']],
+];
+foreach ($chips as $key => $chip): ?>
+            <a class="sa-chip<?php echo $filter === $key ? ' active' : ''; ?>"
+               href="subscriptions.php?view=<?php echo $key; ?>"
+               aria-pressed="<?php echo $filter === $key ? 'true' : 'false'; ?>">
+                <?php echo sa_e($chip['label']); ?><span class="count"><?php echo (int) $chip['count']; ?></span>
+            </a>
+<?php endforeach; ?>
+        </div>
+        <span class="sa-pill" style="margin-left:auto"><?php echo sa_e(sa_money($mrr_visible)); ?> MRR in this view</span>
+    </div>
+</section>
+
+<!-- ============ TABLE ============ -->
+<section class="sa-card">
+    <div class="sa-card-head">
+        <div>
+            <h3><?php echo sa_e(ucfirst(str_replace('_', ' ', $filter))); ?> subscriptions</h3>
+            <p>Sorted by the closest renewal date first</p>
+        </div>
+    </div>
+
+    <div class="sa-table-wrap">
+        <table class="sa-table" id="subsTable" data-sa-sortable-table>
+            <thead scope="col">
+                <tr>
+                    <th data-sa-sort="0" scope="col" aria-sort="none">Tenant</th>
+                    <th data-sa-sort="1" scope="col" aria-sort="none">Plan</th>
+                    <th data-sa-sort="2" data-type="num" scope="col" aria-sort="none">Price / mo</th>
+                    <th data-sa-sort="3" scope="col" aria-sort="none">Status</th>
+                    <th data-sa-sort="4" data-type="date" scope="col" aria-sort="none">Started</th>
+                    <th data-sa-sort="5" data-type="date" scope="col" aria-sort="none">Ends</th>
+                    <th data-sa-sort="6" scope="col" aria-sort="none">Renewal</th>
+                    <th data-sa-sort="7" scope="col" aria-sort="none">Auto-renew</th>
+                    <th data-no-export scope="col"><span class="sa-sr-only">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+<?php if (!$rows): ?>
+                <tr data-static>
+                    <td colspan="9">
+                        <div class="sa-empty">
+                            <?php echo sa_icon('card'); ?>
+                            <strong>No subscriptions in this view</strong>
+                            <p>Switch the filter above, or create a tenant to start billing.</p>
+                        </div>
+                    </td>
+                </tr>
+<?php else: ?>
+<?php foreach ($rows as $s): ?>
+<?php
+    $search_blob = strtolower(implode(' ', [
+        $s['company_name'], $s['email'], $s['plan_name'], $s['subscription_status'],
+    ]));
+    list($renew_badge, $renew_kind) = sa_renewal_badge($s['subscription_end_date'], $s['auto_renew']);
+    $days = sa_days_until($s['subscription_end_date']);
+?>
+                <tr data-filterable data-search="<?php echo sa_e($search_blob); ?>">
+                    <td>
+                        <div class="sa-cell-main">
+                            <span class="sa-cell-avatar"><?php echo sa_e(sa_initials($s['company_name'])); ?></span>
+                            <span class="sa-cell-text">
+                                <strong><?php echo sa_e($s['company_name']); ?></strong>
+                                <span><?php echo sa_e($s['email']); ?></span>
+                            </span>
+                        </div>
+                    </td>
+                    <td><span class="sa-badge sa-badge-plan"><?php echo sa_e($s['plan_name'] ? $s['plan_name'] : 'No plan'); ?></span></td>
+                    <td class="num" data-sort-value="<?php echo sa_e($s['subscription_price']); ?>" data-export-value="<?php echo sa_e($s['subscription_price']); ?>"><?php echo sa_e(sa_money($s['subscription_price'])); ?></td>
+                    <td data-sort-value="<?php echo sa_e($s['subscription_status']); ?>">
+                        <form method="POST" action="subscriptions.php" style="display:inline">
+                            <?php echo sa_csrf_field(); ?>
+                            <input type="hidden" name="action" value="update_status">
+                            <input type="hidden" name="tenant_id" value="<?php echo (int) $s['id']; ?>">
+                            <select class="sa-inline-select" name="status" onchange="this.form.submit()" aria-label="Status for <?php echo sa_e($s['company_name']); ?>">
+<?php foreach (['trial' => 'Trial', 'active' => 'Active', 'inactive' => 'Inactive', 'cancelled' => 'Cancelled'] as $val => $lbl): ?>
+                                <option value="<?php echo $val; ?>"<?php echo $s['subscription_status'] === $val ? ' selected' : ''; ?>><?php echo $lbl; ?></option>
+<?php endforeach; ?>
+                            </select>
+                        </form>
+                    </td>
+                    <td data-sort-value="<?php echo sa_e($s['subscription_start_date'] ?: ''); ?>"><?php echo sa_e(sa_date($s['subscription_start_date'])); ?></td>
+                    <td data-sort-value="<?php echo sa_e($s['subscription_end_date'] ?: ''); ?>"
+                        data-export-value="<?php echo sa_e($s['subscription_end_date'] ?: ''); ?>">
+                        <?php echo sa_e(sa_date($s['subscription_end_date'])); ?>
+                    </td>
+                    <td data-sort-value="<?php echo $days === null ? 99999 : (int) $days; ?>"><?php echo $renew_badge; ?></td>
+                    <td>
+                        <form method="POST" action="subscriptions.php" style="display:inline">
+                            <?php echo sa_csrf_field(); ?>
+                            <input type="hidden" name="action" value="auto_renew">
+                            <input type="hidden" name="tenant_id" value="<?php echo (int) $s['id']; ?>">
+                            <label class="sa-switch" title="<?php echo $s['auto_renew'] ? 'Auto-renew on' : 'Auto-renew off'; ?>">
+                                <input type="checkbox" name="auto_renew" value="1" <?php echo $s['auto_renew'] ? 'checked' : ''; ?> onchange="this.form.submit()">
+                                <span class="sa-switch-track"></span>
+                                <span class="sa-sr-only">Auto-renew <?php echo sa_e($s['company_name']); ?></span>
+                            </label>
+                        </form>
+                    </td>
+                    <td data-no-export>
+                        <div class="sa-row-actions">
+                            <form method="POST" action="subscriptions.php" style="display:inline">
+                                <?php echo sa_csrf_field(); ?>
+                                <input type="hidden" name="action" value="extend">
+                                <input type="hidden" name="tenant_id" value="<?php echo (int) $s['id']; ?>">
+                                <input type="hidden" name="extend_months" value="12">
+                                <button type="submit" class="sa-btn sa-btn-sm sa-btn-ghost" title="Extend 12 months and mark active">
+                                    <?php echo sa_icon('refresh'); ?> +12 mo
+                                </button>
+                            </form>
+                            <a class="sa-btn sa-btn-sm sa-btn-ghost" href="tenant_details.php?id=<?php echo (int) $s['id']; ?>" title="Open tenant">
+                                <?php echo sa_icon('eye'); ?>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+<?php endforeach; ?>
+<?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="sa-empty" id="subsTableEmpty" hidden>
+        <?php echo sa_icon('search'); ?>
+        <strong>No matching subscriptions</strong>
+        <p>Nothing in this view matches the text in the top-right filter box.</p>
+    </div>
+
+    <div class="sa-card-foot">
+        <span><?php echo sa_e(sa_num(count($rows))); ?> subscription<?php echo count($rows) === 1 ? '' : 's'; ?> shown</span>
+        <span>Toggles and status selects save immediately</span>
+    </div>
+</section>
+
+<?php include __DIR__ . '/_shell_footer.php'; ?>

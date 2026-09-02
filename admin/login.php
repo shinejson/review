@@ -1,7 +1,7 @@
 <?php
-require_once '../includes/auth.php';
-require_once '../config/database.php';
-require_once '../includes/functions.php';
+require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/includes/functions.php';
 
 if (isLoggedIn()) {
     redirect('index.php');
@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $tenant = $resTenant->fetch_assoc();
             
             // Verify password (support hashed or default fallback)
-            if (password_verify($password, $tenant['password']) || $password === 'admin123' || $password === 'password') {
+            if (password_verify($password, $tenant['password'])) {
                 // If password was matched via fallback, re-hash it properly
                 if (!password_verify($password, $tenant['password'])) {
                     $newHash = password_hash($password, PASSWORD_DEFAULT);
@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($resAdmin && $resAdmin->num_rows === 1) {
                 $admin = $resAdmin->fetch_assoc();
-                if (password_verify($password, $admin['password']) || $password === 'admin123' || $password === 'password') {
+                if (password_verify($password, $admin['password'])) {
                     if (!password_verify($password, $admin['password'])) {
                         $newHash = password_hash($password, PASSWORD_DEFAULT);
                         $upStmt = $conn->prepare("UPDATE admins SET password = ? WHERE id = ?");
@@ -91,9 +91,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$robots    = 'noindex, nofollow';
+
 $pageTitle = 'Tenant & Admin Login';
 $extraCss = ['/assets/css/auth.css'];
-include '../includes/header.php';
+include dirname(__DIR__) . '/includes/header.php';
 ?>
 
 <div class="auth-shell">

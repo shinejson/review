@@ -1,7 +1,7 @@
 <?php
-require_once '../includes/auth.php';
-require_once '../config/database.php';
-require_once '../includes/functions.php';
+require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/includes/functions.php';
 
 requireLogin();
 
@@ -86,9 +86,11 @@ if ($is_tenant) {
                                ORDER BY c.created_at DESC");
 }
 
+$robots    = 'noindex, nofollow';
+
 $pageTitle = 'Manage Companies / Branches - Optibiz';
 $extraCss = ['/assets/css/auth.css'];
-include '../includes/header.php';
+include dirname(__DIR__) . '/includes/header.php';
 ?>
 
 <div style="background:#f8fafc;min-height:100vh;font-family:'Plus Jakarta Sans',sans-serif;">
