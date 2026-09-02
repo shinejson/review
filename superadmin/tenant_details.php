@@ -181,6 +181,7 @@ if (!empty($tenant['subscription_start_date'])) {
 $lifetime_value = $months_subscribed * (float) $tenant['subscription_price'];
 
 /* ---------- page meta ---------- */
+$robots    = 'noindex, nofollow';
 $pageTitle = $tenant['company_name'];
 $pageHeading = $tenant['company_name'];
 $pageSubtitle = 'Tenant #' . $tenant_id . ' · ' . ($tenant['plan_name'] ? $tenant['plan_name'] : 'No plan');

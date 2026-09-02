@@ -10,6 +10,8 @@
  *                         Super admin pages override it from localStorage
  *                         via the bootstrap snippet below.
  *   $bodyClass  string    extra class(es) for <body>
+ *   $robots     string    robots meta content, e.g. 'noindex, nofollow'
+ *                         for the admin panels. Omit on public pages.
  *   $extraHead  string    raw markup appended to <head>
  */
 
@@ -52,13 +54,19 @@ if (!function_exists('sa_asset')) {
 $sa_theme    = (isset($theme) && $theme === 'light') ? 'light' : 'dark';
 $sa_page     = isset($pageTitle) ? $pageTitle : 'Optibiz';
 $sa_body_cls = isset($bodyClass) ? ' ' . trim($bodyClass) : '';
+
+// Pages written against main's convention echo $assetBase before an asset
+// path, so expose the same prefix under that name as well.
+$assetBase = rtrim($BASE, '/');
 ?>
 <!DOCTYPE html>
 <html lang="en" data-theme="<?php echo $sa_theme; ?>" class="sa-preload">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="robots" content="noindex, nofollow">
+<?php if (!empty($robots)): ?>
+    <meta name="robots" content="<?php echo htmlspecialchars($robots); ?>">
+<?php endif; ?>
     <title><?php echo htmlspecialchars($sa_page); ?> &middot; Optibiz</title>
     <style>
         /* Keeps the first paint from flashing while the saved theme loads */

@@ -163,6 +163,7 @@ foreach (sa_query(
 $conversion_rate = $status_counts['all'] > 0 ? sa_pct($status_counts['converted'], $status_counts['all'], 0) : 0;
 
 /* ---------- page meta ---------- */
+$robots    = 'noindex, nofollow';
 $pageTitle = 'Quote requests';
 $pageHeading = 'Quote requests';
 $pageSubtitle = 'Inbound leads from the public website.';

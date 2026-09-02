@@ -106,6 +106,7 @@ foreach ($stars as $star => $count) {
 }
 
 /* ---------- page meta ---------- */
+$robots    = 'noindex, nofollow';
 $pageTitle    = 'Control Center';
 $pageHeading  = 'Control center';
 $pageSubtitle = 'Platform health, revenue and tenant activity at a glance.';

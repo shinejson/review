@@ -143,6 +143,7 @@ $tenant_league = sa_query(
 );
 
 /* ---------- page meta ---------- */
+$robots    = 'noindex, nofollow';
 $pageTitle = 'Analytics';
 $pageHeading = 'Analytics';
 $pageSubtitle = 'Revenue, growth and engagement across every tenant.';

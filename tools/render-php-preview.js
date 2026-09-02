@@ -126,7 +126,24 @@ const POSTS = [
     ['csrf · forged token rejected', 'superadmin/tenants.php', 'action=delete&tenant_id=5', null, { badCsrf: true }],
     ['login · valid credentials', 'superadmin/login.php', 'username=superadmin&password=superadmin123', null, { anonymous: true, blank: true }],
     ['login · wrong password', 'superadmin/login.php', 'username=superadmin&password=nope', null, { anonymous: true, html: /Invalid username or password/ }],
+    ['login · by email address', 'superadmin/login.php', 'username=superadmin%40optibiz.com&password=superadmin123', null, { anonymous: true, blank: true }],
+    ['login · empty fields', 'superadmin/login.php', 'username=&password=', null, { anonymous: true, html: /Please enter both/ }],
+
+    /* The bypasses that main's "fix the index appearance" commit added
+       (|| $password === 'superadmin123' || $password === 'password') are
+       deliberately NOT part of this branch. These assert that only a real
+       password_verify() match signs anyone in. */
+    ['login · hardcoded "password" refused', 'superadmin/login.php', 'username=superadmin&password=password', null, { anonymous: true, html: /Invalid username or password/ }],
+    ['login · unknown account refused', 'superadmin/login.php', 'username=nobody&password=superadmin123', null, { anonymous: true, html: /Invalid username or password/ }],
 ];
+
+/** A fresh session per invocation: login state must not leak between cases. */
+let sessionSeq = 0;
+function sessionDir() {
+    const dir = path.join(require('os').tmpdir(), 'sa-sess-' + process.pid + '-' + ++sessionSeq);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
 
 function readSqlLog() {
     if (!fs.existsSync(SQL_LOG)) return [];
@@ -156,6 +173,7 @@ function runPhp(script, queryString, opts) {
         SA_POST: opts && opts.post ? '1' : '',
         SA_BAD_CSRF: opts && opts.badCsrf ? '1' : '',
         SA_EMPTY_DB: opts && opts.emptyDb ? '1' : '',
+        SA_SESSION_DIR: sessionDir(),
     });
     try {
         const out = execFileSync('node', args, {
@@ -334,6 +352,7 @@ function main() {
     console.log('  [ ok ] index.html (preview landing page)');
 
     fs.rmSync(BUILD, { recursive: true, force: true });
+    fs.rmSync(path.join(require('os').tmpdir(), 'sa-sess-' + process.pid + '-1'), { recursive: true, force: true });
 
     const detailed = report.filter((r) => r.problems.length || r.warnings.length);
     if (detailed.length) {

@@ -116,6 +116,7 @@ foreach ($plans as $p) {
 }
 
 /* ---------- page meta ---------- */
+$robots    = 'noindex, nofollow';
 $pageTitle = 'Plans';
 $pageHeading = 'Plans & pricing';
 $pageSubtitle = 'What tenants can buy, and how each plan is performing.';

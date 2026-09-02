@@ -193,6 +193,7 @@ $counts = sa_tenant_counts($conn);
 $m = sa_metrics($conn);
 
 /* ---------- page meta ---------- */
+$robots    = 'noindex, nofollow';
 $pageTitle = 'Tenants';
 $pageHeading = 'Tenants';
 $pageSubtitle = 'Every company subscribed to the Optibiz platform.';

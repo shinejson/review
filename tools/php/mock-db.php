@@ -350,6 +350,26 @@ class MockMysqli
         return $out;
     }
 
+    /**
+     * Project a fixture row onto the columns the statement asked for, so
+     * "SELECT password FROM …" and "SELECT * FROM …" both work.
+     */
+    private function project($row, $sql)
+    {
+        preg_match('/^SELECT (.+?) FROM/i', $sql, $cols);
+        $out = [];
+        foreach (array_map('trim', explode(',', isset($cols[1]) ? $cols[1] : '*')) as $col) {
+            $col = trim($col, '` ');
+            if ($col === '*') {
+                return $row;
+            }
+            if (array_key_exists($col, $row)) {
+                $out[$col] = $row[$col];
+            }
+        }
+        return $out;
+    }
+
     private function monthKey($dateStr)
     {
         $ts = strtotime($dateStr);
@@ -474,6 +494,17 @@ class MockMysqli
             if (preg_match('/WHERE id = (\d+)/', $s, $m)) {
                 $id = (int) $m[1];
             }
+            if ($this->has($o, 'username = ?') || $this->has($o, 'email = ?')) {
+                // A login lookup: an unknown account must return no rows,
+                // otherwise the caller signs in as whoever is first.
+                $needle = $values ? (string) $values[0] : '';
+                foreach ($D['super_admins'] as $candidate) {
+                    if ($candidate['username'] === $needle || $candidate['email'] === $needle) {
+                        return [$this->project($candidate, $s)];
+                    }
+                }
+                return [];
+            }
             $row = $D['super_admins'][0];
             foreach ($D['super_admins'] as $candidate) {
                 if ((int) $candidate['id'] === $id) {
@@ -482,24 +513,21 @@ class MockMysqli
                 }
             }
             // Honour the projected columns so "SELECT password …" works
-            preg_match('/^SELECT (.+?) FROM/i', $s, $cols);
-            $out = [];
-            foreach (array_map('trim', explode(',', isset($cols[1]) ? $cols[1] : '*')) as $col) {
-                $col = trim($col, '` ');
-                if ($col === '*') {
-                    $out = $row;
-                    break;
-                }
-                if (array_key_exists($col, $row)) {
-                    $out[$col] = $row[$col];
-                }
-            }
-            return [$out];
+            return [$this->project($row, $s)];
         }
 
         /* ---- tenant admins (admin/ panel) ---- */
         if ($tbl === 'admins') {
             $row = $D['admins'][0];
+            if ($this->has($o, 'username = ?') || $this->has($o, 'email = ?')) {
+                $needle = $values ? (string) $values[0] : '';
+                foreach ($D['admins'] as $candidate) {
+                    if ($candidate['username'] === $needle || $candidate['email'] === $needle) {
+                        return [$this->project($candidate, $s)];
+                    }
+                }
+                return [];
+            }
             if (preg_match('/username = \'([^\']+)\'/', $s, $mu)) {
                 foreach ($D['admins'] as $candidate) {
                     if ($candidate['username'] === $mu[1]) {
@@ -519,27 +547,26 @@ class MockMysqli
             if ($this->has($o, 'COUNT(*)')) {
                 return [['COUNT(*)' => count($D['admins']), 'count' => count($D['admins'])]];
             }
-            preg_match('/^SELECT (.+?) FROM/i', $s, $cols);
-            $out = [];
-            foreach (array_map('trim', explode(',', isset($cols[1]) ? $cols[1] : '*')) as $col) {
-                $col = trim($col, '` ');
-                if ($col === '*') {
-                    $out = $row;
-                    break;
-                }
-                if (array_key_exists($col, $row)) {
-                    $out[$col] = $row[$col];
-                }
-            }
-            return [$out];
+            return [$this->project($row, $s)];
         }
 
         /* ---- categories ---- */
         if ($tbl === 'categories') {
-            if ($this->has($o, 'COUNT(*)')) {
+            if ($this->has($o, 'COUNT(*)') && !$this->has($o, 'company_count')) {
                 return [['COUNT(*)' => count($D['categories']), 'count' => count($D['categories'])]];
             }
-            return $D['categories'];
+            // admin/categories.php projects a per-category company count
+            $out = [];
+            foreach ($D['categories'] as $cat) {
+                $n = 0;
+                foreach ($this->customersWithCategory() as $c) {
+                    if ((int) $c['category_id'] === (int) $cat['id']) {
+                        $n++;
+                    }
+                }
+                $out[] = array_merge($cat, ['company_count' => $n, 'count' => $n]);
+            }
+            return $out;
         }
 
         /* ---- plans ---- */
@@ -936,6 +963,25 @@ class MockMysqli
                     });
                 }
                 return [['COUNT(*)' => count($rows)]];
+            }
+
+            // tenant login / password lookups (admin/login.php, admin/settings.php)
+            if ($this->has($o, 'username = ?') || $this->has($o, 'email = ?')) {
+                $needle = $values ? (string) $values[0] : '';
+                foreach ($this->tenants() as $t) {
+                    if ($t['username'] === $needle || $t['email'] === $needle) {
+                        return [$t];
+                    }
+                }
+                return [];
+            }
+            if ($this->has($o, 'SELECT password') && $values) {
+                foreach ($this->tenants() as $t) {
+                    if ((int) $t['id'] === (int) $values[0]) {
+                        return [['password' => $t['password']]];
+                    }
+                }
+                return [['password' => '']];
             }
 
             // single tenant (profile page)

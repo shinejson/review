@@ -10,7 +10,12 @@
  *   - fills in the $_SERVER keys the templates read
  */
 
-$sa_tmp = sys_get_temp_dir() . '/sa-php-preview';
+// Each harness run gets its own session directory (SA_SESSION_DIR), so a
+// login performed by one case cannot leak into the next one.
+$sa_tmp = getenv('SA_SESSION_DIR');
+if (!$sa_tmp) {
+    $sa_tmp = sys_get_temp_dir() . '/sa-php-preview-' . getmypid();
+}
 if (!is_dir($sa_tmp)) {
     @mkdir($sa_tmp, 0777, true);
 }
@@ -35,6 +40,12 @@ if (getenv('SA_ANONYMOUS') === '1') {
         unset($_SESSION['super_admin_id']);   // tenant admin only
     }
     $_SESSION['admin_id'] = (int) (getenv('SA_ADMIN_ID') ?: 1);
+    // The tenant admin panel also supports signing in as the tenant itself
+    if (getenv('SA_TENANT_ID')) {
+        $_SESSION['tenant_id'] = (int) getenv('SA_TENANT_ID');
+        $_SESSION['tenant_name'] = 'Volta Logistics';
+        $_SESSION['user_type'] = 'tenant';
+    }
 }
 if (empty($_SESSION['sa_csrf'])) {
     $_SESSION['sa_csrf'] = 'preview-csrf-token';

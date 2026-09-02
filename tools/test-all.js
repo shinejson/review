@@ -9,13 +9,16 @@
  *     replays their POST handlers, then checks a fresh-install
  *     (empty database) render, signed-out redirects and edge cases.
  *     Also rebuilds .preview/ for the preview server.
- *  2. check-other-pages.js — the tenant admin panel, panel
+ *  2. check-browser.js — loads each rendered page in jsdom, runs the
+ *     real assets/js/superadmin.js and asserts the theme toggle,
+ *     sidebar collapse, table filtering and column sorting work.
+ *  3. check-other-pages.js — the tenant admin panel, panel
  *     isolation, both login forms and the public API endpoints.
- *  3. check-css.js — audits the rendered markup for CSS variables
+ *  4. check-css.js — audits the rendered markup for CSS variables
  *     that are never defined and classes that are never styled.
- *  4. check-a11y.js — audits labels, landmarks, table semantics,
+ *  5. check-a11y.js — audits labels, landmarks, table semantics,
  *     ARIA values, heading order and duplicate ids.
- *  5. check-sql.js — captures every statement the pages issue and
+ *  6. check-sql.js — captures every statement the pages issue and
  *     verifies each table and column exists in database.sql.
  *
  *  Both need the WebAssembly PHP runtime (npm install php-cli);
@@ -29,6 +32,7 @@ const { spawnSync } = require('child_process');
 
 const suites = [
     ['Super admin panel', 'render-php-preview.js'],
+    ['Rendered pages under jsdom', 'check-browser.js'],
     ['Admin panel, logins and public APIs', 'check-other-pages.js'],
     ['CSS audit of the rendered pages', 'check-css.js'],
     ['Accessibility audit of the rendered pages', 'check-a11y.js'],

@@ -140,6 +140,7 @@ foreach ($health as $h) {
 }
 
 /* ---------- page meta ---------- */
+$robots    = 'noindex, nofollow';
 $pageTitle = 'Settings';
 $pageHeading = 'Platform settings';
 $pageSubtitle = 'Branding, defaults, your account and database health.';

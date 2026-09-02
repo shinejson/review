@@ -663,3 +663,17 @@ body {
         right: 16px;
     }
 }
+
+/* Cross-link to the other login screen */
+.auth-alt-link {
+    color: var(--ob-faint);
+    font-size: 13px;
+    text-decoration: none;
+    transition: color 0.18s ease;
+}
+
+.auth-alt-link:hover,
+.auth-alt-link:focus-visible {
+    color: var(--ob-lime);
+    outline: none;
+}

@@ -11,23 +11,36 @@ $error = '';
 $username = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = sanitize($_POST['username']);
-    $password = $_POST['password'];
+    $username = trim($_POST['username'] ?? '');
+    $password = (string) ($_POST['password'] ?? '');
 
-    $stmt = $conn->prepare("SELECT id, password FROM super_admins WHERE username = ?");
-    $stmt->bind_param("s", $username);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    if ($username === '' || $password === '') {
+        $error = 'Please enter both username/email and password.';
+    } else {
+        // Sign in with either the username or the account email
+        $stmt = $conn->prepare(
+            "SELECT id, username, email, password
+               FROM super_admins
+              WHERE username = ? OR email = ?
+              LIMIT 1"
+        );
+        $stmt->bind_param("ss", $username, $username);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $admin = $result && $result->num_rows === 1 ? $result->fetch_assoc() : null;
+        $stmt->close();
 
-    if ($result->num_rows === 1) {
-        $admin = $result->fetch_assoc();
-        if (password_verify($password, $admin['password'])) {
-            $_SESSION['super_admin_id'] = $admin['id'];
+        if ($admin && password_verify($password, $admin['password'])) {
+            $_SESSION['super_admin_id']       = (int) $admin['id'];
+            $_SESSION['super_admin_username'] = $admin['username'];
+            $_SESSION['super_admin_email']    = $admin['email'];
             redirect('index.php');
         }
+        $error = 'Invalid username or password. Please try again.';
     }
-    $error = 'Invalid username or password. Please try again.';
 }
+
+$robots    = 'noindex, nofollow';
 
 $pageTitle = 'Super Admin Login';
 $extraCss = ['assets/css/auth.css'];
@@ -95,8 +108,8 @@ include dirname(__DIR__) . '/includes/header.php';
                 <span class="auth-card-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                 </span>
-                <h2 id="authCardTitle">Super admin sign in</h2>
-                <p>Enter your platform credentials to continue.</p>
+                <h2 id="authCardTitle">Super Admin Sign In</h2>
+                <p>Enter your platform credentials to access the command center.</p>
             </header>
 
             <?php if ($error): ?>
@@ -108,10 +121,10 @@ include dirname(__DIR__) . '/includes/header.php';
 
             <form method="POST" class="auth-form" id="authForm" novalidate>
                 <div class="auth-field">
-                    <label for="username">Username</label>
+                    <label for="username">Username or Email</label>
                     <div class="auth-input-wrap">
                         <svg class="auth-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                        <input type="text" id="username" name="username" value="<?php echo htmlspecialchars($username); ?>" placeholder="e.g. superadmin" autocomplete="username" autofocus required>
+                        <input type="text" id="username" name="username" value="<?php echo htmlspecialchars($username); ?>" placeholder="e.g. superadmin or superadmin@example.com" autocomplete="username" autofocus required>
                     </div>
                 </div>
 
@@ -138,10 +151,9 @@ include dirname(__DIR__) . '/includes/header.php';
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
                     Back to website
                 </a>
-                <span class="auth-secure">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    Restricted access
-                </span>
+                <a class="auth-alt-link" href="<?php echo sa_asset('admin/login.php'); ?>">
+                    Tenant Login &rarr;
+                </a>
             </footer>
         </section>
     </main>

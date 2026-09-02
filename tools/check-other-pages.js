@@ -64,6 +64,13 @@ function copyDir(src, dest) {
     }
 }
 
+let sessionSeq = 0;
+function sessionDir() {
+    const dir = path.join(os.tmpdir(), 'sa-adm-sess-' + process.pid + '-' + ++sessionSeq);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
 function runPhp(script, queryString, opts) {
     const o = opts || {};
     if (fs.existsSync(SQL_LOG)) fs.unlinkSync(SQL_LOG);
@@ -77,6 +84,7 @@ function runPhp(script, queryString, opts) {
         SA_ADMIN_ID: o.adminId ? String(o.adminId) : '1',
         SA_POST: o.post ? '1' : '',
         SA_BAD_CSRF: o.badCsrf ? '1' : '',
+        SA_SESSION_DIR: sessionDir(),
     });
     let html = '';
     let stderr = '';
@@ -174,6 +182,48 @@ function main() {
     }
 
 
+    console.log('\nTenant admin credentials (only a real password may sign in):');
+    const LOGINS = [
+        ['tenant · valid password', 'admin/login.php', 'username=abc_corporation&password=tenant123',
+            (r) => !/auth-form/i.test(r.html), 'signed in and redirected'],
+        ['tenant · by email address', 'admin/login.php', 'username=admin%40abccorp.com&password=tenant123',
+            (r) => !/auth-form/i.test(r.html), 'signed in and redirected'],
+        ['tenant · hardcoded "password"', 'admin/login.php', 'username=abc_corporation&password=password',
+            (r) => /[Ii]nvalid|not found|Incorrect/.test(r.html), 'refused'],
+        ['tenant · hardcoded "admin123"', 'admin/login.php', 'username=abc_corporation&password=admin123',
+            (r) => /[Ii]nvalid|not found|Incorrect/.test(r.html), 'refused'],
+        ['tenant · wrong password', 'admin/login.php', 'username=abc_corporation&password=nope',
+            (r) => /[Ii]nvalid|not found|Incorrect/.test(r.html), 'refused'],
+        ['tenant · cancelled subscription', 'admin/login.php', 'username=obuasi_mining_supplies&password=tenant123',
+            (r) => /cancel|suspended|inactive/i.test(r.html), 'blocked with an explanation'],
+        ['admin · valid password', 'admin/login.php', 'username=volta_admin&password=admin123',
+            (r) => !/auth-form/i.test(r.html), 'signed in and redirected'],
+        ['admin · hardcoded "password"', 'admin/login.php', 'username=volta_admin&password=password',
+            (r) => /[Ii]nvalid|not found|Incorrect/.test(r.html), 'refused'],
+        // tamale_admin's real password is not admin123, so this is the case
+        // the removed "|| $password === 'admin123'" shortcut used to let in.
+        ['admin · hardcoded "admin123" as a bypass', 'admin/login.php', 'username=tamale_admin&password=admin123',
+            (r) => /[Ii]nvalid|not found|Incorrect/.test(r.html), 'refused'],
+        ['admin · its own real password', 'admin/login.php', 'username=tamale_admin&password=tamale-solar-2026',
+            (r) => !/auth-form/i.test(r.html), 'signed in and redirected'],
+    ];
+    for (const [label, script, body, assert, describeOk] of LOGINS) {
+        const r = runPhp(script, body, { post: true, anonymous: true, badCsrf: true });
+        const { fatal, warnings } = diagnostics(r.html, r.stderr);
+        let ok = !fatal && warnings.length === 0;
+        let detail = '';
+        try {
+            ok = ok && assert(r);
+        } catch (e) {
+            ok = false;
+            detail = e.message;
+        }
+        if (!ok) failures++;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${label.padEnd(44)} ${ok ? describeOk : detail || 'unexpected response'}`);
+        if (fatal) fail('fatal error: ' + (r.stderr || r.html).split('\n')[0].slice(0, 160));
+        warnings.slice(0, 3).forEach(fail);
+    }
+
     console.log('\nPublic API endpoints:');
     const APIS = [
         [
@@ -235,6 +285,9 @@ function main() {
     }
 
     fs.rmSync(BUILD, { recursive: true, force: true });
+    for (let i = 1; i <= sessionSeq; i++) {
+        fs.rmSync(path.join(os.tmpdir(), 'sa-adm-sess-' + process.pid + '-' + i), { recursive: true, force: true });
+    }
     console.log(
         failures
             ? `\n${failures} problem(s) outside the super admin panel.`

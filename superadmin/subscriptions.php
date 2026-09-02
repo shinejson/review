@@ -107,6 +107,7 @@ foreach ($rows as $r) {
 }
 
 /* ---------- page meta ---------- */
+$robots    = 'noindex, nofollow';
 $pageTitle = 'Subscriptions';
 $pageHeading = 'Subscriptions';
 $pageSubtitle = 'Billing status, renewals and auto-renew for every tenant.';

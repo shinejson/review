@@ -6,7 +6,8 @@
    * sidebar collapse (desktop) + drawer (mobile)
    * avatar dropdown
    * live table filtering  [data-sa-search="#tableId"]
-   * click-to-sort columns [data-sa-sortable] on <th>
+   * click-to-sort columns [data-sa-sortable-table] on the <table>,
+   *                       [data-sa-sort="n"] on each sortable <th>
    * count-up animation    [data-sa-count="1234.5"]
    * CSV export            [data-sa-export="#tableId"]
    * flash alert auto-dismiss

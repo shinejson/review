@@ -11,6 +11,7 @@
 
 $sa_password_hash = password_hash('superadmin123', PASSWORD_DEFAULT);
 $admin_password_hash = password_hash('admin123', PASSWORD_DEFAULT);
+$other_admin_hash = password_hash('tamale-solar-2026', PASSWORD_DEFAULT);
 
 return [
     'super_admins' => [
@@ -21,6 +22,9 @@ return [
     'admins' => [
         ['id' => 1, 'tenant_id' => 18, 'username' => 'volta_admin', 'email' => 'admin@voltalogistics.com', 'password' => $admin_password_hash, 'created_at' => '2026-08-24 09:20:00'],
         ['id' => 2, 'tenant_id' => 15, 'username' => 'cocoa_admin', 'email' => 'admin@cocoacoast.gh', 'password' => $admin_password_hash, 'created_at' => '2026-07-28 09:05:00'],
+        // A different password, so the suites can prove that the literal
+        // 'admin123' / 'password' shortcuts sign nobody in.
+        ['id' => 3, 'tenant_id' => 13, 'username' => 'tamale_admin', 'email' => 'admin@tamalesolar.com', 'password' => $other_admin_hash, 'created_at' => '2026-07-02 10:15:00'],
     ],
 
     'settings' => [
