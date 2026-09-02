@@ -10,8 +10,8 @@ node tools/test-all.js
 ```
 
 Renders and tests the super admin panel, then the tenant admin panel, both login
-forms and the public APIs. This is the quickest way to confirm a change did not
-break anything.
+forms and the public APIs, then audits the CSS of the rendered markup. This is
+the quickest way to confirm a change did not break anything.
 
 ## 1. Render the real PHP (recommended)
 
@@ -63,6 +63,7 @@ the preview resolves.
 | `test-all.js` | Runs every suite below in one go |
 | `render-php-preview.js` | Renders + tests the real super admin pages, their POST handlers, a fresh-install (empty database) render, signed-out redirects and edge cases |
 | `check-other-pages.js` | Tenant admin panel, panel isolation, login forms and `api/` endpoints |
+| `check-css.js` | Audits the rendered pages for undefined `var(--…)` and unstyled classes; lists `.sa-*` selectors nothing uses |
 | `build-preview.js` | Static fallback mirror |
 | `preview-server.js` | Static server with `.php` → `.html` rewrites |
 | `preview-data.js` | Sample data for the static mirror |
