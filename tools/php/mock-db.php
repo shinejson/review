@@ -409,6 +409,23 @@ class MockMysqli
         $D = $this->data;
         $this->log('branch', $tbl !== '' ? $tbl : '(none)');
 
+        /* ---- fresh-install mode: the schema exists but holds no data ---- */
+        if (getenv('SA_EMPTY_DB') === '1' && !$this->has($s, 'information_schema.tables')) {
+            if ($tbl === 'super_admins') {
+                return [$D['super_admins'][0]];   // the signed-in account
+            }
+            if ($tbl === 'settings') {
+                // a couple of rows survived the installer, the rest are absent
+                return $this->has($s, 'COUNT(*)')
+                    ? [['COUNT(*)' => 1]]
+                    : [['setting_key' => 'site_name', 'setting_value' => 'Optibiz']];
+            }
+            if (preg_match('/^SELECT COUNT\(\*\)/i', $s) || $this->has($o, 'COUNT(*)')) {
+                return [['COUNT(*)' => 0, 'count' => 0, 'c' => 0, 'cnt' => 0]];
+            }
+            return [];
+        }
+
         /* ---- schema probe ---- */
         if ($this->has($s, 'information_schema.tables')) {
             preg_match("/table_name = '([a-z_]+)'/i", $s, $m);
@@ -477,6 +494,51 @@ class MockMysqli
                 }
             }
             return [$out];
+        }
+
+        /* ---- tenant admins (admin/ panel) ---- */
+        if ($tbl === 'admins') {
+            $row = $D['admins'][0];
+            if (preg_match('/username = \'([^\']+)\'/', $s, $mu)) {
+                foreach ($D['admins'] as $candidate) {
+                    if ($candidate['username'] === $mu[1]) {
+                        $row = $candidate;
+                        break;
+                    }
+                }
+            }
+            if (preg_match('/WHERE id = (\d+)/', $s, $m)) {
+                foreach ($D['admins'] as $candidate) {
+                    if ((int) $candidate['id'] === (int) $m[1]) {
+                        $row = $candidate;
+                        break;
+                    }
+                }
+            }
+            if ($this->has($o, 'COUNT(*)')) {
+                return [['COUNT(*)' => count($D['admins']), 'count' => count($D['admins'])]];
+            }
+            preg_match('/^SELECT (.+?) FROM/i', $s, $cols);
+            $out = [];
+            foreach (array_map('trim', explode(',', isset($cols[1]) ? $cols[1] : '*')) as $col) {
+                $col = trim($col, '` ');
+                if ($col === '*') {
+                    $out = $row;
+                    break;
+                }
+                if (array_key_exists($col, $row)) {
+                    $out[$col] = $row[$col];
+                }
+            }
+            return [$out];
+        }
+
+        /* ---- categories ---- */
+        if ($tbl === 'categories') {
+            if ($this->has($o, 'COUNT(*)')) {
+                return [['COUNT(*)' => count($D['categories']), 'count' => count($D['categories'])]];
+            }
+            return $D['categories'];
         }
 
         /* ---- plans ---- */
@@ -632,6 +694,19 @@ class MockMysqli
             }
             if ($this->has($s, 'COUNT(*)')) {
                 return [['COUNT(*)' => 196]];
+            }
+            if ($this->has($o, 'r.*') || $this->has($o, 'c.company_name')) {
+                $byId = [];
+                foreach ($this->customersWithCategory() as $c) {
+                    $byId[(int) $c['id']] = $c['company_name'];
+                }
+                $out = [];
+                foreach ($D['ratings'] as $r) {
+                    $row = $r;
+                    $row['company_name'] = isset($byId[(int) $r['company_id']]) ? $byId[(int) $r['company_id']] : '';
+                    $out[] = $row;
+                }
+                return $out;
             }
             if ($this->has($s, 'ORDER BY r.created_at DESC')) {
                 return $D['ratings_recent'];

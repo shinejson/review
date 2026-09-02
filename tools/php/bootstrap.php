@@ -25,10 +25,16 @@ error_reporting(E_ALL);
 if (session_status() === PHP_SESSION_NONE) {
     @session_start();
 }
-if (getenv('SA_ANONYMOUS') !== '1') {
-    $_SESSION['super_admin_id'] = 1;
+if (getenv('SA_ANONYMOUS') === '1') {
+    // signed out entirely
+    unset($_SESSION['super_admin_id'], $_SESSION['admin_id']);
 } else {
-    unset($_SESSION['super_admin_id']);
+    if (getenv('SA_NO_SUPER') !== '1') {
+        $_SESSION['super_admin_id'] = 1;
+    } else {
+        unset($_SESSION['super_admin_id']);   // tenant admin only
+    }
+    $_SESSION['admin_id'] = (int) (getenv('SA_ADMIN_ID') ?: 1);
 }
 if (empty($_SESSION['sa_csrf'])) {
     $_SESSION['sa_csrf'] = 'preview-csrf-token';

@@ -64,6 +64,14 @@ const PAGES = [
     ['superadmin/tenant_details.php', 'tenant_details.html', '?id=18'],
     ['superadmin/settings.php', 'settings.html', ''],
     ['superadmin/login.php', 'login.html', '', { anonymous: true }],
+
+    /* Edge cases — checked but not written into the preview */
+    ['superadmin/tenant_details.php', null, '?id=999999', { allowRedirect: true, probe: 'nonexistent tenant redirects' }],
+    ['superadmin/tenant_details.php', null, '?id=12', { probe: 'tenant with no companies or ratings' }],
+    ['superadmin/analytics.php', null, '?months=6', { probe: 'analytics over 6 months' }],
+    ['superadmin/analytics.php', null, '?months=24', { probe: 'analytics over 24 months' }],
+    ['superadmin/quote_requests.php', null, '?status=converted', { probe: 'quote pipeline filtered to converted' }],
+    ['superadmin/tenants.php', null, '?status=cancelled', { probe: 'tenants filtered to cancelled' }],
 ];
 
 function copyDir(src, dest) {
@@ -144,6 +152,7 @@ function runPhp(script, queryString, opts) {
         SA_ANONYMOUS: opts && opts.anonymous ? '1' : '',
         SA_POST: opts && opts.post ? '1' : '',
         SA_BAD_CSRF: opts && opts.badCsrf ? '1' : '',
+        SA_EMPTY_DB: opts && opts.emptyDb ? '1' : '',
     });
     try {
         const out = execFileSync('node', args, {
@@ -174,7 +183,8 @@ function main() {
 
     for (const [script, outFile, qs, opts] of PAGES) {
         if (fs.existsSync(SQL_LOG)) fs.unlinkSync(SQL_LOG);
-        const { html, stderr } = runPhp(script, qs, opts);
+        const options = opts || {};
+        const { html, stderr } = runPhp(script, qs, options);
         const sqlLog = readSqlLog();
         const unmatchedSql = sqlLog.filter((l) => l.startsWith('unmatched\t')).map((l) => l.slice(10));
         const problems = [];
@@ -201,6 +211,24 @@ function main() {
         // Strip PHP diagnostics that were echoed before/inside the markup
         cleaned = cleaned.replace(/<br \/>\s*\n?<b>(Warning|Notice|Deprecated)<\/b>:[^<]*(<br \/>)?/g, '');
         cleaned = cleaned.replace(/^(Warning|Notice|Deprecated):[^\n]*\n/gm, '');
+
+        if (options.probe) {
+            const redirected = html.length === 0;
+            const fatal = /Fatal error|Parse error|Uncaught/.test(html + stderr);
+            const warns = [...new Set((html + stderr).match(/(Warning|Notice|Deprecated):[^<\n]{0,110}/g) || [])];
+            let ok = !fatal && warns.length === 0;
+            if (options.allowRedirect) ok = ok && redirected;
+            else ok = ok && !redirected && html.length > 4000;
+            if (!ok) failures++;
+            const label = script.replace('superadmin/', '') + ' ' + qs;
+            console.log(
+                `  [${ok ? ' ok ' : 'FAIL'}] ${label.padEnd(40)} ${options.probe}` +
+                    (fatal ? '  fatal error' : '') +
+                    (warns.length ? '  ' + warns[0].trim() : '') +
+                    (!ok && !fatal && !warns.length ? redirected ? '  redirected instead of rendering' : '  output too small' : '')
+            );
+            continue;
+        }
 
         let dest;
         if (script === 'superadmin/login.php') {
@@ -263,6 +291,41 @@ function main() {
         );
     }
 
+    /* ---------- fresh install: empty database ---------- */
+    console.log('\nEmpty database (fresh install, schema present but no rows):');
+    for (const [script, outFile, qs, opts] of PAGES) {
+        if (script === 'superadmin/login.php' || (opts && opts.probe)) continue;
+        if (fs.existsSync(SQL_LOG)) fs.unlinkSync(SQL_LOG);
+        const { html, stderr } = runPhp(script, qs, { emptyDb: true });
+        const mayRedirect = script === 'superadmin/tenant_details.php';
+        const notes = [];
+        const fatal = /Fatal error|Parse error|Uncaught/.test(html + stderr);
+        if (fatal) notes.push('fatal error');
+        const warns = [...new Set((html + stderr).match(/(Warning|Notice|Deprecated):[^<\n]{0,110}/g) || [])];
+        if (warns.length) notes.push(warns.length + ' warning(s): ' + warns[0].trim());
+        if (/<\?php|<\?=/.test(html)) notes.push('raw PHP leaked');
+        if (html.length < 4000 && !(mayRedirect && html.length === 0)) {
+            notes.push('suspiciously small output (' + html.length + 'B)');
+        }
+        const ok = !fatal && warns.length === 0 && !/<\?php/.test(html) &&
+            (html.length >= 4000 || (mayRedirect && html.length === 0));
+        if (!ok) failures++;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${script.padEnd(34)} ${String(html.length).padStart(7)} bytes` + (notes.length ? '  ' + notes.join(' | ') : ''));
+    }
+
+    /* ---------- access control ---------- */
+    console.log('\nAccess control (signed out, every screen must redirect):');
+    for (const [script, outFile, qs, opts] of PAGES) {
+        if (script === 'superadmin/login.php' || (opts && opts.probe)) continue;
+        if (fs.existsSync(SQL_LOG)) fs.unlinkSync(SQL_LOG);
+        const { html, stderr } = runPhp(script, qs, { anonymous: true });
+        const leaked = /sa-app|sa-sidebar|<!DOCTYPE/i.test(html);
+        const fatal = /Fatal error|Parse error|Uncaught/.test(html + stderr);
+        const ok = !leaked && !fatal && html.length === 0;
+        if (!ok) failures++;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${script.padEnd(34)} ${leaked ? 'rendered content to a signed-out visitor' : fatal ? 'fatal error' : 'redirected with no output'}`);
+    }
+
     // Preview landing page (links use .php URLs, the server rewrites them)
     fs.writeFileSync(path.join(OUT, 'index.html'), previewIndex(report), 'utf8');
     console.log('  [ ok ] index.html (preview landing page)');
@@ -289,7 +352,7 @@ function main() {
 
 function previewIndex(report) {
     const rows = report
-        .filter((r) => r.script !== 'superadmin/login.php')
+        .filter((r) => r.script !== 'superadmin/login.php' && r.outFile)
         .map((r) => {
             const href = 'superadmin/' + r.outFile.replace('.html', '.php');
             return `<a class="pv-card" href="${href}">

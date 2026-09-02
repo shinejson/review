@@ -10,10 +10,17 @@
  */
 
 $sa_password_hash = password_hash('superadmin123', PASSWORD_DEFAULT);
+$admin_password_hash = password_hash('admin123', PASSWORD_DEFAULT);
 
 return [
     'super_admins' => [
         ['id' => 1, 'username' => 'superadmin', 'email' => 'superadmin@optibiz.com', 'password' => $sa_password_hash, 'created_at' => '2026-01-01 09:00:00'],
+    ],
+
+    /* Tenant admin accounts (the admin/ panel, separate from super_admins) */
+    'admins' => [
+        ['id' => 1, 'tenant_id' => 18, 'username' => 'volta_admin', 'email' => 'admin@voltalogistics.com', 'password' => $admin_password_hash, 'created_at' => '2026-08-24 09:20:00'],
+        ['id' => 2, 'tenant_id' => 15, 'username' => 'cocoa_admin', 'email' => 'admin@cocoacoast.gh', 'password' => $admin_password_hash, 'created_at' => '2026-07-28 09:05:00'],
     ],
 
     'settings' => [
@@ -82,6 +89,17 @@ return [
         ['id' => 32, 'tenant_id' => 11, 'company_name' => 'Cape Coast Fintech Hub', 'category_name' => 'Finance', 'email' => 'info@coastfintech.com', 'phone' => '', 'website' => 'coastfintech.com', 'created_at' => '2026-06-05 10:00:00', 'rating_count' => 96, 'avg_rating' => 4.7],
         ['id' => 33, 'tenant_id' => 10, 'company_name' => 'Ashanti AgriCo Depot', 'category_name' => 'Retail', 'email' => 'info@ashantiagri.gh', 'phone' => '', 'website' => '', 'created_at' => '2026-05-19 10:00:00', 'rating_count' => 58, 'avg_rating' => 4.3],
         ['id' => 34, 'tenant_id' => 13, 'company_name' => 'Tamale Solar Installers', 'category_name' => 'Technology', 'email' => 'info@tamalesolar.com', 'phone' => '', 'website' => 'tamalesolar.com', 'created_at' => '2026-07-03 10:00:00', 'rating_count' => 41, 'avg_rating' => 4.5],
+    ],
+
+    /* Full rating rows for the admin panel's ratings screen */
+    'ratings' => [
+        ['id' => 901, 'company_id' => 51, 'customer_name' => 'Abena Owusu', 'customer_email' => 'abena@example.com', 'rating' => 5, 'comment' => 'Drivers were on time and the cargo tracking page is excellent.', 'created_at' => '2026-09-02 06:40:00'],
+        ['id' => 900, 'company_id' => 52, 'customer_name' => 'Kojo Antwi', 'customer_email' => 'kojo@example.com', 'rating' => 4, 'comment' => 'Good service, but the invoice arrived two days late.', 'created_at' => '2026-09-02 00:15:00'],
+        ['id' => 899, 'company_id' => 53, 'customer_name' => 'Nii Armah', 'customer_email' => 'nii@example.com', 'rating' => 5, 'comment' => 'Smooth customs clearance, will use them again.', 'created_at' => '2026-09-01 12:20:00'],
+        ['id' => 898, 'company_id' => 54, 'customer_name' => 'Grace Mensah', 'customer_email' => 'grace@example.com', 'rating' => 3, 'comment' => 'Pallets were mislabelled on arrival.', 'created_at' => '2026-08-31 09:05:00'],
+        ['id' => 897, 'company_id' => 31, 'customer_name' => 'Yaw Danso', 'customer_email' => 'yaw@example.com', 'rating' => 5, 'comment' => 'Best in the western region.', 'created_at' => '2026-08-30 16:44:00'],
+        ['id' => 896, 'company_id' => 32, 'customer_name' => 'Selorm Agbeko', 'customer_email' => 'selorm@example.com', 'rating' => 4, 'comment' => 'Onboarding took a day longer than promised.', 'created_at' => '2026-08-29 11:12:00'],
+        ['id' => 895, 'company_id' => 41, 'customer_name' => 'Adjoa Mensah', 'customer_email' => 'adjoa@example.com', 'rating' => 5, 'comment' => 'Consistent quality across every shipment.', 'created_at' => '2026-08-28 15:03:00'],
     ],
 
     'ratings_recent' => [
