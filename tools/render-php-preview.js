@@ -132,6 +132,9 @@ function readSqlLog() {
     if (!fs.existsSync(SQL_LOG)) return [];
     const lines = fs.readFileSync(SQL_LOG, 'utf8').split('\n').filter(Boolean);
     fs.unlinkSync(SQL_LOG);
+    // SA_SQL_DUMP=/path collects every statement a full run issues, which is
+    // handy for reviewing the SQL the pages send to a real MySQL server.
+    if (process.env.SA_SQL_DUMP) fs.appendFileSync(process.env.SA_SQL_DUMP, lines.join('\n') + '\n');
     return lines;
 }
 
@@ -372,7 +375,7 @@ function previewIndex(report) {
     <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="assets/css/superadmin.css">
     <style>
-        .pv-wrap { max-width: 1080px; margin: 0 auto; padding: clamp(28px, 6vw, 72px) 20px 80px; }
+        main.pv-wrap { max-width: 1080px; margin: 0 auto; padding: clamp(28px, 6vw, 72px) 20px 80px; }
         .pv-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
         .pv-hero .sa-brand-badge { width: 46px; height: 46px; }
         .pv-hero h1 { font-size: clamp(24px, 4vw, 34px); color: var(--sa-heading); }
@@ -399,7 +402,7 @@ function previewIndex(report) {
     } catch (e) {}
 })();
 </script>
-<div class="pv-wrap">
+<main class="pv-wrap" id="pvMain" tabindex="-1">
     <div class="pv-hero">
         <span class="sa-brand-badge"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span>
         <h1>Super admin — rendered preview</h1>
@@ -423,7 +426,7 @@ ${rows}
         <code>assets/css/superadmin.css</code> and <code>assets/js/superadmin.js</code> the PHP pages load.
         Forms and buttons that would write to the database are inert in this preview.
     </p>
-</div>
+</main>
 <script src="assets/js/superadmin.js"></script>
 </body>
 </html>

@@ -313,14 +313,14 @@ include __DIR__ . '/_shell.php';
 
         <div class="sa-table-wrap">
             <table class="sa-table" id="tenantsTable" data-sa-sortable-table>
-                <thead>
+                <thead scope="col">
                     <tr>
-                        <th data-sa-sort="0">Company</th>
-                        <th data-sa-sort="1">Plan</th>
-                        <th data-sa-sort="2" data-type="num">MRR</th>
-                        <th data-sa-sort="3">Status</th>
-                        <th data-sa-sort="4" data-type="date">Joined</th>
-                        <th data-no-export><span class="sa-sr-only">Actions</span></th>
+                        <th data-sa-sort="0" scope="col" aria-sort="none">Company</th>
+                        <th data-sa-sort="1" scope="col" aria-sort="none">Plan</th>
+                        <th data-sa-sort="2" data-type="num" scope="col" aria-sort="none">MRR</th>
+                        <th data-sa-sort="3" scope="col" aria-sort="none">Status</th>
+                        <th data-sa-sort="4" data-type="date" scope="col" aria-sort="none">Joined</th>
+                        <th data-no-export scope="col"><span class="sa-sr-only">Actions</span></th>
                     </tr>
                 </thead>
                 <tbody>

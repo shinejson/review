@@ -10,8 +10,16 @@ node tools/test-all.js
 ```
 
 Renders and tests the super admin panel, then the tenant admin panel, both login
-forms and the public APIs, then audits the CSS of the rendered markup. This is
-the quickest way to confirm a change did not break anything.
+forms and the public APIs, then audits the CSS and the accessibility of the
+rendered markup, and finally checks every SQL statement the app issued against
+`database.sql`. This is the quickest way to confirm a change did not break
+anything.
+
+The mock answers queries by pattern, so it cannot spot a mistyped column name.
+`check-sql.js` can: it re-runs the harness with `SA_SQL_DUMP` set, collects every
+statement, resolves table aliases and asserts each referenced column exists in
+the schema. Pass `SA_SQL_DUMP_FILE=/path/to/dump.txt` to check a dump you already
+captured instead of rendering again.
 
 ## 1. Render the real PHP (recommended)
 
@@ -64,6 +72,8 @@ the preview resolves.
 | `render-php-preview.js` | Renders + tests the real super admin pages, their POST handlers, a fresh-install (empty database) render, signed-out redirects and edge cases |
 | `check-other-pages.js` | Tenant admin panel, panel isolation, login forms and `api/` endpoints |
 | `check-css.js` | Audits the rendered pages for undefined `var(--…)` and unstyled classes; lists `.sa-*` selectors nothing uses |
+| `check-a11y.js` | Audits labels, landmarks, `scope`/`aria-sort`, dialog names, ARIA values, heading order and duplicate ids |
+| `check-sql.js` | Captures every statement the app issues and verifies each table and column exists in `database.sql` |
 | `build-preview.js` | Static fallback mirror |
 | `preview-server.js` | Static server with `.php` → `.html` rewrites |
 | `preview-data.js` | Sample data for the static mirror |

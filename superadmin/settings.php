@@ -300,12 +300,12 @@ include __DIR__ . '/_shell.php';
     </div>
     <div class="sa-table-wrap">
         <table class="sa-table" data-sa-sortable-table>
-            <thead>
+            <thead scope="col">
                 <tr>
-                    <th>Table</th>
-                    <th>Status</th>
-                    <th data-sa-sort="2" data-type="num">Rows</th>
-                    <th>Where it is used</th>
+                    <th scope="col">Table</th>
+                    <th scope="col">Status</th>
+                    <th data-sa-sort="2" data-type="num" scope="col" aria-sort="none">Rows</th>
+                    <th scope="col">Where it is used</th>
                 </tr>
             </thead>
             <tbody>

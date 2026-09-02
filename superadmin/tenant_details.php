@@ -368,14 +368,14 @@ include __DIR__ . '/_shell.php';
     </div>
     <div class="sa-table-wrap">
         <table class="sa-table" id="companiesTable" data-sa-sortable-table>
-            <thead>
+            <thead scope="col">
                 <tr>
-                    <th data-sa-sort="0">Company</th>
-                    <th data-sa-sort="1">Category</th>
-                    <th data-sa-sort="2">Website</th>
-                    <th data-sa-sort="3" data-type="num">Ratings</th>
-                    <th data-sa-sort="4" data-type="num">Average</th>
-                    <th data-sa-sort="5" data-type="date">Added</th>
+                    <th data-sa-sort="0" scope="col" aria-sort="none">Company</th>
+                    <th data-sa-sort="1" scope="col" aria-sort="none">Category</th>
+                    <th data-sa-sort="2" scope="col" aria-sort="none">Website</th>
+                    <th data-sa-sort="3" data-type="num" scope="col" aria-sort="none">Ratings</th>
+                    <th data-sa-sort="4" data-type="num" scope="col" aria-sort="none">Average</th>
+                    <th data-sa-sort="5" data-type="date" scope="col" aria-sort="none">Added</th>
                 </tr>
             </thead>
             <tbody>

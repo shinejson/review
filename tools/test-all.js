@@ -13,6 +13,10 @@
  *     isolation, both login forms and the public API endpoints.
  *  3. check-css.js — audits the rendered markup for CSS variables
  *     that are never defined and classes that are never styled.
+ *  4. check-a11y.js — audits labels, landmarks, table semantics,
+ *     ARIA values, heading order and duplicate ids.
+ *  5. check-sql.js — captures every statement the pages issue and
+ *     verifies each table and column exists in database.sql.
  *
  *  Both need the WebAssembly PHP runtime (npm install php-cli);
  *  set PHP_CLI=/path/to/php-cli.js if it is not in node_modules.
@@ -27,6 +31,8 @@ const suites = [
     ['Super admin panel', 'render-php-preview.js'],
     ['Admin panel, logins and public APIs', 'check-other-pages.js'],
     ['CSS audit of the rendered pages', 'check-css.js'],
+    ['Accessibility audit of the rendered pages', 'check-a11y.js'],
+    ['SQL schema check against database.sql', 'check-sql.js'],
 ];
 
 let failed = 0;

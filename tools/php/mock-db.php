@@ -408,6 +408,7 @@ class MockMysqli
         $tbl = $this->outerTable($s);   // driving table of the outer query
         $D = $this->data;
         $this->log('branch', $tbl !== '' ? $tbl : '(none)');
+        $this->log('sql', preg_replace('/\s+/', ' ', trim($sql)));
 
         /* ---- fresh-install mode: the schema exists but holds no data ---- */
         if (getenv('SA_EMPTY_DB') === '1' && !$this->has($s, 'information_schema.tables')) {

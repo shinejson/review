@@ -275,16 +275,16 @@ include __DIR__ . '/_shell.php';
 
     <div class="sa-table-wrap">
         <table class="sa-table" id="quotesTable" data-sa-sortable-table>
-            <thead>
+            <thead scope="col">
                 <tr>
-                    <th data-sa-sort="0">Company</th>
-                    <th data-sa-sort="1">Contact</th>
-                    <th data-sa-sort="2">Category</th>
-                    <th data-sa-sort="3">Interested in</th>
-                    <th data-sa-sort="4" data-type="num">Volume</th>
-                    <th data-sa-sort="5">Status</th>
-                    <th data-sa-sort="6" data-type="date">Received</th>
-                    <th data-no-export><span class="sa-sr-only">Actions</span></th>
+                    <th data-sa-sort="0" scope="col" aria-sort="none">Company</th>
+                    <th data-sa-sort="1" scope="col" aria-sort="none">Contact</th>
+                    <th data-sa-sort="2" scope="col" aria-sort="none">Category</th>
+                    <th data-sa-sort="3" scope="col" aria-sort="none">Interested in</th>
+                    <th data-sa-sort="4" data-type="num" scope="col" aria-sort="none">Volume</th>
+                    <th data-sa-sort="5" scope="col" aria-sort="none">Status</th>
+                    <th data-sa-sort="6" data-type="date" scope="col" aria-sort="none">Received</th>
+                    <th data-no-export scope="col"><span class="sa-sr-only">Actions</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -470,14 +470,14 @@ include __DIR__ . '/_shell.php';
 <?php endif; ?>
 
 <!-- ============ CONVERT DIALOG ============ -->
-<dialog class="sa-dialog" id="convertDialog">
+<dialog class="sa-dialog" id="convertDialog" aria-labelledby="convertDialogTitle">
     <form method="POST" action="quote_requests.php" class="sa-form">
         <?php echo sa_csrf_field(); ?>
         <input type="hidden" name="action" value="convert">
         <input type="hidden" name="quote_id" id="cv_id" value="">
         <div class="sa-dialog-head">
             <div>
-                <h3>Convert to a tenant</h3>
+                <h3 id="convertDialogTitle">Convert to a tenant</h3>
                 <p id="cv_subtitle">Creates the tenant login and marks this request converted.</p>
             </div>
             <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>

@@ -132,6 +132,8 @@ $sa_nav = [
     ['key' => 'settings',      'label' => 'Settings',       'href' => 'settings.php',         'icon' => 'settings'],
 ];
 ?>
+<a class="sa-skip" href="#saContent">Skip to content</a>
+
 <div class="sa-app" id="saApp">
 
     <!-- ============ SIDEBAR ============ -->

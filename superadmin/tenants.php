@@ -276,18 +276,18 @@ include __DIR__ . '/_shell.php';
 
     <div class="sa-table-wrap">
         <table class="sa-table" id="tenantsTable" data-sa-sortable-table>
-            <thead>
+            <thead scope="col">
                 <tr>
-                    <th data-sa-sort="0" data-type="num">ID</th>
-                    <th data-sa-sort="1">Company</th>
-                    <th data-sa-sort="2">Contact</th>
-                    <th data-sa-sort="3">Plan</th>
-                    <th data-sa-sort="4" data-type="num">Price / mo</th>
-                    <th data-sa-sort="5">Status</th>
-                    <th data-sa-sort="6" data-type="num">Companies</th>
-                    <th data-sa-sort="7" data-type="date">Renews</th>
-                    <th data-sa-sort="8" data-type="date">Joined</th>
-                    <th data-no-export><span class="sa-sr-only">Actions</span></th>
+                    <th data-sa-sort="0" data-type="num" scope="col" aria-sort="none">ID</th>
+                    <th data-sa-sort="1" scope="col" aria-sort="none">Company</th>
+                    <th data-sa-sort="2" scope="col" aria-sort="none">Contact</th>
+                    <th data-sa-sort="3" scope="col" aria-sort="none">Plan</th>
+                    <th data-sa-sort="4" data-type="num" scope="col" aria-sort="none">Price / mo</th>
+                    <th data-sa-sort="5" scope="col" aria-sort="none">Status</th>
+                    <th data-sa-sort="6" data-type="num" scope="col" aria-sort="none">Companies</th>
+                    <th data-sa-sort="7" data-type="date" scope="col" aria-sort="none">Renews</th>
+                    <th data-sa-sort="8" data-type="date" scope="col" aria-sort="none">Joined</th>
+                    <th data-no-export scope="col"><span class="sa-sr-only">Actions</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -398,13 +398,13 @@ include __DIR__ . '/_shell.php';
 </section>
 
 <!-- ============ CREATE TENANT DIALOG ============ -->
-<dialog class="sa-dialog" id="tenantCreateDialog">
+<dialog class="sa-dialog" id="tenantCreateDialog" aria-labelledby="tenantCreateDialogTitle">
     <form method="POST" action="tenants.php" class="sa-form" id="tenantCreateForm">
         <?php echo sa_csrf_field(); ?>
         <input type="hidden" name="action" value="create">
         <div class="sa-dialog-head">
             <div>
-                <h3>Create a tenant</h3>
+                <h3 id="tenantCreateDialogTitle">Create a tenant</h3>
                 <p>This also creates the login the company will use at <span class="sa-mono">/admin/login.php</span>.</p>
             </div>
             <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>
@@ -464,14 +464,14 @@ include __DIR__ . '/_shell.php';
 </dialog>
 
 <!-- ============ EDIT TENANT DIALOG ============ -->
-<dialog class="sa-dialog" id="tenantEditDialog">
+<dialog class="sa-dialog" id="tenantEditDialog" aria-labelledby="tenantEditDialogTitle">
     <form method="POST" action="tenants.php" class="sa-form">
         <?php echo sa_csrf_field(); ?>
         <input type="hidden" name="action" value="edit">
         <input type="hidden" name="tenant_id" id="e_id" value="">
         <div class="sa-dialog-head">
             <div>
-                <h3>Edit tenant</h3>
+                <h3 id="tenantEditDialogTitle">Edit tenant</h3>
                 <p id="e_subtitle">Update the company record, plan and billing dates.</p>
             </div>
             <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>
@@ -538,14 +538,14 @@ include __DIR__ . '/_shell.php';
 </dialog>
 
 <!-- ============ RESET PASSWORD DIALOG ============ -->
-<dialog class="sa-dialog" id="tenantPasswordDialog" style="width:min(460px,calc(100vw - 32px))">
+<dialog class="sa-dialog" id="tenantPasswordDialog" style="width:min(460px,calc(100vw - 32px))" aria-labelledby="tenantPasswordDialogTitle">
     <form method="POST" action="tenants.php" class="sa-form">
         <?php echo sa_csrf_field(); ?>
         <input type="hidden" name="action" value="reset_password">
         <input type="hidden" name="tenant_id" id="p_id" value="">
         <div class="sa-dialog-head">
             <div>
-                <h3>Reset tenant password</h3>
+                <h3 id="tenantPasswordDialogTitle">Reset tenant password</h3>
                 <p id="p_subtitle">Set a new login password for this tenant.</p>
             </div>
             <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>

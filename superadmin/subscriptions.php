@@ -217,17 +217,17 @@ foreach ($chips as $key => $chip): ?>
 
     <div class="sa-table-wrap">
         <table class="sa-table" id="subsTable" data-sa-sortable-table>
-            <thead>
+            <thead scope="col">
                 <tr>
-                    <th data-sa-sort="0">Tenant</th>
-                    <th data-sa-sort="1">Plan</th>
-                    <th data-sa-sort="2" data-type="num">Price / mo</th>
-                    <th data-sa-sort="3">Status</th>
-                    <th data-sa-sort="4" data-type="date">Started</th>
-                    <th data-sa-sort="5" data-type="date">Ends</th>
-                    <th data-sa-sort="6">Renewal</th>
-                    <th data-sa-sort="7">Auto-renew</th>
-                    <th data-no-export><span class="sa-sr-only">Actions</span></th>
+                    <th data-sa-sort="0" scope="col" aria-sort="none">Tenant</th>
+                    <th data-sa-sort="1" scope="col" aria-sort="none">Plan</th>
+                    <th data-sa-sort="2" data-type="num" scope="col" aria-sort="none">Price / mo</th>
+                    <th data-sa-sort="3" scope="col" aria-sort="none">Status</th>
+                    <th data-sa-sort="4" data-type="date" scope="col" aria-sort="none">Started</th>
+                    <th data-sa-sort="5" data-type="date" scope="col" aria-sort="none">Ends</th>
+                    <th data-sa-sort="6" scope="col" aria-sort="none">Renewal</th>
+                    <th data-sa-sort="7" scope="col" aria-sort="none">Auto-renew</th>
+                    <th data-no-export scope="col"><span class="sa-sr-only">Actions</span></th>
                 </tr>
             </thead>
             <tbody>

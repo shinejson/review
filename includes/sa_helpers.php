@@ -357,15 +357,15 @@ if (!function_exists('sa_delta')) {
         $v = (float) $value;
         if (abs($v) < 0.05) {
             $class = 'sa-delta-flat';
-            $icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+            $icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>';
             $sign  = '';
         } elseif ($v > 0) {
             $class = $invert ? 'sa-delta-down' : 'sa-delta-up';
-            $icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>';
+            $icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>';
             $sign  = '+';
         } else {
             $class = $invert ? 'sa-delta-up' : 'sa-delta-down';
-            $icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+            $icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
             $sign  = '';
         }
         return '<span class="sa-delta ' . $class . '">' . $icon . $sign
@@ -470,9 +470,16 @@ if (!function_exists('sa_line_chart')) {
             return $padTop + $plotH - ((($v - $min) / ($niceMax - $min)) * $plotH);
         };
 
+        // A page can hold several charts, so each one gets its own gradient id.
+        // The id is published on the <svg> as a custom property and
+        // .sa-chart .area-fill inherits it (see superadmin.css).
+        static $sa_chart_seq = 0;
+        $gradient_id = 'saAreaGradient' . (++$sa_chart_seq);
+
         $svg  = '<div class="sa-chart" data-sa-chart="line">';
-        $svg .= '<svg viewBox="0 0 ' . $width . ' ' . $height . '" role="img" aria-label="Trend chart">';
-        $svg .= '<defs><linearGradient id="saAreaGradient" x1="0" y1="0" x2="0" y2="1">'
+        $svg .= '<svg viewBox="0 0 ' . $width . ' ' . $height . '" role="img" aria-label="Trend chart"'
+             .  ' style="--sa-area: url(#' . $gradient_id . ')">';
+        $svg .= '<defs><linearGradient id="' . $gradient_id . '" x1="0" y1="0" x2="0" y2="1">'
              .  '<stop offset="0%" stop-color="#c2f542" stop-opacity="0.42"/>'
              .  '<stop offset="100%" stop-color="#c2f542" stop-opacity="0"/>'
              .  '</linearGradient></defs>';

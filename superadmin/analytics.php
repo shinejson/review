@@ -369,15 +369,15 @@ include __DIR__ . '/_shell.php';
     </div>
     <div class="sa-table-wrap">
         <table class="sa-table" id="leagueTable" data-sa-sortable-table>
-            <thead>
+            <thead scope="col">
                 <tr>
-                    <th data-sa-sort="0">Tenant</th>
-                    <th data-sa-sort="1">Plan</th>
-                    <th data-sa-sort="2">Status</th>
-                    <th data-sa-sort="3" data-type="num">Companies</th>
-                    <th data-sa-sort="4" data-type="num">Ratings</th>
-                    <th data-sa-sort="5" data-type="num">Avg score</th>
-                    <th data-sa-sort="6" data-type="num">Share</th>
+                    <th data-sa-sort="0" scope="col" aria-sort="none">Tenant</th>
+                    <th data-sa-sort="1" scope="col" aria-sort="none">Plan</th>
+                    <th data-sa-sort="2" scope="col" aria-sort="none">Status</th>
+                    <th data-sa-sort="3" data-type="num" scope="col" aria-sort="none">Companies</th>
+                    <th data-sa-sort="4" data-type="num" scope="col" aria-sort="none">Ratings</th>
+                    <th data-sa-sort="5" data-type="num" scope="col" aria-sort="none">Avg score</th>
+                    <th data-sa-sort="6" data-type="num" scope="col" aria-sort="none">Share</th>
                 </tr>
             </thead>
             <tbody>
@@ -432,15 +432,15 @@ include __DIR__ . '/_shell.php';
     </div>
     <div class="sa-table-wrap">
         <table class="sa-table" id="monthlyTable" data-sa-sortable-table>
-            <thead>
+            <thead scope="col">
                 <tr>
-                    <th data-sa-sort="0" data-type="date">Month</th>
-                    <th data-sa-sort="1" data-type="num">New tenants</th>
-                    <th data-sa-sort="2" data-type="num">Total tenants</th>
-                    <th data-sa-sort="3" data-type="num">New MRR</th>
-                    <th data-sa-sort="4" data-type="num">Total MRR</th>
-                    <th data-sa-sort="5" data-type="num">Ratings</th>
-                    <th data-sa-sort="6" data-type="num">Avg score</th>
+                    <th data-sa-sort="0" data-type="date" scope="col" aria-sort="none">Month</th>
+                    <th data-sa-sort="1" data-type="num" scope="col" aria-sort="none">New tenants</th>
+                    <th data-sa-sort="2" data-type="num" scope="col" aria-sort="none">Total tenants</th>
+                    <th data-sa-sort="3" data-type="num" scope="col" aria-sort="none">New MRR</th>
+                    <th data-sa-sort="4" data-type="num" scope="col" aria-sort="none">Total MRR</th>
+                    <th data-sa-sort="5" data-type="num" scope="col" aria-sort="none">Ratings</th>
+                    <th data-sa-sort="6" data-type="num" scope="col" aria-sort="none">Avg score</th>
                 </tr>
             </thead>
             <tbody>
