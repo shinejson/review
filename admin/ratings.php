@@ -1,12 +1,12 @@
 <?php
-require_once '../includes/auth.php';
-require_once '../config/database.php';
-require_once '../includes/functions.php';
+require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/includes/functions.php';
 
 requireLogin();
 
 $pageTitle = 'Manage Ratings';
-include '../includes/header.php';
+include dirname(__DIR__) . '/includes/header.php';
 
 $ratings = $conn->query("SELECT r.*, c.company_name FROM ratings r JOIN customers c ON r.company_id = c.id ORDER BY r.created_at DESC");
 ?>

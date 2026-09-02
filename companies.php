@@ -1,6 +1,6 @@
 <?php
-require_once 'config/database.php';
-require_once 'includes/functions.php';
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/includes/functions.php';
 
 $customers = $conn->query("SELECT c.*, cat.name as category_name FROM customers c LEFT JOIN categories cat ON c.category_id = cat.id ORDER BY c.company_name");
 ?>

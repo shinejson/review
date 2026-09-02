@@ -1,11 +1,11 @@
 <?php
-require_once '../includes/auth.php';
-require_once '../config/database.php';
+require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 requireLogin();
 
 $pageTitle = 'Settings';
-include '../includes/header.php';
+include dirname(__DIR__) . '/includes/header.php';
 ?>
 
 <div class="admin-content">

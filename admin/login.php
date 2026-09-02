@@ -1,7 +1,7 @@
 <?php
-require_once '../includes/auth.php';
-require_once '../config/database.php';
-require_once '../includes/functions.php';
+require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/includes/functions.php';
 
 if (isLoggedIn()) {
     redirect('index.php');
@@ -30,15 +30,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = 'Admin Login';
-$extraCss = ['/assets/css/auth.css'];
-include '../includes/header.php';
+$extraCss = ['assets/css/auth.css'];
+include dirname(__DIR__) . '/includes/header.php';
 ?>
 
 <div class="auth-shell">
 
+    <button type="button" class="auth-theme-toggle" data-sa-theme aria-pressed="false" aria-label="Switch theme" title="Switch theme">
+        <span class="auth-theme-thumb">
+            <span class="icon-moon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
+            <span class="icon-sun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></span>
+        </span>
+    </button>
+
+
     <!-- Brand panel -->
     <aside class="auth-brand">
-        <a class="auth-logo" href="/">
+        <a class="auth-logo" href="<?php echo $BASE; ?>index.php">
             <span class="auth-logo-badge">
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
             </span>
@@ -73,7 +81,7 @@ include '../includes/header.php';
     <!-- Form panel -->
     <main class="auth-panel">
         <section class="auth-card" aria-labelledby="authCardTitle">
-            <a class="auth-logo auth-mobile-logo" href="/">
+            <a class="auth-logo auth-mobile-logo" href="<?php echo $BASE; ?>index.php">
                 <span class="auth-logo-badge">
                     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
                 </span>
@@ -97,6 +105,8 @@ include '../includes/header.php';
                     <span><?php echo htmlspecialchars($error); ?></span>
                 </div>
             <?php endif; ?>
+
+            <form method="POST" class="auth-form" id="authForm" novalidate>
                 <div class="auth-field">
                     <label for="username">Username</label>
                     <div class="auth-input-wrap">
@@ -124,7 +134,7 @@ include '../includes/header.php';
             </form>
 
             <footer class="auth-card-foot">
-                <a href="/">
+                <a href="<?php echo $BASE; ?>index.php">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
                     Back to website
                 </a>
@@ -137,6 +147,41 @@ include '../includes/header.php';
     </main>
 </div>
 
-<script src="/assets/js/auth.js"></script>
+<script src="<?php echo sa_asset('assets/js/auth.js'); ?>"></script>
+
+<script>
+/* Theme toggle — shares the persisted choice with the super admin shell */
+(function () {
+    var KEY = 'optibiz-sa-theme';
+    function current() {
+        return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    }
+    function paint(theme) {
+        var buttons = document.querySelectorAll('[data-sa-theme]');
+        for (var i = 0; i < buttons.length; i++) {
+            buttons[i].setAttribute('aria-pressed', theme === 'light' ? 'true' : 'false');
+            buttons[i].setAttribute('aria-label', 'Switch to ' + (theme === 'light' ? 'dark' : 'light') + ' theme');
+            buttons[i].setAttribute('title', 'Switch to ' + (theme === 'light' ? 'dark' : 'light') + ' theme');
+        }
+    }
+    function set(theme, persist) {
+        document.documentElement.setAttribute('data-theme', theme);
+        if (persist !== false) {
+            try { localStorage.setItem(KEY, theme); } catch (e) {}
+        }
+        paint(theme);
+    }
+    var stored = null;
+    try { stored = localStorage.getItem(KEY); } catch (e) {}
+    set(stored === 'light' || stored === 'dark' ? stored : current(), false);
+
+    var nodes = document.querySelectorAll('[data-sa-theme]');
+    for (var i = 0; i < nodes.length; i++) {
+        nodes[i].addEventListener('click', function () {
+            set(current() === 'light' ? 'dark' : 'light');
+        });
+    }
+})();
+</script>
 </body>
 </html>

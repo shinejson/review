@@ -569,3 +569,97 @@ body {
         transition-duration: 0.01ms;
     }
 }
+
+/* ---------- Theme toggle (shared with the super admin shell) ---------- */
+.auth-theme-toggle {
+    position: fixed;
+    top: 22px;
+    right: 24px;
+    z-index: 30;
+    width: 62px;
+    height: 32px;
+    padding: 0;
+    border-radius: 99px;
+    border: 1px solid var(--ob-line);
+    background: rgba(255, 255, 255, 0.06);
+    cursor: pointer;
+    transition: border-color 0.24s ease, background 0.24s ease;
+}
+
+.auth-theme-toggle:hover,
+.auth-theme-toggle:focus-visible {
+    border-color: var(--ob-lime);
+    outline: none;
+}
+
+.auth-theme-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--ob-lime), var(--ob-lime-dark));
+    color: var(--ob-navy-deep);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), background 0.24s ease;
+}
+
+.auth-theme-thumb svg {
+    width: 13px;
+    height: 13px;
+}
+
+.auth-theme-thumb .icon-sun { display: none; }
+.auth-theme-thumb .icon-moon { display: block; }
+
+:root[data-theme='light'] .auth-theme-thumb {
+    transform: translateX(30px);
+    background: linear-gradient(135deg, #0f2438, #1a3852);
+    color: var(--ob-lime);
+}
+
+:root[data-theme='light'] .auth-theme-thumb .icon-sun { display: block; }
+:root[data-theme='light'] .auth-theme-thumb .icon-moon { display: none; }
+
+/* ---------- Light theme ---------- */
+:root[data-theme='light'] {
+    --ob-navy: #eef2f7;
+    --ob-navy-deep: #ffffff;
+    --ob-card: #ffffff;
+    --ob-text: #1b2c3d;
+    --ob-muted: #55697d;
+    --ob-faint: #7d8ea1;
+    --ob-line: rgba(15, 36, 56, 0.12);
+}
+
+:root[data-theme='light'] body {
+    color: var(--ob-text);
+    background:
+        radial-gradient(1100px 700px at 88% -10%, rgba(194, 245, 66, 0.35), transparent 60%),
+        radial-gradient(900px 620px at -10% 112%, rgba(56, 189, 248, 0.18), transparent 55%),
+        #f6f8fb;
+}
+
+:root[data-theme='light'] .auth-brand {
+    border-right-color: var(--ob-line);
+}
+
+:root[data-theme='light'] .auth-card {
+    background: #ffffff;
+    border-color: var(--ob-line);
+    box-shadow: 0 24px 60px rgba(15, 36, 56, 0.12);
+}
+
+:root[data-theme='light'] .auth-theme-toggle {
+    background: rgba(15, 36, 56, 0.05);
+}
+
+@media (max-width: 900px) {
+    .auth-theme-toggle {
+        top: 16px;
+        right: 16px;
+    }
+}

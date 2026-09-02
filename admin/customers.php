@@ -1,12 +1,12 @@
 <?php
-require_once '../includes/auth.php';
-require_once '../config/database.php';
-require_once '../includes/functions.php';
+require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/includes/functions.php';
 
 requireLogin();
 
 $pageTitle = 'Manage Customers';
-include '../includes/header.php';
+include dirname(__DIR__) . '/includes/header.php';
 
 $customers = $conn->query("SELECT * FROM customers ORDER BY company_name");
 ?>
