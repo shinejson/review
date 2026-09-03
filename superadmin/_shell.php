@@ -10,7 +10,7 @@
  *      $pageTitle    = 'Dashboard';
  *      $pageHeading  = 'Control center';
  *      $pageSubtitle = 'Platform health at a glance.';
- *      $activePage   = 'dashboard';   // dashboard|tenants|subscriptions|plans|analytics|quotes|settings
+ *      $activePage   = 'dashboard';   // dashboard|tenants|subscriptions|plans|analytics|quotes|customers|categories|settings
  *      $BASE         = '../';
  *      include dirname(__DIR__) . '/includes/header.php';
  *      include __DIR__ . '/_shell.php';
@@ -132,6 +132,9 @@ $sa_nav = [
     ['key' => 'subscriptions', 'label' => 'Subscriptions',  'href' => 'subscriptions.php',    'icon' => 'card',     'badge' => 'subs', 'alert' => true],
     ['key' => 'plans',         'label' => 'Plans',          'href' => 'plans.php',            'icon' => 'layers'],
     ['key' => 'quotes',        'label' => 'Quote Requests', 'href' => 'quote_requests.php',   'icon' => 'inbox',    'badge' => 'quotes', 'alert' => true],
+    ['section' => 'Directory'],
+    ['key' => 'customers',     'label' => 'Customers',      'href' => 'customers.php',        'icon' => 'star'],
+    ['key' => 'categories',    'label' => 'Categories',     'href' => 'categories.php',       'icon' => 'list'],
     ['section' => 'System'],
     ['key' => 'users',         'label' => 'Users',          'href' => 'users.php',            'icon' => 'users'],
     ['key' => 'settings',      'label' => 'Settings',       'href' => 'settings.php',         'icon' => 'settings'],

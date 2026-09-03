@@ -70,9 +70,7 @@ include dirname(__DIR__) . '/includes/header.php';
 
         <nav style="display:flex;align-items:center;gap:20px;">
             <a href="index.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Dashboard</a>
-            <a href="customers.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Companies / Branches</a>
             <a href="ratings.php" style="color:#c2f542;text-decoration:none;font-size:14px;font-weight:600;">Ratings &amp; Reviews</a>
-            <a href="categories.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Categories</a>
             <a href="settings.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Settings</a>
             <a href="logout.php" style="background:rgba(239,68,68,0.2);color:#f87171;padding:6px 14px;border-radius:20px;text-decoration:none;font-size:13px;font-weight:600;">Logout</a>
         </nav>
