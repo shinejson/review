@@ -20,21 +20,12 @@ if ($is_tenant && $tenant_id) {
     $recent_ratings=$conn->query('SELECT r.*,c.company_name FROM ratings r JOIN customers c ON r.company_id=c.id ORDER BY r.created_at DESC LIMIT 5');
     $tenant_companies=$conn->query('SELECT id,company_name FROM customers ORDER BY company_name');
 }
-$robots='noindex, nofollow'; $pageTitle='Dashboard - Optibiz'; $extraCss=['/assets/css/auth.css','/assets/css/admin-dashboard.css']; include dirname(__DIR__).'/includes/header.php';
+
+$BASE = '../';
+$pageTitle = 'Dashboard';
+$activeNav = 'dashboard';
+include __DIR__ . '/_shell.php';
 ?>
-<div class="admin-app">
-<aside class="admin-sidebar">
-  <a class="admin-brand" href="index.php"><span class="brand-mark">★</span><span><b>Optibiz</b><small>Admin workspace</small></span></a>
-  <div class="nav-caption">Workspace</div>
-  <nav>
-   <a class="active" href="index.php"><span>▦</span>Dashboard</a><a href="customers.php"><span>⌂</span>Companies</a><a href="ratings.php"><span>☆</span>Ratings &amp; Reviews</a><a href="categories.php"><span>◈</span>Categories</a>
-  </nav>
-  <div class="nav-caption">Manage</div><nav><a href="settings.php"><span>⚙</span>Settings</a></nav>
-  <div class="sidebar-bottom"><div class="mini-avatar"><?php echo htmlspecialchars(strtoupper(substr($_SESSION['admin_username']??'A',0,1))); ?></div><div><strong><?php echo htmlspecialchars($_SESSION['admin_username']??'Admin'); ?></strong><small><?php echo $is_tenant?'Workspace admin':'Global administrator'; ?></small></div><a href="logout.php" title="Log out">↪</a></div>
-</aside>
-<section class="admin-main">
- <header class="admin-topbar"><button class="mobile-menu" aria-label="Open menu">☰</button><div class="crumb">Overview <b>/</b> <strong>Dashboard</strong></div><div class="top-actions"><span class="status-dot">● Live data</span><a href="settings.php" class="icon-button">⚙</a><a href="logout.php" class="logout-link">Log out</a></div></header>
- <main class="dashboard-content">
   <div class="welcome-row"><div><p class="eyebrow">Good morning, <?php echo htmlspecialchars($is_tenant?($tenant_info['company_name']??'there'):($_SESSION['admin_username']??'Admin')); ?></p><h1>Performance overview</h1><p class="muted">Track your customer feedback and business health in one place.</p></div><a class="primary-button" href="customers.php">＋ Add company</a></div>
   <div class="metric-grid">
    <div class="metric-card"><div class="metric-icon blue">⌂</div><span>Total companies</span><strong><?php echo number_format($total_customers); ?></strong><small>Active locations</small></div>
@@ -52,5 +43,4 @@ $robots='noindex, nofollow'; $pageTitle='Dashboard - Optibiz'; $extraCss=['/asse
   <div class="bottom-grid"><section class="panel recent-panel"><div class="panel-head"><div><h2>Recent reviews</h2><p class="muted">The latest feedback from your customers</p></div><a class="panel-link" href="ratings.php">View all →</a></div><?php if($recent_ratings && $recent_ratings->num_rows): while($r=$recent_ratings->fetch_assoc()): ?><div class="review-row"><div class="review-avatar"><?php echo htmlspecialchars(strtoupper(substr($r['customer_name']??'C',0,1))); ?></div><div class="review-body"><strong><?php echo htmlspecialchars($r['customer_name']); ?></strong><small><?php echo htmlspecialchars($r['company_name']); ?> · <?php echo date('M d, Y',strtotime($r['created_at'])); ?></small><p><?php echo htmlspecialchars($r['comment']?:'No comment provided.'); ?></p></div><span class="review-stars"><?php echo str_repeat('★',(int)$r['rating']); ?> <b><?php echo $r['rating']; ?>.0</b></span></div><?php endwhile; else: ?><div class="empty-state">No reviews received yet.</div><?php endif; ?></section>
    <section class="panel links-panel"><div class="panel-head"><div><h2>Public rating links</h2><p class="muted">Share and collect feedback</p></div></div><?php if($tenant_companies && $tenant_companies->num_rows): $shown=0; while($c=$tenant_companies->fetch_assoc()): if($shown++>=4) break; $url=$assetBase.'/rate/index.php?company='.$c['id']; ?><div class="link-row"><span class="link-icon">↗</span><div><strong><?php echo htmlspecialchars($c['company_name']); ?></strong><small><?php echo htmlspecialchars($url); ?></small></div><a href="<?php echo $url; ?>" target="_blank">View</a></div><?php endwhile; else: ?><div class="empty-state">Add a company to create rating links.</div><?php endif; ?></section>
   </div>
- </main>
-</section></div><script>document.querySelector('.mobile-menu')?.addEventListener('click',()=>document.querySelector('.admin-sidebar').classList.toggle('open'));</script></body></html>
+<?php include __DIR__ . '/_shell_footer.php'; ?>

@@ -88,69 +88,45 @@ if ($is_tenant) {
 
 $robots    = 'noindex, nofollow';
 
-$pageTitle = 'Manage Companies / Branches - Optibiz';
-$extraCss = ['/assets/css/auth.css'];
-include dirname(__DIR__) . '/includes/header.php';
+$BASE = '../';
+$pageTitle = 'Companies';
+$activeNav = 'customers';
+include __DIR__ . '/_shell.php';
 ?>
-
-<div style="background:#f8fafc;min-height:100vh;font-family:'Plus Jakarta Sans',sans-serif;">
-    <!-- Top Nav -->
-    <header style="background:#0a1926;color:white;padding:16px 5%;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);">
-        <div style="display:flex;align-items:center;gap:12px;">
-            <a href="index.php" style="color:white;text-decoration:none;font-size:22px;font-weight:800;letter-spacing:-0.5px;display:flex;align-items:center;gap:8px;">
-                <span style="width:28px;height:28px;background:#c2f542;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#0a1926;font-size:14px;font-weight:900;">★</span>
-                Optibiz
-            </a>
-            <span style="background:rgba(255,255,255,0.12);padding:4px 12px;border-radius:20px;font-size:12px;color:#c2f542;font-weight:600;">
-                <?php echo $is_tenant ? 'Tenant Portal' : 'Global Admin'; ?>
-            </span>
-        </div>
-
-        <nav style="display:flex;align-items:center;gap:20px;">
-            <a href="index.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Dashboard</a>
-            <a href="customers.php" style="color:#c2f542;text-decoration:none;font-size:14px;font-weight:600;">Companies / Branches</a>
-            <a href="ratings.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Ratings &amp; Reviews</a>
-            <a href="categories.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Categories</a>
-            <a href="settings.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Settings</a>
-            <a href="logout.php" style="background:rgba(239,68,68,0.2);color:#f87171;padding:6px 14px;border-radius:20px;text-decoration:none;font-size:13px;font-weight:600;">Logout</a>
-        </nav>
-    </header>
-
-    <main style="max-width:1240px;margin:30px auto;padding:0 20px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+        <div class="page-header">
             <div>
-                <h1 style="font-size:26px;font-weight:800;color:#0f172a;">Companies &amp; Branches</h1>
-                <p style="color:#64748b;font-size:14px;">Manage all business branches and view their rating links.</p>
+                <h1>Companies &amp; Branches</h1>
+                <p>Manage all business branches and view their rating links.</p>
             </div>
-            <a href="#addCompanyForm" style="background:#0a1926;color:white;padding:10px 18px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:700;">+ New Company</a>
+            <a href="#addCompanyForm" class="btn btn-primary">+ New Company</a>
         </div>
 
         <?php if ($success): ?>
-            <div style="background:#ecfdf5;color:#065f46;padding:12px 16px;border-radius:8px;margin-bottom:20px;font-size:14px;font-weight:600;border:1px solid #a7f3d0;">
+            <div class="alert alert-success">
                 ✓ <?php echo htmlspecialchars($success); ?>
             </div>
         <?php endif; ?>
 
         <?php if ($error): ?>
-            <div style="background:#fef2f2;color:#991b1b;padding:12px 16px;border-radius:8px;margin-bottom:20px;font-size:14px;font-weight:600;border:1px solid #fecaca;">
+            <div class="alert alert-error">
                 ⚠ <?php echo htmlspecialchars($error); ?>
             </div>
         <?php endif; ?>
 
         <!-- Add Company Box -->
-        <div id="addCompanyForm" style="background:white;padding:24px;border-radius:16px;box-shadow:0 4px 15px rgba(0,0,0,0.03);border:1px solid #e2e8f0;margin-bottom:30px;">
-            <h3 style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:16px;">Add New Company / Branch</h3>
-            <form method="POST" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px;align-items:flex-end;">
+        <div id="addCompanyForm" class="form-card">
+            <h3>Add New Company / Branch</h3>
+            <form method="POST" class="form-grid">
                 <input type="hidden" name="action" value="add_customer">
                 
-                <div>
-                    <label style="display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px;">Company / Branch Name *</label>
-                    <input type="text" name="company_name" placeholder="e.g. Apex Health Clinic" required style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">
+                <div class="form-group">
+                    <label>Company / Branch Name *</label>
+                    <input type="text" name="company_name" placeholder="e.g. Apex Health Clinic" required>
                 </div>
 
-                <div>
-                    <label style="display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px;">Category</label>
-                    <select name="category_id" style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">
+                <div class="form-group">
+                    <label>Category</label>
+                    <select name="category_id">
                         <option value="">-- Select Category --</option>
                         <?php while ($cat = $categories->fetch_assoc()): ?>
                             <option value="<?php echo $cat['id']; ?>"><?php echo htmlspecialchars($cat['name']); ?></option>
@@ -158,23 +134,23 @@ include dirname(__DIR__) . '/includes/header.php';
                     </select>
                 </div>
 
-                <div>
-                    <label style="display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px;">Email</label>
-                    <input type="email" name="email" placeholder="branch@example.com" style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" placeholder="branch@example.com">
                 </div>
 
-                <div>
-                    <label style="display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px;">Phone</label>
-                    <input type="text" name="phone" placeholder="+1 (555) 000-0000" style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">
+                <div class="form-group">
+                    <label>Phone</label>
+                    <input type="text" name="phone" placeholder="+1 (555) 000-0000">
                 </div>
 
-                <div>
-                    <label style="display:block;font-size:13px;font-weight:600;color:#334155;margin-bottom:6px;">Website</label>
-                    <input type="text" name="website" placeholder="www.example.com" style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;">
+                <div class="form-group">
+                    <label>Website</label>
+                    <input type="text" name="website" placeholder="www.example.com">
                 </div>
 
-                <div>
-                    <button type="submit" style="width:100%;background:#0a1926;color:#c2f542;padding:11px 20px;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;">
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary" style="width:100%">
                         Save Company
                     </button>
                 </div>
@@ -182,17 +158,17 @@ include dirname(__DIR__) . '/includes/header.php';
         </div>
 
         <!-- Companies Table -->
-        <div style="background:white;border-radius:16px;box-shadow:0 4px 15px rgba(0,0,0,0.03);border:1px solid #e2e8f0;overflow:hidden;">
-            <table style="width:100%;border-collapse:collapse;text-align:left;font-size:14px;">
+        <div class="data-table-card">
+            <table class="data-table">
                 <thead>
-                    <tr style="background:#f1f5f9;color:#475569;border-bottom:1px solid #e2e8f0;">
-                        <th style="padding:14px 20px;font-weight:700;">ID</th>
-                        <th style="padding:14px 20px;font-weight:700;">Company Name</th>
-                        <th style="padding:14px 20px;font-weight:700;">Category</th>
-                        <th style="padding:14px 20px;font-weight:700;">Average Rating</th>
-                        <th style="padding:14px 20px;font-weight:700;">Reviews Count</th>
-                        <th style="padding:14px 20px;font-weight:700;">Public Rating Link</th>
-                        <th style="padding:14px 20px;font-weight:700;text-align:right;">Actions</th>
+                    <tr>
+                        <th>ID</th>
+                        <th>Company Name</th>
+                        <th>Category</th>
+                        <th>Average Rating</th>
+                        <th>Reviews Count</th>
+                        <th>Public Rating Link</th>
+                        <th style="text-align:right;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -202,31 +178,31 @@ include dirname(__DIR__) . '/includes/header.php';
                             $cnt = getRatingCount($row['id'], $conn);
                             $rateUrl = $assetBase . "/rate/index.php?company=" . $row['id'];
                         ?>
-                            <tr style="border-bottom:1px solid #f1f5f9;">
-                                <td style="padding:14px 20px;color:#94a3b8;"><?php echo $row['id']; ?></td>
-                                <td style="padding:14px 20px;font-weight:700;color:#0f172a;">
+                            <tr>
+                                <td class="table-id"><?php echo $row['id']; ?></td>
+                                <td class="table-title">
                                     <?php echo htmlspecialchars($row['company_name']); ?>
                                 </td>
-                                <td style="padding:14px 20px;color:#64748b;">
+                                <td class="table-subtitle">
                                     <?php echo htmlspecialchars($row['category_name'] ?? 'General'); ?>
                                 </td>
-                                <td style="padding:14px 20px;color:#0f172a;font-weight:700;">
+                                <td class="table-rating">
                                     <span style="color:#f59e0b;">★</span> <?php echo $avg; ?>
                                 </td>
-                                <td style="padding:14px 20px;color:#64748b;"><?php echo $cnt; ?></td>
-                                <td style="padding:14px 20px;">
-                                    <a href="<?php echo $rateUrl; ?>" target="_blank" style="color:#0284c7;font-weight:600;text-decoration:none;font-size:13px;">
+                                <td class="table-subtitle"><?php echo $cnt; ?></td>
+                                <td>
+                                    <a href="<?php echo $rateUrl; ?>" target="_blank" class="btn-link">
                                         Open Rating Form &rarr;
                                     </a>
                                 </td>
-                                <td style="padding:14px 20px;text-align:right;">
-                                    <a href="customers.php?delete=<?php echo $row['id']; ?>" onclick="return confirm('Are you sure you want to delete this company and all its ratings?');" style="color:#ef4444;text-decoration:none;font-weight:600;font-size:13px;">Delete</a>
+                                <td style="text-align:right;">
+                                    <a href="customers.php?delete=<?php echo $row['id']; ?>" onclick="return confirm('Are you sure you want to delete this company and all its ratings?');" class="btn-danger">Delete</a>
                                 </td>
                             </tr>
                         <?php endwhile; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="7" style="padding:30px;text-align:center;color:#94a3b8;">
+                            <td colspan="7" class="table-empty">
                                 No companies found. Use the form above to add your first company!
                             </td>
                         </tr>
@@ -235,7 +211,4 @@ include dirname(__DIR__) . '/includes/header.php';
             </table>
         </div>
     </main>
-</div>
-
-</body>
-</html>
+<?php include __DIR__ . '/_shell_footer.php'; ?>
