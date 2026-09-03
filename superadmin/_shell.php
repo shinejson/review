@@ -78,7 +78,7 @@ if (!function_exists('sa_icon')) {
         ];
         $body = isset($p[$name]) ? $p[$name] : $p['info'];
         $fill = in_array($name, ['star', 'zap', 'pie'], true) ? 'currentColor' : 'none';
-        return '<svg viewBox="0 0 24 24" fill="' . $fill . '" stroke="currentColor" stroke-width="2" '
+        return '<svg class="sa-icon" width="16" height="16" viewBox="0 0 24 24" fill="' . $fill . '" stroke="currentColor" stroke-width="2" '
              . 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ' . $attrs . '>' . $body . '</svg>';
     }
 }
@@ -140,7 +140,7 @@ $sa_nav = [
     <aside class="sa-sidebar">
         <a class="sa-brand" href="<?php echo $sa_base; ?>index.php" title="<?php echo sa_e($sa_site); ?>">
             <span class="sa-brand-badge">
-                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
             </span>
             <span class="sa-brand-name">
                 <strong>Optibiz</strong>
@@ -159,7 +159,6 @@ $sa_nav = [
     $badge_val = $badge_key && isset($sa_badges[$badge_key]) ? (int) $sa_badges[$badge_key] : 0;
     $show_badge = $badge_val > 0;
     if ($badge_key === 'subs') {
-        // Only shout about renewals that are actually due soon
         $show_badge = $badge_val > 0;
     }
 ?>

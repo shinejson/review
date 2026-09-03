@@ -199,7 +199,7 @@ if (!function_exists('sa_stars')) {
     function sa_stars($rating, $show_number = true)
     {
         $rating = (float) $rating;
-        $star  = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+        $star  = '<svg class="sa-star-svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
         $html  = '<span class="sa-stars" role="img" aria-label="' . sa_e(number_format($rating, 1)) . ' out of 5">';
         for ($i = 1; $i <= 5; $i++) {
             $html .= '<span class="' . ($i <= round($rating) ? 'on' : 'off') . '">' . $star . '</span>';
@@ -357,15 +357,15 @@ if (!function_exists('sa_delta')) {
         $v = (float) $value;
         if (abs($v) < 0.05) {
             $class = 'sa-delta-flat';
-            $icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+            $icon  = '<svg class="sa-delta-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>';
             $sign  = '';
         } elseif ($v > 0) {
             $class = $invert ? 'sa-delta-down' : 'sa-delta-up';
-            $icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>';
+            $icon  = '<svg class="sa-delta-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>';
             $sign  = '+';
         } else {
             $class = $invert ? 'sa-delta-up' : 'sa-delta-down';
-            $icon  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+            $icon  = '<svg class="sa-delta-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
             $sign  = '';
         }
         return '<span class="sa-delta ' . $class . '">' . $icon . $sign
