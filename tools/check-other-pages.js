@@ -47,10 +47,15 @@ if (!PHP_CLI) {
 
 const SIGNED_IN = [
     ['admin/index.php', 'dashboard'],
-    ['admin/customers.php', 'companies list'],
     ['admin/ratings.php', 'ratings list'],
-    ['admin/categories.php', 'categories'],
     ['admin/settings.php', 'settings'],
+];
+
+/* Customers and categories moved to the super admin panel: the tenant
+   admin portal must no longer expose these scripts at all. */
+const REMOVED = [
+    ['admin/customers.php', 'companies page'],
+    ['admin/categories.php', 'categories page'],
 ];
 
 function copyDir(src, dest) {
@@ -150,12 +155,30 @@ function main() {
     }
 
     console.log('\nPanel isolation (a tenant admin must not reach the super admin panel):');
-    for (const script of ['superadmin/index.php', 'superadmin/tenants.php', 'superadmin/settings.php']) {
+    for (const script of ['superadmin/index.php', 'superadmin/tenants.php', 'superadmin/settings.php', 'superadmin/customers.php', 'superadmin/categories.php']) {
         const { html, stderr } = runPhp(script, '', { noSuper: true });
         const { fatal } = diagnostics(html, stderr);
         const ok = !fatal && html.length === 0 && !/sa-app|<!DOCTYPE/i.test(html);
         console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${script.padEnd(28)} ${ok ? 'redirected to the super admin login' : 'GRANTED ACCESS'}`);
         if (!ok) fail(script + ' rendered for a tenant admin');
+    }
+
+    console.log('\nMoved admin pages (customers + categories are super-admin only now):');
+    for (const [script, label] of REMOVED) {
+        const { html, stderr } = runPhp(script, '', { noSuper: true });
+        const rendered = /<!DOCTYPE\s+html|<html[\s>]|<body/i.test(html);
+        const ok = !rendered;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${script.padEnd(24)} ${label.padEnd(16)} ${ok ? 'not present in the admin panel' : 'STILL RENDERS'}`);
+        if (!ok) fail(script + ' still renders in the tenant admin panel');
+    }
+
+    console.log('\nRemaining admin screens must not link to the moved pages:');
+    for (const [script] of SIGNED_IN) {
+        const { html } = runPhp(script, '', { noSuper: true });
+        const stale = html.match(/href="(?:\.\/)?(?:customers|categories)\.php[^"]*"/i);
+        const ok = !stale;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${script.padEnd(24)} ${ok ? 'no stale links' : 'LINKS TO ' + stale[0]}`);
+        if (!ok) fail(script + ' still links to a page that moved to the super admin panel');
     }
 
     console.log('\nTenant admin login:');

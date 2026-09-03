@@ -533,7 +533,7 @@ include __DIR__ . '/_shell.php';
             <section class="sa-card sa-card-pad" style="display:flex;flex-direction:column;gap:18px;">
                 <div>
                     <div class="sa-section-title" style="margin:0 0 12px">Platform info</div>
-                    <dl class="sa-kv-list" style="display:grid;gap:10px;">
+                    <dl class="sa-kv-list">
                         <div class="sa-kv-row">
                             <dt>PHP version</dt>
                             <dd><?php echo sa_e(PHP_VERSION); ?></dd>

@@ -93,7 +93,10 @@ function check(file) {
 
     for (const node of doc.querySelectorAll('link[href], script[src]')) {
         const ref = node.getAttribute('href') || node.getAttribute('src');
-        if (ref && !/^(https?:)?\/\//.test(ref) && !fs.existsSync(path.resolve(path.dirname(file), ref))) {
+        // sa_asset() appends a ?v=<mtime> cache-buster; ignore it when
+        // checking the file exists on disk.
+        const onDisk = ref ? ref.split('?')[0] : '';
+        if (onDisk && !/^(https?:)?\/\//.test(onDisk) && !fs.existsSync(path.resolve(path.dirname(file), onDisk))) {
             errors.push('missing asset ' + ref);
         }
     }

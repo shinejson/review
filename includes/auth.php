@@ -97,6 +97,8 @@ function sa_permission_list() {
         'subscriptions' => 'Subscriptions',
         'plans'         => 'Plans',
         'quotes'        => 'Quote requests',
+        'customers'     => 'Customers',
+        'categories'    => 'Categories',
         'users'         => 'Users & roles',
         'settings'      => 'Settings',
     ];

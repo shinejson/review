@@ -65,6 +65,16 @@ class MockResult
     public function free()
     {
     }
+
+    /** mysqli_result aliases for free() — auth.php calls close() after
+     *  probing the super_admins schema. */
+    public function free_result()
+    {
+    }
+
+    public function close()
+    {
+    }
 }
 
 class MockStmt
@@ -335,16 +345,23 @@ class MockMysqli
         return 0;
     }
 
-    /** Customer rows plus the category_id the public pages expect. */
+    /** Customer rows plus the category_id the public pages expect and
+     *  the tenant_company join superadmin/customers.php reads. */
     private function customersWithCategory()
     {
         $byName = [];
         foreach ($this->data['categories'] as $cat) {
             $byName[$cat['name']] = $cat['id'];
         }
+        $tenantName = [];
+        foreach ($this->data['tenants'] as $t) {
+            $tenantName[(int) $t['id']] = $t['company_name'];
+        }
         $out = [];
         foreach ($this->data['customers'] as $c) {
             $c['category_id'] = isset($byName[$c['category_name']]) ? $byName[$c['category_name']] : 1;
+            $c['tenant_company'] = isset($tenantName[(int) $c['tenant_id']])
+                ? $tenantName[(int) $c['tenant_id']] : null;
             $out[] = $c;
         }
         return $out;
@@ -429,6 +446,18 @@ class MockMysqli
         $D = $this->data;
         $this->log('branch', $tbl !== '' ? $tbl : '(none)');
         $this->log('sql', preg_replace('/\s+/', ' ', trim($sql)));
+
+        /* ---- super admin schema probe (sa_ensure_user_schema) ---- */
+        if (stripos($s, 'SHOW COLUMNS FROM super_admins') === 0) {
+            // the permission columns are part of the migrated schema
+            $cols = ['id', 'username', 'password', 'email', 'created_at', 'permissions', 'is_owner'];
+            return array_map(function ($c) {
+                return ['Field' => $c, 'Type' => 'text', 'Null' => 'YES', 'Key' => '', 'Default' => null, 'Extra' => ''];
+            }, $cols);
+        }
+        if ($tbl === 'super_admins' && $this->has($s, 'COUNT(*)') && $this->has($s, 'is_owner = 1')) {
+            return [['COUNT(*)' => 1, 'c' => 1]];   // the dataset owner account
+        }
 
         /* ---- fresh-install mode: the schema exists but holds no data ---- */
         if (getenv('SA_EMPTY_DB') === '1' && !$this->has($s, 'information_schema.tables')) {
@@ -555,7 +584,8 @@ class MockMysqli
             if ($this->has($o, 'COUNT(*)') && !$this->has($o, 'company_count')) {
                 return [['COUNT(*)' => count($D['categories']), 'count' => count($D['categories'])]];
             }
-            // admin/categories.php projects a per-category company count
+            // superadmin/categories.php projects per-category company and
+            // quote-request counts; the public wizard reads the plain list
             $out = [];
             foreach ($D['categories'] as $cat) {
                 $n = 0;
@@ -564,7 +594,13 @@ class MockMysqli
                         $n++;
                     }
                 }
-                $out[] = array_merge($cat, ['company_count' => $n, 'count' => $n]);
+                $q = 0;
+                foreach ($D['quote_requests'] as $qr) {
+                    if ((int) $qr['category_id'] === (int) $cat['id']) {
+                        $q++;
+                    }
+                }
+                $out[] = array_merge($cat, ['company_count' => $n, 'count' => $n, 'quote_count' => $q]);
             }
             return $out;
         }
@@ -744,6 +780,20 @@ class MockMysqli
 
         /* ---- customers ---- */
         if ($tbl === 'customers') {
+            if ($this->has($s, 'COUNT(*)') && $this->has($s, 'category_id IS NULL')) {
+                return [['COUNT(*)' => 0]];
+            }
+            if ($this->has($s, 'COUNT(*)') && $this->has($s, 'category_id')) {
+                preg_match('/category_id = (\d+)/', $s, $m);
+                $cat = $m ? (int) $m[1] : 0;
+                $n = 0;
+                foreach ($this->customersWithCategory() as $c) {
+                    if ((int) $c['category_id'] === $cat) {
+                        $n++;
+                    }
+                }
+                return [['COUNT(*)' => $n]];
+            }
             if ($this->has($s, 'COUNT(*)') && $this->has($s, 'tenant_id')) {
                 preg_match('/tenant_id = (\d+)/', $s, $m);
                 $id = $m ? (int) $m[1] : 0;
@@ -780,9 +830,12 @@ class MockMysqli
             if ($this->has($s, 'GROUP BY c.id') || $this->has($s, 'cat.name AS category_name')) {
                 preg_match('/c.tenant_id = (\d+)/', $s, $m);
                 $tid = $m ? (int) $m[1] : 0;
+                preg_match('/c.category_id = (\d+)/', $s, $mc);
+                $cid = $mc ? (int) $mc[1] : 0;
                 $rows = [];
                 foreach ($this->customersWithCategory() as $c) {
-                    if ($tid === 0 || (int) $c['tenant_id'] === $tid) {
+                    if (($tid === 0 || (int) $c['tenant_id'] === $tid)
+                        && ($cid === 0 || (int) $c['category_id'] === $cid)) {
                         $rows[] = $c;
                     }
                 }
@@ -796,6 +849,16 @@ class MockMysqli
 
         /* ---- tenants ---- */
         if ($tbl === 'tenants') {
+            // plan limit lookup for a single tenant (superadmin/customers.php)
+            if ($this->has($s, 'p.max_customers') && preg_match('/t.id = (\d+)/', $s, $m)) {
+                foreach ($this->tenants() as $t) {
+                    if ((int) $t['id'] === (int) $m[1]) {
+                        return [['max_customers' => $t['max_customers']]];
+                    }
+                }
+                return [];
+            }
+
             // tenant league table
             if ($this->has($s, 'COUNT(DISTINCT c.id)')) {
                 $out = [];
