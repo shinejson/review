@@ -2,6 +2,7 @@
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/sa_helpers.php';
 
 if (isSuperAdminLoggedIn()) {
     redirect('index.php');
@@ -41,9 +42,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $robots    = 'noindex, nofollow';
-
+$BASE      = '../';
+$GLOBALS['BASE'] = $BASE;
 $pageTitle = 'Super Admin Login';
 $extraCss = ['assets/css/auth.css'];
+$login_logo_url = function_exists('sa_platform_logo') ? sa_platform_logo($conn) : '';
 include dirname(__DIR__) . '/includes/header.php';
 ?>
 
@@ -61,7 +64,11 @@ include dirname(__DIR__) . '/includes/header.php';
     <aside class="auth-brand">
         <a class="auth-logo" href="<?php echo $BASE; ?>index.php">
             <span class="auth-logo-badge">
-                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <?php if ($login_logo_url): ?>
+                    <img src="<?php echo sa_e($login_logo_url); ?>" alt="">
+                <?php else: ?>
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <?php endif; ?>
             </span>
             <span class="auth-logo-name">
                 <strong>Optibiz</strong>

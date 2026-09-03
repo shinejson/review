@@ -14,6 +14,7 @@ require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/sa_helpers.php';
 
 requireSuperAdminLogin();
+require_sa_permission('quotes');
 
 $has_quotes_table = sa_table_exists($conn, 'quote_requests');
 

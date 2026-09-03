@@ -41,13 +41,26 @@ if (!function_exists('sa_asset')) {
      * Build a path to a project asset that works no matter how deep the
      * current page sits, and no matter which subdirectory the app is
      * deployed into (e.g. /htdocs/review/).
+     *
+     * Local CSS/JS files get a ?v=<file mtime> cache-buster so that edits
+     * show up instantly, even with long-lived browser caches.
      */
     function sa_asset($path, $base = null)
     {
         if ($base === null) {
             $base = isset($GLOBALS['BASE']) ? $GLOBALS['BASE'] : '';
         }
-        return $base . ltrim($path, '/');
+        $path = ltrim($path, '/');
+        $url  = $base . $path;
+
+        if (strpos($path, '://') === false && preg_match('~\.(?:css|js)$~i', $path)) {
+            $file  = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $path);
+            $mtime = is_file($file) ? @filemtime($file) : false;
+            if ($mtime) {
+                $url .= '?v=' . $mtime;
+            }
+        }
+        return $url;
     }
 }
 
@@ -68,6 +81,12 @@ $assetBase = rtrim($BASE, '/');
     <meta name="robots" content="<?php echo htmlspecialchars($robots); ?>">
 <?php endif; ?>
     <title><?php echo htmlspecialchars($sa_page); ?> &middot; Optibiz</title>
+    <?php if (function_exists('sa_platform_favicon')): ?>
+    <?php $fav_url = sa_platform_favicon($conn); ?>
+    <?php if ($fav_url): ?>
+    <link rel="icon" href="<?php echo sa_e($fav_url); ?>">
+    <?php endif; ?>
+    <?php endif; ?>
     <style>
         /* Keeps the first paint from flashing while the saved theme loads */
         html.sa-preload *, html.sa-preload *::before, html.sa-preload *::after {
@@ -75,6 +94,9 @@ $assetBase = rtrim($BASE, '/');
         }
     </style>
     <link rel="stylesheet" href="<?php echo sa_asset('assets/css/style.css'); ?>">
+    <?php if (isset($extraBrandLink)): ?>
+    <?php echo $extraBrandLink; ?>
+    <?php endif; ?>
 <?php if (!empty($extraCss)): ?>
 <?php foreach ((array) $extraCss as $extraCssFile): ?>
     <link rel="stylesheet" href="<?php echo sa_asset($extraCssFile); ?>">

@@ -13,6 +13,7 @@ require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/sa_helpers.php';
 
 requireSuperAdminLogin();
+require_sa_permission('subscriptions');
 
 /* ---------- POST handlers ---------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

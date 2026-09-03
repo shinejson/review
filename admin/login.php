@@ -92,9 +92,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $robots    = 'noindex, nofollow';
-
+$BASE      = '../';
 $pageTitle = 'Tenant & Admin Login';
-$extraCss = ['/assets/css/auth.css'];
+$extraCss = ['assets/css/auth.css'];
 include dirname(__DIR__) . '/includes/header.php';
 ?>
 

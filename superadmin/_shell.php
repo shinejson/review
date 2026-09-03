@@ -75,6 +75,9 @@ if (!function_exists('sa_icon')) {
             'activity'    => '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
             'pie'         => '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>',
             'list'        => '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+            'send'        => '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+            'server'      => '<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>',
+            'users'       => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
         ];
         $body = isset($p[$name]) ? $p[$name] : $p['info'];
         $fill = in_array($name, ['star', 'zap', 'pie'], true) ? 'currentColor' : 'none';
@@ -89,6 +92,7 @@ $sa_heading  = isset($pageHeading) ? $pageHeading : (isset($pageTitle) ? $pageTi
 $sa_subtitle = isset($pageSubtitle) ? $pageSubtitle : 'Optibiz platform control center';
 $sa_site     = sa_setting($conn, 'site_name', 'Optibiz');
 $sa_base     = isset($BASE) ? $BASE : '../';
+$sa_logo_url = sa_platform_logo($conn);
 
 $sa_admin_name = 'Super Admin';
 $sa_admin_mail = '';
@@ -129,8 +133,20 @@ $sa_nav = [
     ['key' => 'plans',         'label' => 'Plans',          'href' => 'plans.php',            'icon' => 'layers'],
     ['key' => 'quotes',        'label' => 'Quote Requests', 'href' => 'quote_requests.php',   'icon' => 'inbox',    'badge' => 'quotes', 'alert' => true],
     ['section' => 'System'],
+    ['key' => 'users',         'label' => 'Users',          'href' => 'users.php',            'icon' => 'users'],
     ['key' => 'settings',      'label' => 'Settings',       'href' => 'settings.php',         'icon' => 'settings'],
 ];
+
+/* Only keep the nav items the signed-in super admin may open.
+   A section label is dropped when every item under it is hidden. */
+$sa_nav_visible = [];
+$sa_pending_section = null;
+foreach ($sa_nav as $sa_item) {
+    if (isset($sa_item['section'])) { $sa_pending_section = $sa_item; continue; }
+    if (!sa_can($sa_item['key'], $conn)) continue;
+    if ($sa_pending_section !== null) { $sa_nav_visible[] = $sa_pending_section; $sa_pending_section = null; }
+    $sa_nav_visible[] = $sa_item;
+}
 ?>
 <a class="sa-skip" href="#saContent">Skip to content</a>
 
@@ -140,8 +156,12 @@ $sa_nav = [
     <aside class="sa-sidebar">
         <a class="sa-brand" href="<?php echo $sa_base; ?>index.php" title="<?php echo sa_e($sa_site); ?>">
             <span class="sa-brand-badge">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            </span>
+    <?php if (!empty($sa_logo_url)): ?>
+        <img src="<?php echo sa_e($sa_logo_url); ?>" alt="">
+    <?php else: ?>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+    <?php endif; ?>
+</span>
             <span class="sa-brand-name">
                 <strong>Optibiz</strong>
                 <span>Control Center</span>
@@ -149,7 +169,7 @@ $sa_nav = [
         </a>
 
         <nav class="sa-nav" aria-label="Super admin">
-<?php foreach ($sa_nav as $item): ?>
+<?php foreach ($sa_nav_visible as $item): ?>
 <?php if (isset($item['section'])): ?>
             <div class="sa-nav-label"><span><?php echo sa_e($item['section']); ?></span></div>
 <?php else: ?>
@@ -178,7 +198,7 @@ $sa_nav = [
                 <span class="sa-user-avatar"><?php echo sa_e(sa_initials($sa_admin_name)); ?></span>
                 <span class="sa-user-meta">
                     <strong><?php echo sa_e($sa_admin_name); ?></strong>
-                    <span>Super admin</span>
+                    <span><?php echo sa_is_owner($conn) ? 'Platform owner' : 'Administrator'; ?></span>
                 </span>
             </div>
             <a class="sa-logout" href="logout.php" data-label="Sign out" data-sa-confirm="Sign out of the control center?">
@@ -206,27 +226,64 @@ $sa_nav = [
                 <p><?php echo sa_e($sa_subtitle); ?></p>
             </div>
 
-<?php if (!empty($searchTarget)): ?>
+            <!-- Global search bar -->
             <div class="sa-search">
                 <?php echo sa_icon('search'); ?>
-                <input type="search" placeholder="<?php echo sa_e(isset($searchPlaceholder) ? $searchPlaceholder : 'Search…'); ?>"
-                       aria-label="<?php echo sa_e(isset($searchPlaceholder) ? $searchPlaceholder : 'Search'); ?>"
-                       data-sa-search="<?php echo sa_e($searchTarget); ?>" autocomplete="off">
+                <input type="search" placeholder="Search tenants, quotes, subscriptions..."
+                       aria-label="Global search"
+                       data-sa-search="global" autocomplete="off">
                 <kbd>/</kbd>
             </div>
-<?php endif; ?>
 
             <div class="sa-topbar-actions">
+                <!-- Notifications bell -->
+                <div class="sa-notification-wrap">
+                    <button type="button" class="sa-icon-btn sa-notification-btn" aria-label="Notifications" title="Notifications">
+                        <?php echo sa_icon('bell'); ?>
 <?php if ($sa_badges['quotes'] > 0): ?>
-                <a class="sa-icon-btn" href="quote_requests.php" title="<?php echo sa_e($sa_badges['quotes'] . ' pending quote request(s)'); ?>" aria-label="<?php echo sa_e($sa_badges['quotes'] . ' pending quote requests'); ?>" style="position:relative">
-                    <?php echo sa_icon('bell'); ?>
-                    <span style="position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:99px;background:var(--sa-danger);color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center;border:2px solid var(--sa-bg)"><?php echo $sa_badges['quotes']; ?></span>
-                </a>
-<?php else: ?>
-                <a class="sa-icon-btn" href="<?php echo $sa_base; ?>index.php" target="_blank" rel="noopener" title="View public site" aria-label="View public site">
-                    <?php echo sa_icon('external'); ?>
-                </a>
+                        <span class="sa-notification-badge"><?php echo $sa_badges['quotes']; ?></span>
 <?php endif; ?>
+                    </button>
+                    <div class="sa-notification-panel">
+                        <div class="sa-notification-head">
+                            <strong>Notifications</strong>
+                            <span><?php echo $sa_badges['quotes']; ?> new</span>
+                        </div>
+                        <div class="sa-notification-list">
+<?php if ($sa_badges['quotes'] > 0): ?>
+                            <a href="quote_requests.php" class="sa-notification-item">
+                                <div class="sa-list-icon is-warning">
+                                    <?php echo sa_icon('inbox'); ?>
+                                </div>
+                                <div class="sa-list-body">
+                                    <strong>New quote requests</strong>
+                                    <span><?php echo $sa_badges['quotes']; ?> pending request<?php echo $sa_badges['quotes'] > 1 ? 's' : ''; ?></span>
+                                </div>
+                            </a>
+<?php endif; ?>
+<?php if ($sa_badges['subs'] > 0): ?>
+                            <a href="subscriptions.php" class="sa-notification-item">
+                                <div class="sa-list-icon is-danger">
+                                    <?php echo sa_icon('card'); ?>
+                                </div>
+                                <div class="sa-list-body">
+                                    <strong>Expiring subscriptions</strong>
+                                    <span><?php echo $sa_badges['subs']; ?> expiring within 30 days</span>
+                                </div>
+                            </a>
+<?php endif; ?>
+<?php if ($sa_badges['quotes'] == 0 && $sa_badges['subs'] == 0): ?>
+                            <div class="sa-notification-empty">
+                                <?php echo sa_icon('check-circle'); ?>
+                                <p>No new notifications</p>
+                            </div>
+<?php endif; ?>
+                        </div>
+                        <div class="sa-notification-foot">
+                            <a href="quote_requests.php">View all notifications</a>
+                        </div>
+                    </div>
+                </div>
 
                 <button type="button" class="sa-theme-toggle" data-sa-theme aria-pressed="false" aria-label="Switch theme" title="Switch theme">
                     <span class="sa-theme-thumb">
@@ -246,8 +303,15 @@ $sa_nav = [
                             <strong><?php echo sa_e($sa_admin_name); ?></strong>
                             <span><?php echo $sa_admin_mail ? sa_e($sa_admin_mail) : 'Platform owner'; ?></span>
                         </div>
+                        <?php if (sa_can('users', $conn)): ?>
+                        <a href="users.php" role="menuitem"><?php echo sa_icon('users'); ?> Users &amp; roles</a>
+                        <?php endif; ?>
+                        <?php if (sa_can('settings', $conn)): ?>
                         <a href="settings.php" role="menuitem"><?php echo sa_icon('settings'); ?> Platform settings</a>
+                        <?php endif; ?>
+                        <?php if (sa_can('analytics', $conn)): ?>
                         <a href="analytics.php" role="menuitem"><?php echo sa_icon('chart'); ?> Analytics</a>
+                        <?php endif; ?>
                         <a href="<?php echo $sa_base; ?>index.php" target="_blank" rel="noopener" role="menuitem"><?php echo sa_icon('globe'); ?> View public site</a>
                         <a class="is-danger" href="logout.php" role="menuitem" data-sa-confirm="Sign out of the control center?"><?php echo sa_icon('logout'); ?> Sign out</a>
                     </div>

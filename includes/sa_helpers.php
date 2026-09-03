@@ -113,6 +113,90 @@ if (!function_exists('sa_currency_symbol')) {
     }
 }
 
+if (!function_exists('sa_uploads_dir')) {
+    /**
+     * Absolute filesystem path to the brand uploads folder.
+     * Created on first use. Falls back to sys_get_temp_dir()
+     * when the project uploads folder isn't writable.
+     */
+    function sa_uploads_dir()
+    {
+        static $dir = null;
+        if ($dir !== null) return $dir;
+
+        $path = dirname(__DIR__) . '/assets/uploads';
+
+        if (!is_dir($path)) {
+            @mkdir($path, 0775, true);
+        }
+        if (!is_writable($path)) {
+            $path = sys_get_temp_dir() . '/optibiz-uploads';
+            if (!is_dir($path)) @mkdir($path, 0775, true);
+        }
+        $dir = $path;
+        return $dir;
+    }
+}
+
+/** Suggested brand upload sizes (kept in the docs for the settings UI). */
+if (!function_exists('sa_upload_limits')) {
+    function sa_upload_limits()
+    {
+        return [
+            'logo'    => ['ext' => ['png', 'jpg', 'jpeg', 'svg', 'webp'], 'max' => 2 * 1024 * 1024, 'label' => 'Logo (PNG, JPG, SVG, WebP', 'maxLabel' => '2 MB'],
+            'favicon' => ['ext' => ['png', 'ico', 'svg'], 'max' => 512 * 1024, 'label' => 'Favicon (PNG, ICO, SVG', 'maxLabel' => '512 KB'],
+        ];
+    }
+}
+
+if (!function_exists('sa_brand_asset')) {
+    /**
+     * Resolve a stored brand filename into a cache-busting public URL,
+     * or '' when the file is missing. Safe to interpolate into href/src.
+     */
+    function sa_brand_asset($file)
+    {
+        $file = trim((string) $file);
+        if ($file === '') return '';
+
+        // Allow full URLs (e.g. favicon hosted elsewhere)
+        if (preg_match('~^https?://~i', $file)) return $file;
+
+        // Only ever resolve safe basenames pointing into our uploads folder
+        $name = basename($file);
+        if ($name === '' || preg_match('~^\.\.|[/\\\\]~', $name)) return '';
+        $abs = sa_uploads_dir() . DIRECTORY_SEPARATOR . $name;
+        if (!is_file($abs)) return '';
+
+        global $assetBase;
+        $base = '';
+        if (isset($assetBase) && $assetBase !== '') {
+            $base = rtrim($assetBase, '/');
+        } elseif (isset($GLOBALS['BASE']) && $GLOBALS['BASE'] !== '') {
+            $base = rtrim($GLOBALS['BASE'], '/');
+        }
+        return $base . '/assets/uploads/' . rawurlencode($name) . '?v=' . (int) @filemtime($abs);
+    }
+}
+
+if (!function_exists('sa_platform_logo')) {
+    /** Public URL of the configured platform logo, or '' (use the default mark). */
+    function sa_platform_logo($conn = null)
+    {
+        global $conn;
+        return $conn ? sa_brand_asset(sa_setting($conn, 'logo_asset', '')) : '';
+    }
+}
+
+if (!function_exists('sa_platform_favicon')) {
+    /** Public URL of the configured favicon, or '' (no custom favicon + default). */
+    function sa_platform_favicon($conn = null)
+    {
+        global $conn;
+        return $conn ? sa_brand_asset(sa_setting($conn, 'favicon_asset', '')) : '';
+    }
+}
+
 if (!function_exists('sa_money')) {
     /** 1234.5 -> "$1,234.50" (symbol from settings). */
     function sa_money($amount, $decimals = 2)

@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/mailer.php';
+
 function sanitize($data) {
     return htmlspecialchars(strip_tags(trim($data)));
 }
