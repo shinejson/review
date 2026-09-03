@@ -62,6 +62,8 @@ const PAGES = [
     ['superadmin/analytics.php', 'analytics.html', '?months=12'],
     ['superadmin/quote_requests.php', 'quote_requests.html', '?id=9'],
     ['superadmin/tenant_details.php', 'tenant_details.html', '?id=18'],
+    ['superadmin/customers.php', 'customers.html', ''],
+    ['superadmin/categories.php', 'categories.html', ''],
     ['superadmin/settings.php', 'settings.html', ''],
     ['superadmin/login.php', 'login.html', '', { anonymous: true }],
 
@@ -72,6 +74,8 @@ const PAGES = [
     ['superadmin/analytics.php', null, '?months=24', { probe: 'analytics over 24 months' }],
     ['superadmin/quote_requests.php', null, '?status=converted', { probe: 'quote pipeline filtered to converted' }],
     ['superadmin/tenants.php', null, '?status=cancelled', { probe: 'tenants filtered to cancelled' }],
+    ['superadmin/customers.php', null, '?category=4', { probe: 'customers filtered to a category' }],
+    ['superadmin/customers.php', null, '?q=volta', { probe: 'customer search by name' }],
 ];
 
 function copyDir(src, dest) {
@@ -119,6 +123,13 @@ const POSTS = [
     ['quotes · status', 'superadmin/quote_requests.php', 'action=update_status&quote_id=8&status=contacted', /^UPDATE quote_requests/i],
     ['quotes · convert', 'superadmin/quote_requests.php', 'action=convert&quote_id=9&company_name=Bolgatanga Grain Traders&email=amina@bolgagrains.gh&phone=123&plan_id=2&months=12&password=Welcome123&subscription_status=trial', /^INSERT INTO tenants/i],
     ['quotes · delete', 'superadmin/quote_requests.php', 'action=delete&quote_id=4', /^DELETE FROM quote_requests/i],
+    ['categories · create', 'superadmin/categories.php', 'action=create&name=Agriculture', /^INSERT INTO categories/i],
+    ['categories · rename', 'superadmin/categories.php', 'action=rename&category_id=3&name=Software%20and%20IT', /^UPDATE categories/i],
+    ['categories · delete (unused)', 'superadmin/categories.php', 'action=delete&category_id=6', /^DELETE FROM categories/i],
+    ['categories · delete (in use blocked)', 'superadmin/categories.php', 'action=delete&category_id=5', null],
+    ['customers · create', 'superadmin/customers.php', 'action=create&tenant_id=14&company_name=Osu%20Dental%20Branch&category_id=2&email=branch@example.com&phone=123&website=example.com', /^INSERT INTO customers/i],
+    ['customers · create (unknown tenant blocked)', 'superadmin/customers.php', 'action=create&tenant_id=999&company_name=Ghost%20Co', null],
+    ['customers · delete', 'superadmin/customers.php', 'action=delete&customer_id=51', /^DELETE FROM customers/i],
     ['settings · save', 'superadmin/settings.php', 'action=save_settings&site_name=Optibiz Platform&admin_email=admin@optibiz.com&support_email=support@optibiz.com&currency_symbol=$&ratings_per_page=12&trial_days=30', /^(UPDATE settings|INSERT INTO settings)/i],
     ['settings · admin profile', 'superadmin/settings.php', 'action=save_admin&username=superadmin&email=superadmin@optibiz.com', /^UPDATE super_admins/i],
     ['settings · password', 'superadmin/settings.php', 'action=change_password&current_password=superadmin123&new_password=Sup3rSecret!&confirm_password=Sup3rSecret!', /^UPDATE super_admins/i],

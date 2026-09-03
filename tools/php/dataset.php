@@ -15,7 +15,7 @@ $other_admin_hash = password_hash('tamale-solar-2026', PASSWORD_DEFAULT);
 
 return [
     'super_admins' => [
-        ['id' => 1, 'username' => 'superadmin', 'email' => 'superadmin@optibiz.com', 'password' => $sa_password_hash, 'created_at' => '2026-01-01 09:00:00'],
+        ['id' => 1, 'username' => 'superadmin', 'email' => 'superadmin@optibiz.com', 'password' => $sa_password_hash, 'created_at' => '2026-01-01 09:00:00', 'permissions' => null, 'is_owner' => 1],
     ],
 
     /* Tenant admin accounts (the admin/ panel, separate from super_admins) */

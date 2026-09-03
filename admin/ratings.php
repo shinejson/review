@@ -55,7 +55,34 @@ $pageTitle = 'Ratings & Reviews';
 $activeNav = 'ratings';
 include __DIR__ . '/_shell.php';
 ?>
+<<<<<<< HEAD
         <div class="page-header">
+=======
+
+<div style="background:#f8fafc;min-height:100vh;font-family:'Plus Jakarta Sans',sans-serif;">
+    <!-- Top Nav -->
+    <header style="background:#0a1926;color:white;padding:16px 5%;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);">
+        <div style="display:flex;align-items:center;gap:12px;">
+            <a href="index.php" style="color:white;text-decoration:none;font-size:22px;font-weight:800;letter-spacing:-0.5px;display:flex;align-items:center;gap:8px;">
+                <span style="width:28px;height:28px;background:#c2f542;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#0a1926;font-size:14px;font-weight:900;">★</span>
+                Optibiz
+            </a>
+            <span style="background:rgba(255,255,255,0.12);padding:4px 12px;border-radius:20px;font-size:12px;color:#c2f542;font-weight:600;">
+                <?php echo $is_tenant ? 'Tenant Portal' : 'Global Admin'; ?>
+            </span>
+        </div>
+
+        <nav style="display:flex;align-items:center;gap:20px;">
+            <a href="index.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Dashboard</a>
+            <a href="ratings.php" style="color:#c2f542;text-decoration:none;font-size:14px;font-weight:600;">Ratings &amp; Reviews</a>
+            <a href="settings.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Settings</a>
+            <a href="logout.php" style="background:rgba(239,68,68,0.2);color:#f87171;padding:6px 14px;border-radius:20px;text-decoration:none;font-size:13px;font-weight:600;">Logout</a>
+        </nav>
+    </header>
+
+    <main style="max-width:1240px;margin:30px auto;padding:0 20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+>>>>>>> 8a31c97ebc09cdc33ce8bdd186d7409462b2a93a
             <div>
                 <h1>Customer Ratings &amp; Reviews</h1>
                 <p>Browse and monitor real-time reviews submitted by your customers.</p>

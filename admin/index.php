@@ -26,7 +26,24 @@ $pageTitle = 'Dashboard';
 $activeNav = 'dashboard';
 include __DIR__ . '/_shell.php';
 ?>
+<<<<<<< HEAD
   <div class="welcome-row"><div><p class="eyebrow">Good morning, <?php echo htmlspecialchars($is_tenant?($tenant_info['company_name']??'there'):($_SESSION['admin_username']??'Admin')); ?></p><h1>Performance overview</h1><p class="muted">Track your customer feedback and business health in one place.</p></div><a class="primary-button" href="customers.php">＋ Add company</a></div>
+=======
+<div class="admin-app">
+<aside class="admin-sidebar">
+  <a class="admin-brand" href="index.php"><span class="brand-mark">★</span><span><b>Optibiz</b><small>Admin workspace</small></span></a>
+  <div class="nav-caption">Workspace</div>
+  <nav>
+   <a class="active" href="index.php"><span>▦</span>Dashboard</a><a href="ratings.php"><span>☆</span>Ratings &amp; Reviews</a>
+  </nav>
+  <div class="nav-caption">Manage</div><nav><a href="settings.php"><span>⚙</span>Settings</a></nav>
+  <div class="sidebar-bottom"><div class="mini-avatar"><?php echo htmlspecialchars(strtoupper(substr($_SESSION['admin_username']??'A',0,1))); ?></div><div><strong><?php echo htmlspecialchars($_SESSION['admin_username']??'Admin'); ?></strong><small><?php echo $is_tenant?'Workspace admin':'Global administrator'; ?></small></div><a href="logout.php" title="Log out">↪</a></div>
+</aside>
+<section class="admin-main">
+ <header class="admin-topbar"><button class="mobile-menu" aria-label="Open menu">☰</button><div class="crumb">Overview <b>/</b> <strong>Dashboard</strong></div><div class="top-actions"><span class="status-dot">● Live data</span><a href="settings.php" class="icon-button">⚙</a><a href="logout.php" class="logout-link">Log out</a></div></header>
+ <main class="dashboard-content">
+  <div class="welcome-row"><div><p class="eyebrow">Good morning, <?php echo htmlspecialchars($is_tenant?($tenant_info['company_name']??'there'):($_SESSION['admin_username']??'Admin')); ?></p><h1>Performance overview</h1><p class="muted">Track your customer feedback and business health in one place.</p></div><a class="primary-button" href="ratings.php">☆ View reviews</a></div>
+>>>>>>> 8a31c97ebc09cdc33ce8bdd186d7409462b2a93a
   <div class="metric-grid">
    <div class="metric-card"><div class="metric-icon blue">⌂</div><span>Total companies</span><strong><?php echo number_format($total_customers); ?></strong><small>Active locations</small></div>
    <div class="metric-card"><div class="metric-icon purple">☆</div><span>Total reviews</span><strong><?php echo number_format($total_ratings); ?></strong><small>All-time feedback</small></div>

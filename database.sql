@@ -8,12 +8,15 @@ CREATE TABLE IF NOT EXISTS super_admins (
     username VARCHAR(50) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     email VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    permissions TEXT NULL,
+    is_owner TINYINT(1) NOT NULL DEFAULT 0
 );
 
--- Insert default super admin (password: superadmin123)
-INSERT INTO super_admins (username, password, email) VALUES 
-('superadmin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'superadmin@example.com');
+-- Insert default super admin (password: superadmin123). The first account
+-- is the platform owner: it always keeps every permission.
+INSERT INTO super_admins (username, password, email, is_owner) VALUES 
+('superadmin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'superadmin@example.com', 1);
 
 -- Subscription Plans table
 CREATE TABLE IF NOT EXISTS subscription_plans (
