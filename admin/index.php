@@ -2,225 +2,55 @@
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
-
 requireLogin();
-
 $tenant_id = getTenantId();
 $is_tenant = isTenant();
-
 $tenant_info = null;
-$plan_info = null;
-
 if ($is_tenant && $tenant_id) {
-    // Fetch tenant details and plan
-    $stmt = $conn->prepare("SELECT t.*, p.plan_name, p.max_ratings, p.max_customers, p.features 
-                            FROM tenants t 
-                            LEFT JOIN subscription_plans p ON t.plan_id = p.id 
-                            WHERE t.id = ?");
-    $stmt->bind_param("i", $tenant_id);
-    $stmt->execute();
-    $tenant_info = $stmt->get_result()->fetch_assoc();
-    
-    // Scoped metrics
-    $stmt1 = $conn->prepare("SELECT COUNT(*) as count FROM customers WHERE tenant_id = ?");
-    $stmt1->bind_param("i", $tenant_id);
-    $stmt1->execute();
-    $total_customers = $stmt1->get_result()->fetch_assoc()['count'] ?? 0;
-
-    $stmt2 = $conn->prepare("SELECT COUNT(*) as count, AVG(r.rating) as avg_rating 
-                            FROM ratings r 
-                            JOIN customers c ON r.company_id = c.id 
-                            WHERE c.tenant_id = ?");
-    $stmt2->bind_param("i", $tenant_id);
-    $stmt2->execute();
-    $rating_res = $stmt2->get_result()->fetch_assoc();
-    $total_ratings = $rating_res['count'] ?? 0;
-    $avg_rating = round($rating_res['avg_rating'] ?? 0, 1);
-
-    // Recent ratings
-    $stmt3 = $conn->prepare("SELECT r.*, c.company_name 
-                            FROM ratings r 
-                            JOIN customers c ON r.company_id = c.id 
-                            WHERE c.tenant_id = ? 
-                            ORDER BY r.created_at DESC LIMIT 5");
-    $stmt3->bind_param("i", $tenant_id);
-    $stmt3->execute();
-    $recent_ratings = $stmt3->get_result();
-
-    // Tenant customers for quick links
-    $stmt4 = $conn->prepare("SELECT id, company_name FROM customers WHERE tenant_id = ? ORDER BY company_name ASC");
-    $stmt4->bind_param("i", $tenant_id);
-    $stmt4->execute();
-    $tenant_companies = $stmt4->get_result();
+    $stmt = $conn->prepare("SELECT t.*, p.plan_name, p.max_ratings, p.max_customers FROM tenants t LEFT JOIN subscription_plans p ON t.plan_id=p.id WHERE t.id=?");
+    $stmt->bind_param('i', $tenant_id); $stmt->execute(); $tenant_info = $stmt->get_result()->fetch_assoc();
+    $stmt = $conn->prepare("SELECT COUNT(*) count FROM customers WHERE tenant_id=?"); $stmt->bind_param('i',$tenant_id); $stmt->execute(); $total_customers=$stmt->get_result()->fetch_assoc()['count'] ?? 0;
+    $stmt = $conn->prepare("SELECT COUNT(*) count, AVG(r.rating) avg_rating FROM ratings r JOIN customers c ON r.company_id=c.id WHERE c.tenant_id=?"); $stmt->bind_param('i',$tenant_id); $stmt->execute(); $rr=$stmt->get_result()->fetch_assoc();
+    $total_ratings=$rr['count']??0; $avg_rating=round($rr['avg_rating']??0,1);
+    $stmt = $conn->prepare("SELECT r.*,c.company_name FROM ratings r JOIN customers c ON r.company_id=c.id WHERE c.tenant_id=? ORDER BY r.created_at DESC LIMIT 5"); $stmt->bind_param('i',$tenant_id); $stmt->execute(); $recent_ratings=$stmt->get_result();
+    $stmt = $conn->prepare("SELECT id,company_name FROM customers WHERE tenant_id=? ORDER BY company_name"); $stmt->bind_param('i',$tenant_id); $stmt->execute(); $tenant_companies=$stmt->get_result();
 } else {
-    // Global admin view
-    $total_customers = $conn->query("SELECT COUNT(*) as count FROM customers")->fetch_assoc()['count'] ?? 0;
-    $rating_res = $conn->query("SELECT COUNT(*) as count, AVG(rating) as avg_rating FROM ratings")->fetch_assoc();
-    $total_ratings = $rating_res['count'] ?? 0;
-    $avg_rating = round($rating_res['avg_rating'] ?? 0, 1);
-
-    $recent_ratings = $conn->query("SELECT r.*, c.company_name FROM ratings r JOIN customers c ON r.company_id = c.id ORDER BY r.created_at DESC LIMIT 5");
-    $tenant_companies = $conn->query("SELECT id, company_name FROM customers ORDER BY company_name ASC");
+    $total_customers=$conn->query('SELECT COUNT(*) count FROM customers')->fetch_assoc()['count']??0;
+    $rr=$conn->query('SELECT COUNT(*) count,AVG(rating) avg_rating FROM ratings')->fetch_assoc(); $total_ratings=$rr['count']??0; $avg_rating=round($rr['avg_rating']??0,1);
+    $recent_ratings=$conn->query('SELECT r.*,c.company_name FROM ratings r JOIN customers c ON r.company_id=c.id ORDER BY r.created_at DESC LIMIT 5');
+    $tenant_companies=$conn->query('SELECT id,company_name FROM customers ORDER BY company_name');
 }
-
-$robots    = 'noindex, nofollow';
-
-$pageTitle = 'Dashboard - Optibiz';
-$extraCss = ['/assets/css/auth.css'];
-include dirname(__DIR__) . '/includes/header.php';
+$robots='noindex, nofollow'; $pageTitle='Dashboard - Optibiz'; $extraCss=['/assets/css/auth.css','/assets/css/admin-dashboard.css']; include dirname(__DIR__).'/includes/header.php';
 ?>
-
-<div style="background:#f8fafc;min-height:100vh;font-family:'Plus Jakarta Sans',sans-serif;">
-    <!-- Top Nav -->
-    <header style="background:#0a1926;color:white;padding:16px 5%;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);">
-        <div style="display:flex;align-items:center;gap:12px;">
-            <a href="index.php" style="color:white;text-decoration:none;font-size:22px;font-weight:800;letter-spacing:-0.5px;display:flex;align-items:center;gap:8px;">
-                <span style="width:28px;height:28px;background:#c2f542;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#0a1926;font-size:14px;font-weight:900;">★</span>
-                Optibiz
-            </a>
-            <span style="background:rgba(255,255,255,0.12);padding:4px 12px;border-radius:20px;font-size:12px;color:#c2f542;font-weight:600;">
-                <?php echo $is_tenant ? htmlspecialchars($tenant_info['company_name'] ?? 'Tenant Portal') : 'Global Admin'; ?>
-            </span>
-            <?php if ($is_tenant && !empty($tenant_info['plan_name'])): ?>
-                <span style="background:rgba(194,245,66,0.2);color:#c2f542;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;text-transform:uppercase;">
-                    <?php echo htmlspecialchars($tenant_info['plan_name']); ?> Plan
-                </span>
-            <?php endif; ?>
-        </div>
-
-        <nav style="display:flex;align-items:center;gap:20px;">
-            <a href="index.php" style="color:#c2f542;text-decoration:none;font-size:14px;font-weight:600;">Dashboard</a>
-            <a href="customers.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Companies / Branches</a>
-            <a href="ratings.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Ratings &amp; Reviews</a>
-            <a href="categories.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Categories</a>
-            <a href="settings.php" style="color:#cbd5e1;text-decoration:none;font-size:14px;font-weight:500;">Settings</a>
-            <a href="logout.php" style="background:rgba(239,68,68,0.2);color:#f87171;padding:6px 14px;border-radius:20px;text-decoration:none;font-size:13px;font-weight:600;">Logout</a>
-        </nav>
-    </header>
-
-    <!-- Main Container -->
-    <main style="max-width:1240px;margin:30px auto;padding:0 20px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;">
-            <div>
-                <h1 style="font-size:28px;font-weight:800;color:#0f172a;margin-bottom:4px;">
-                    Welcome back, <?php echo htmlspecialchars($is_tenant ? ($tenant_info['company_name'] ?? 'Tenant') : ($_SESSION['admin_username'] ?? 'Admin')); ?>!
-                </h1>
-                <p style="color:#64748b;font-size:14px;">Here is an overview of your feedback and ratings performance.</p>
-            </div>
-            <div style="display:flex;gap:12px;">
-                <a href="customers.php" style="background:#0a1926;color:white;padding:10px 20px;border-radius:10px;text-decoration:none;font-size:14px;font-weight:700;display:inline-flex;align-items:center;gap:8px;">
-                    + Add Company / Branch
-                </a>
-            </div>
-        </div>
-
-        <!-- Metrics Grid -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:20px;margin-bottom:30px;">
-            <div style="background:white;padding:24px;border-radius:16px;box-shadow:0 4px 15px rgba(0,0,0,0.03);border:1px solid #e2e8f0;">
-                <div style="font-size:13px;color:#64748b;font-weight:600;margin-bottom:8px;text-transform:uppercase;">Total Companies</div>
-                <div style="font-size:36px;font-weight:800;color:#0f172a;"><?php echo number_format($total_customers); ?></div>
-                <?php if ($is_tenant && !empty($tenant_info['max_customers'])): ?>
-                    <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Limit: <?php echo $total_customers; ?> / <?php echo $tenant_info['max_customers']; ?> allowed</div>
-                <?php endif; ?>
-            </div>
-
-            <div style="background:white;padding:24px;border-radius:16px;box-shadow:0 4px 15px rgba(0,0,0,0.03);border:1px solid #e2e8f0;">
-                <div style="font-size:13px;color:#64748b;font-weight:600;margin-bottom:8px;text-transform:uppercase;">Total Reviews</div>
-                <div style="font-size:36px;font-weight:800;color:#0f172a;"><?php echo number_format($total_ratings); ?></div>
-                <?php if ($is_tenant && !empty($tenant_info['max_ratings'])): ?>
-                    <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Limit: <?php echo $total_ratings; ?> / <?php echo $tenant_info['max_ratings']; ?> ratings</div>
-                <?php endif; ?>
-            </div>
-
-            <div style="background:white;padding:24px;border-radius:16px;box-shadow:0 4px 15px rgba(0,0,0,0.03);border:1px solid #e2e8f0;">
-                <div style="font-size:13px;color:#64748b;font-weight:600;margin-bottom:8px;text-transform:uppercase;">Average Score</div>
-                <div style="font-size:36px;font-weight:800;color:#0f172a;display:flex;align-items:center;gap:8px;">
-                    <?php echo $avg_rating; ?>
-                    <span style="color:#f59e0b;font-size:24px;">★</span>
-                </div>
-                <div style="font-size:12px;color:#10b981;font-weight:600;margin-top:4px;">Based on verified feedback</div>
-            </div>
-
-            <div style="background:white;padding:24px;border-radius:16px;box-shadow:0 4px 15px rgba(0,0,0,0.03);border:1px solid #e2e8f0;">
-                <div style="font-size:13px;color:#64748b;font-weight:600;margin-bottom:8px;text-transform:uppercase;">Subscription Status</div>
-                <div style="font-size:22px;font-weight:800;color:#10b981;text-transform:capitalize;">
-                    <?php echo htmlspecialchars($tenant_info['subscription_status'] ?? 'Active'); ?>
-                </div>
-                <div style="font-size:12px;color:#64748b;margin-top:6px;">
-                    <?php echo $is_tenant ? 'Auto-renew active' : 'Platform Administrator'; ?>
-                </div>
-            </div>
-        </div>
-
-        <!-- Two Column Layout: Rating Links & Recent Reviews -->
-        <div style="display:grid;grid-template-columns:1fr 1.6fr;gap:24px;">
-            <!-- Public Rating Links Box -->
-            <div style="background:white;padding:24px;border-radius:16px;box-shadow:0 4px 15px rgba(0,0,0,0.03);border:1px solid #e2e8f0;">
-                <h3 style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:16px;">Your Public Rating Links</h3>
-                <p style="font-size:13px;color:#64748b;margin-bottom:16px;">Share these links with your clients or print them as QR codes to collect feedback.</p>
-
-                <?php if ($tenant_companies && $tenant_companies->num_rows > 0): ?>
-                    <div style="display:flex;flex-direction:column;gap:12px;">
-                        <?php while ($tc = $tenant_companies->fetch_assoc()): 
-                            $rateUrl = $assetBase . "/rate/index.php?company=" . $tc['id'];
-                        ?>
-                            <div style="background:#f8fafc;padding:12px 14px;border-radius:10px;border:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
-                                <div>
-                                    <div style="font-weight:700;font-size:14px;color:#0f172a;"><?php echo htmlspecialchars($tc['company_name']); ?></div>
-                                    <div style="font-size:12px;color:#94a3b8;"><?php echo $rateUrl; ?></div>
-                                </div>
-                                <div style="display:flex;gap:8px;">
-                                    <a href="<?php echo $rateUrl; ?>" target="_blank" style="background:#0a1926;color:white;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">View</a>
-                                </div>
-                            </div>
-                        <?php endwhile; ?>
-                    </div>
-                <?php else: ?>
-                    <div style="padding:20px;text-align:center;color:#94a3b8;font-size:14px;">
-                        No companies registered yet. <a href="customers.php" style="color:#0a1926;font-weight:700;">Add your first company</a>.
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <!-- Recent Reviews -->
-            <div style="background:white;padding:24px;border-radius:16px;box-shadow:0 4px 15px rgba(0,0,0,0.03);border:1px solid #e2e8f0;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <h3 style="font-size:18px;font-weight:700;color:#0f172a;">Recent Ratings &amp; Reviews</h3>
-                    <a href="ratings.php" style="font-size:13px;color:#0a1926;font-weight:700;text-decoration:none;">View all &rarr;</a>
-                </div>
-
-                <?php if ($recent_ratings && $recent_ratings->num_rows > 0): ?>
-                    <div style="display:flex;flex-direction:column;gap:12px;">
-                        <?php while ($r = $recent_ratings->fetch_assoc()): ?>
-                            <div style="background:#f8fafc;padding:14px;border-radius:10px;border:1px solid #e2e8f0;">
-                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                                    <div style="font-weight:700;font-size:14px;color:#0f172a;">
-                                        <?php echo htmlspecialchars($r['customer_name']); ?>
-                                        <span style="font-weight:400;color:#64748b;font-size:12px;">for <?php echo htmlspecialchars($r['company_name']); ?></span>
-                                    </div>
-                                    <div style="color:#f59e0b;font-weight:700;font-size:13px;">
-                                        <?php for ($i=0; $i<$r['rating']; $i++) echo '★'; ?>
-                                        <span style="color:#0f172a;margin-left:4px;"><?php echo $r['rating']; ?>.0</span>
-                                    </div>
-                                </div>
-                                <p style="font-size:13px;color:#475569;margin:0;line-height:1.4;">
-                                    "<?php echo htmlspecialchars($r['comment'] ?: 'No comment left.'); ?>"
-                                </p>
-                                <div style="font-size:11px;color:#94a3b8;margin-top:6px;">
-                                    <?php echo date('M d, Y - h:i A', strtotime($r['created_at'])); ?>
-                                </div>
-                            </div>
-                        <?php endwhile; ?>
-                    </div>
-                <?php else: ?>
-                    <div style="padding:40px 20px;text-align:center;color:#94a3b8;font-size:14px;">
-                        No ratings received yet. Share your rating link to collect reviews!
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-    </main>
-</div>
-
-</body>
-</html>
+<div class="admin-app">
+<aside class="admin-sidebar">
+  <a class="admin-brand" href="index.php"><span class="brand-mark">★</span><span><b>Optibiz</b><small>Admin workspace</small></span></a>
+  <div class="nav-caption">Workspace</div>
+  <nav>
+   <a class="active" href="index.php"><span>▦</span>Dashboard</a><a href="customers.php"><span>⌂</span>Companies</a><a href="ratings.php"><span>☆</span>Ratings &amp; Reviews</a><a href="categories.php"><span>◈</span>Categories</a>
+  </nav>
+  <div class="nav-caption">Manage</div><nav><a href="settings.php"><span>⚙</span>Settings</a></nav>
+  <div class="sidebar-bottom"><div class="mini-avatar"><?php echo htmlspecialchars(strtoupper(substr($_SESSION['admin_username']??'A',0,1))); ?></div><div><strong><?php echo htmlspecialchars($_SESSION['admin_username']??'Admin'); ?></strong><small><?php echo $is_tenant?'Workspace admin':'Global administrator'; ?></small></div><a href="logout.php" title="Log out">↪</a></div>
+</aside>
+<section class="admin-main">
+ <header class="admin-topbar"><button class="mobile-menu" aria-label="Open menu">☰</button><div class="crumb">Overview <b>/</b> <strong>Dashboard</strong></div><div class="top-actions"><span class="status-dot">● Live data</span><a href="settings.php" class="icon-button">⚙</a><a href="logout.php" class="logout-link">Log out</a></div></header>
+ <main class="dashboard-content">
+  <div class="welcome-row"><div><p class="eyebrow">Good morning, <?php echo htmlspecialchars($is_tenant?($tenant_info['company_name']??'there'):($_SESSION['admin_username']??'Admin')); ?></p><h1>Performance overview</h1><p class="muted">Track your customer feedback and business health in one place.</p></div><a class="primary-button" href="customers.php">＋ Add company</a></div>
+  <div class="metric-grid">
+   <div class="metric-card"><div class="metric-icon blue">⌂</div><span>Total companies</span><strong><?php echo number_format($total_customers); ?></strong><small>Active locations</small></div>
+   <div class="metric-card"><div class="metric-icon purple">☆</div><span>Total reviews</span><strong><?php echo number_format($total_ratings); ?></strong><small>All-time feedback</small></div>
+   <div class="metric-card"><div class="metric-icon amber">★</div><span>Average score</span><strong><?php echo $avg_rating; ?><i>/ 5.0</i></strong><small class="positive">↑ Customer satisfaction</small></div>
+   <div class="metric-card"><div class="metric-icon green">✓</div><span>Account status</span><strong class="active-text"><?php echo htmlspecialchars($tenant_info['subscription_status']??'Active'); ?></strong><small><?php echo $is_tenant?'Subscription is healthy':'Platform administrator'; ?></small></div>
+  </div>
+  <div class="chart-grid">
+   <section class="panel performance-panel"><div class="panel-head"><div><h2>Ratings performance</h2><p class="muted">Review volume and customer sentiment over time</p></div><select aria-label="Chart period"><option>Last 7 months</option><option>Last 30 days</option></select></div>
+    <div class="chart-legend"><span><i class="legend-line lime"></i> Reviews</span><span><i class="legend-line blue-line"></i> Average score</span></div>
+    <div class="chart"><div class="y-labels"><span>5.0</span><span>4.0</span><span>3.0</span><span>2.0</span><span>1.0</span></div><div class="chart-area"><div class="grid-lines"><i></i><i></i><i></i><i></i><i></i></div><svg viewBox="0 0 700 220" preserveAspectRatio="none" role="img" aria-label="Ratings performance trend"><defs><linearGradient id="fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#c2f542" stop-opacity=".28"/><stop offset="1" stop-color="#c2f542" stop-opacity="0"/></linearGradient></defs><path class="area" d="M0,164 C70,150 82,176 140,137 S220,126 280,132 S350,80 420,92 S500,105 560,58 S640,72 700,28 V220 H0Z"/><path class="trend lime-stroke" d="M0,164 C70,150 82,176 140,137 S220,126 280,132 S350,80 420,92 S500,105 560,58 S640,72 700,28"/><path class="trend blue-stroke" d="M0,178 C70,170 90,160 140,154 S220,168 280,142 S350,137 420,128 S500,144 560,112 S640,122 700,94"/></svg><div class="x-labels"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span></div></div></div>
+   </section>
+   <section class="panel score-panel"><div class="panel-head"><div><h2>Score breakdown</h2><p class="muted">How customers rate you</p></div><span class="total-score"><?php echo $avg_rating; ?> <b>★</b></span></div><?php $bars=[['5 stars',72,'#c2f542'],['4 stars',18,'#7dd3fc'],['3 stars',6,'#fbbf24'],['2 stars',3,'#fb923c'],['1 star',1,'#f87171']]; foreach($bars as $bar): ?><div class="score-row"><span><?php echo $bar[0]; ?></span><div><i style="width:<?php echo $bar[1]; ?>%;background:<?php echo $bar[2]; ?>"></i></div><b><?php echo $bar[1]; ?>%</b></div><?php endforeach; ?><a class="panel-link" href="ratings.php">View all reviews →</a></section>
+  </div>
+  <div class="bottom-grid"><section class="panel recent-panel"><div class="panel-head"><div><h2>Recent reviews</h2><p class="muted">The latest feedback from your customers</p></div><a class="panel-link" href="ratings.php">View all →</a></div><?php if($recent_ratings && $recent_ratings->num_rows): while($r=$recent_ratings->fetch_assoc()): ?><div class="review-row"><div class="review-avatar"><?php echo htmlspecialchars(strtoupper(substr($r['customer_name']??'C',0,1))); ?></div><div class="review-body"><strong><?php echo htmlspecialchars($r['customer_name']); ?></strong><small><?php echo htmlspecialchars($r['company_name']); ?> · <?php echo date('M d, Y',strtotime($r['created_at'])); ?></small><p><?php echo htmlspecialchars($r['comment']?:'No comment provided.'); ?></p></div><span class="review-stars"><?php echo str_repeat('★',(int)$r['rating']); ?> <b><?php echo $r['rating']; ?>.0</b></span></div><?php endwhile; else: ?><div class="empty-state">No reviews received yet.</div><?php endif; ?></section>
+   <section class="panel links-panel"><div class="panel-head"><div><h2>Public rating links</h2><p class="muted">Share and collect feedback</p></div></div><?php if($tenant_companies && $tenant_companies->num_rows): $shown=0; while($c=$tenant_companies->fetch_assoc()): if($shown++>=4) break; $url=$assetBase.'/rate/index.php?company='.$c['id']; ?><div class="link-row"><span class="link-icon">↗</span><div><strong><?php echo htmlspecialchars($c['company_name']); ?></strong><small><?php echo htmlspecialchars($url); ?></small></div><a href="<?php echo $url; ?>" target="_blank">View</a></div><?php endwhile; else: ?><div class="empty-state">Add a company to create rating links.</div><?php endif; ?></section>
+  </div>
+ </main>
+</section></div><script>document.querySelector('.mobile-menu')?.addEventListener('click',()=>document.querySelector('.admin-sidebar').classList.toggle('open'));</script></body></html>
