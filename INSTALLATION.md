@@ -122,6 +122,38 @@ Open your browser and navigate to:
    - Username: `xyz_industries`
    - Password: `admin123`
 
+## Workspace pages (tenant admin)
+
+The workspace sidebar has three data-driven screens beyond the dashboard and
+the ratings list:
+
+| Page | What it does |
+| --- | --- |
+| `admin/analysis.php` | Growth and progress analysis of the responses: volume and score trends against the previous period, per-company momentum (improving / steady / slipping), keyword themes pulled from the comments, and generated next actions. Filter by company and by 30 / 90 / 180 / 365 days. |
+| `admin/social.php` | Turns review comments into social posts. Pick a review, Optibiz drafts a caption for Facebook, Instagram, LinkedIn or X, then publishes through that network's API (or keeps it as a draft). Every attempt is logged in the post library. |
+| `admin/subscription.php` | The workspace's own plan, live usage against its limits, all available plans and an upgrade/downgrade request. Requests appear in `superadmin/subscriptions.php`, where approving one applies the new plan and price. |
+
+### Social network credentials
+
+`admin/social.php` posts through the official HTTP APIs, so each network needs a
+token pasted into its connection card (stored per workspace in
+`social_accounts`, never displayed again in full):
+
+- **Facebook Page** — Page ID + long-lived Page token with `pages_manage_posts`
+- **Instagram Business** — IG user ID + Page token with `instagram_content_publish`
+- **LinkedIn Page** — organisation URN/ID + OAuth 2 token with `w_organization_social`
+- **X (Twitter)** — OAuth 2 user token with `tweet.write`
+
+Use the **Test** button on a card to validate a token before posting. Without a
+token the composer still works — save the draft, copy the text or use the share
+window. The PHP `curl` extension must be enabled for live publishing.
+
+### New tables
+
+`subscription_requests`, `social_accounts` and `social_posts` are part of
+`database.sql`. An existing installation does not need a manual migration: the
+pages create the tables on first load if they are missing.
+
 ## Troubleshooting
 
 ### Database Connection Error

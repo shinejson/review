@@ -11,9 +11,12 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/sa_helpers.php';
+require_once dirname(__DIR__) . '/includes/admin_helpers.php';
 
 requireSuperAdminLogin();
 require_sa_permission('subscriptions');
+
+admin_ensure_schema($conn);
 
 /* ---------- POST handlers ---------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -23,6 +26,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $action = isset($_POST['action']) ? $_POST['action'] : '';
     $id = (int) ($_POST['tenant_id'] ?? 0);
+
+    /* ---- plan change requests filed from a workspace ---- */
+    if ($action === 'approve_request' || $action === 'decline_request') {
+        $request_id = (int) ($_POST['request_id'] ?? 0);
+        $request = admin_row(
+            $conn,
+            "SELECT * FROM subscription_requests WHERE id = " . $request_id . " AND status = 'pending' LIMIT 1"
+        );
+        if (!$request) {
+            sa_flash('error', 'That request has already been handled.');
+            redirect('subscriptions.php');
+        }
+
+        if ($action === 'decline_request') {
+            $stmt = $conn->prepare("UPDATE subscription_requests SET status = 'declined', resolved_at = NOW() WHERE id = ?");
+            $stmt->bind_param('i', $request_id);
+            $stmt->execute();
+            $stmt->close();
+            sa_flash('success', 'Plan change declined.');
+            redirect('subscriptions.php');
+        }
+
+        $plan = admin_row(
+            $conn,
+            "SELECT * FROM subscription_plans WHERE id = " . (int) $request['requested_plan_id'] . " LIMIT 1"
+        );
+        if (!$plan) {
+            sa_flash('error', 'The requested plan no longer exists.');
+            redirect('subscriptions.php');
+        }
+
+        $stmt = $conn->prepare(
+            "UPDATE tenants
+                SET plan_id = ?, subscription_price = ?, subscription_status = 'active'
+              WHERE id = ?"
+        );
+        $plan_id = (int) $plan['id'];
+        $price   = (float) $plan['price'];
+        $tid     = (int) $request['tenant_id'];
+        $stmt->bind_param('idi', $plan_id, $price, $tid);
+        $stmt->execute();
+        $stmt->close();
+
+        $stmt = $conn->prepare("UPDATE subscription_requests SET status = 'approved', resolved_at = NOW() WHERE id = ?");
+        $stmt->bind_param('i', $request_id);
+        $stmt->execute();
+        $stmt->close();
+
+        sa_flash('success', 'Tenant moved to the ' . $plan['plan_name'] . ' plan.');
+        redirect('subscriptions.php');
+    }
 
     if ($action === 'auto_renew' && $id) {
         $on = !empty($_POST['auto_renew']) ? 1 : 0;
@@ -100,6 +154,20 @@ $due_count = (int) sa_scalar(
     'tenants'
 );
 $auto_renew_on = (int) sa_scalar($conn, "SELECT COUNT(*) FROM tenants WHERE auto_renew = 1", 0, 'tenants');
+
+/* Plan changes workspaces asked for (admin/subscription.php) */
+$plan_requests = admin_rows(
+    $conn,
+    "SELECT sr.*, t.company_name, t.email,
+            p.plan_name AS requested_plan_name, p.price AS requested_price,
+            cp.plan_name AS current_plan_name, cp.price AS current_price
+       FROM subscription_requests sr
+       LEFT JOIN tenants t ON t.id = sr.tenant_id
+       LEFT JOIN subscription_plans p ON p.id = sr.requested_plan_id
+       LEFT JOIN subscription_plans cp ON cp.id = sr.current_plan_id
+      WHERE sr.status = 'pending'
+      ORDER BY sr.created_at ASC"
+);
 $mrr_visible = 0.0;
 foreach ($rows as $r) {
     if ($r['subscription_status'] === 'active') {
@@ -182,6 +250,62 @@ include __DIR__ . '/_shell.php';
         <div class="sa-kpi-note"><?php echo sa_e(number_format(sa_pct($auto_renew_on, $counts['all'], 0))); ?>% of all tenants</div>
     </article>
 </div>
+
+<!-- ============ PLAN CHANGE REQUESTS ============ -->
+<?php if ($plan_requests): ?>
+<section class="sa-card sa-mb">
+    <div class="sa-card-head">
+        <div>
+            <h3>Plan change requests</h3>
+            <p><?php echo sa_e(sa_num(count($plan_requests))); ?> workspace<?php echo count($plan_requests) === 1 ? '' : 's'; ?>
+               asked to move plan. Approving applies the new plan and price immediately.</p>
+        </div>
+    </div>
+
+    <div class="sa-table-wrap">
+        <table class="sa-table">
+            <thead>
+                <tr>
+                    <th scope="col">Tenant</th>
+                    <th scope="col">From</th>
+                    <th scope="col">To</th>
+                    <th scope="col">Price change</th>
+                    <th scope="col">Requested</th>
+                    <th scope="col"><span class="sa-sr-only">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+<?php foreach ($plan_requests as $req): ?>
+                <tr>
+                    <td>
+                        <div class="sa-cell-text">
+                            <strong><?php echo sa_e($req['company_name'] ?? 'Unknown workspace'); ?></strong>
+                            <span><?php echo sa_e($req['email'] ?? ''); ?></span>
+                        </div>
+                    </td>
+                    <td><?php echo sa_e($req['current_plan_name'] ?? '—'); ?></td>
+                    <td><strong><?php echo sa_e($req['requested_plan_name'] ?? '—'); ?></strong></td>
+                    <td>
+                        <?php echo sa_e(sa_money((float) ($req['current_price'] ?? 0))); ?>
+                        &rarr;
+                        <strong><?php echo sa_e(sa_money((float) ($req['requested_price'] ?? 0))); ?></strong>
+                    </td>
+                    <td><?php echo sa_date($req['created_at']); ?></td>
+                    <td>
+                        <form method="POST" style="display:inline-flex;gap:8px;align-items:center">
+                            <?php echo sa_csrf_field(); ?>
+                            <input type="hidden" name="request_id" value="<?php echo (int) $req['id']; ?>">
+                            <button type="submit" name="action" value="approve_request" class="sa-btn sa-btn-primary sa-btn-sm">Approve</button>
+                            <button type="submit" name="action" value="decline_request" class="sa-btn sa-btn-ghost sa-btn-sm">Decline</button>
+                        </form>
+                    </td>
+                </tr>
+<?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</section>
+<?php endif; ?>
 
 <!-- ============ FILTER CHIPS ============ -->
 <section class="sa-card sa-mb">

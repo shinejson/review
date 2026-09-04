@@ -180,3 +180,56 @@ CREATE TABLE IF NOT EXISTS quote_requests (
     FOREIGN KEY (category_id) REFERENCES categories(id),
     FOREIGN KEY (plan_id) REFERENCES subscription_plans(id)
 );
+
+-- Plan change requests filed from the workspace (admin/subscription.php)
+-- and approved by the platform owner (superadmin/subscriptions.php).
+CREATE TABLE IF NOT EXISTS subscription_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    current_plan_id INT NULL,
+    requested_plan_id INT NOT NULL,
+    direction ENUM('upgrade', 'downgrade', 'same') DEFAULT 'upgrade',
+    note TEXT NULL,
+    status ENUM('pending', 'approved', 'declined', 'cancelled') DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME NULL,
+    INDEX idx_sub_req_tenant (tenant_id),
+    INDEX idx_sub_req_status (status),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (requested_plan_id) REFERENCES subscription_plans(id)
+);
+
+-- Social network credentials per workspace (admin/social.php).
+-- One row per platform; the access token is supplied by the workspace
+-- owner from the network's developer console.
+CREATE TABLE IF NOT EXISTS social_accounts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    platform VARCHAR(30) NOT NULL,
+    account_name VARCHAR(150) NULL,
+    account_ref VARCHAR(190) NULL,
+    access_token TEXT NULL,
+    status ENUM('connected', 'disabled') DEFAULT 'connected',
+    last_error TEXT NULL,
+    last_used_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_tenant_platform (tenant_id, platform)
+);
+
+-- Every post drafted or published from a review (admin/social.php)
+CREATE TABLE IF NOT EXISTS social_posts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    company_id INT NULL,
+    rating_id INT NULL,
+    platform VARCHAR(30) NOT NULL,
+    content TEXT NOT NULL,
+    status ENUM('draft', 'published', 'failed') DEFAULT 'draft',
+    remote_id VARCHAR(190) NULL,
+    remote_url VARCHAR(255) NULL,
+    error TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    published_at DATETIME NULL,
+    INDEX idx_social_posts_tenant (tenant_id),
+    INDEX idx_social_posts_status (status)
+);

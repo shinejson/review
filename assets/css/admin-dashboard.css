@@ -974,3 +974,199 @@ nav a .nav-label{font-size:13px;width:auto;font-weight:600;color:inherit;line-he
 }
 
 
+/* ============================================================
+   Workspace pages — Analysis, Social, Subscription
+   ============================================================ */
+
+/* Deltas, badges and chips */
+.admin-delta{font-weight:800;font-size:10px;letter-spacing:.2px}
+.admin-delta.is-up{color:#2caa6b}
+.admin-delta.is-down{color:#e05252}
+.admin-delta.is-flat{color:#9aa7b4}
+.admin-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;line-height:1.4;border:1px solid transparent;white-space:nowrap}
+.admin-badge.is-good{background:#e2f8ed;color:#18794e;border-color:#bcecd4}
+.admin-badge.is-info{background:#e4f1ff;color:#1f6fb8;border-color:#c5e0f8}
+.admin-badge.is-warn{background:#fff4de;color:#9a6212;border-color:#f6e0b4}
+.admin-badge.is-bad{background:#fdeaea;color:#a52c2c;border-color:#f7cccc}
+.admin-badge.is-neutral{background:#f1f5f9;color:#5a6b7c;border-color:#e2e8f0}
+.admin-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;background:#f1f5f9;color:#475569;font-size:11px;font-weight:700;border:1px solid #e2e8f0}
+.admin-chip b{font-weight:800;color:#0f172a}
+.admin-chip.is-good{background:#eef8dd;color:#4e7113;border-color:#dcecc0}
+.admin-chip.is-good b{color:#3d5a0d}
+.admin-chip.is-bad{background:#fdeaea;color:#a52c2c;border-color:#f7cccc}
+.admin-chip.is-bad b{color:#7f1d1d}
+.admin-chips{display:flex;flex-wrap:wrap;gap:8px}
+
+/* Keyword blocks */
+.admin-keyword-block{margin-bottom:18px}
+.admin-keyword-block h4,.admin-subhead{font-size:12px;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:.6px;margin:0 0 10px}
+
+/* Insight rows */
+.admin-insight{display:flex;gap:11px;align-items:flex-start;padding:13px 0;border-top:1px solid #eff2f5}
+.admin-insight:first-of-type{border-top:0}
+.admin-insight strong{display:block;font-size:13px;color:#0f172a;margin-bottom:3px}
+.admin-insight p{margin:0;font-size:12px;color:#657789;line-height:1.5}
+.admin-insight-dot{flex:none;width:9px;height:9px;border-radius:50%;margin-top:5px;background:#94a3b8}
+.admin-insight.is-good .admin-insight-dot{background:#2caa6b}
+.admin-insight.is-warn .admin-insight-dot{background:#e8a33d}
+.admin-insight.is-info .admin-insight-dot{background:#4d8fd6}
+
+/* Small stat strip inside a panel */
+.admin-stat-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid #eff2f5}
+.admin-stat-strip span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:#8b9aa8;font-weight:700}
+.admin-stat-strip strong{display:block;font-size:16px;color:#0f172a;margin-top:3px}
+
+/* Mini progress bar inside table cells */
+.admin-mini-bar{width:90px;height:6px;border-radius:6px;background:#edf1f4;overflow:hidden}
+.admin-mini-bar i{display:block;height:100%;border-radius:6px;background:#c2f542}
+
+/* Scrollable tables */
+.admin-table-wrap{width:100%;overflow-x:auto}
+
+/* Card heads that sit above a table */
+.admin-card-head{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 20px;border-bottom:1px solid #e2e8f0}
+.admin-card-head h3{margin:0;font-size:16px;font-weight:700;color:#0f172a}
+.admin-card-head p{margin:3px 0 0}
+
+/* Page header stat cluster */
+.admin-head-stats{display:flex;gap:22px}
+.admin-head-stats strong{display:block;font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-.5px}
+.admin-head-stats span{font-size:11px;color:#8b9aa8;font-weight:600}
+
+/* Usage meters */
+.admin-meter{margin-bottom:18px}
+.admin-meter-head{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:#475569;margin-bottom:7px}
+.admin-meter-head strong{font-weight:800;color:#0f172a}
+.admin-meter-track{height:9px;border-radius:9px;background:#edf1f4;overflow:hidden}
+.admin-meter-track i{display:block;height:100%;border-radius:9px;background:#8fd13f;transition:width .3s ease}
+.admin-meter.is-warning .admin-meter-track i{background:#f0b429}
+.admin-meter.is-critical .admin-meter-track i{background:#ef4444}
+.admin-meter small{display:block;margin-top:6px;font-size:11px;color:#8b9aa8}
+
+/* Inline form row (auto-renew switch) */
+.admin-inline-form{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:6px;font-size:13px;color:#475569}
+.admin-inline-form strong{color:#0f172a}
+
+/* Pending request banner */
+.admin-pending-banner{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;background:linear-gradient(135deg,#0a1926,#1a3852);color:#e2e8f0;border-radius:14px;padding:18px 22px;margin-bottom:24px}
+.admin-pending-banner strong{display:block;color:#c2f542;font-size:15px;margin-bottom:4px}
+.admin-pending-banner p{margin:0;font-size:12px;color:#a9b8c6}
+
+/* Plan cards */
+.admin-plan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
+.admin-plan{border:1px solid #e2e8f0;border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:12px;background:#fff;transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease}
+.admin-plan:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(24,44,68,.07)}
+.admin-plan.is-current{border-color:#c2f542;box-shadow:0 0 0 3px rgba(194,245,66,.18)}
+.admin-plan.is-upgrade{border-color:#bcd4ea}
+.admin-plan-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.admin-plan-head strong{font-size:16px;color:#0f172a;font-weight:800}
+.admin-plan-price{font-size:26px;font-weight:800;color:#0f172a;letter-spacing:-1px}
+.admin-plan-price span{font-size:12px;font-weight:500;color:#8b9aa8;margin-left:4px}
+.admin-plan-features{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;font-size:12px;color:#5b6b7c;flex:1}
+.admin-plan-features li{padding-left:16px;position:relative;line-height:1.45}
+.admin-plan-features li::before{content:"✓";position:absolute;left:0;color:#7fae1b;font-weight:800}
+.admin-plan-features b{color:#0f172a}
+.admin-plan .btn{width:100%;text-align:center}
+.admin-plan button[disabled]{opacity:.65;cursor:default}
+
+/* Social — composer */
+.admin-quote{background:#f7faf1;border:1px solid #e7f0d5;border-left:3px solid #c2f542;border-radius:10px;padding:14px 16px;margin-bottom:16px}
+.admin-quote p{margin:8px 0 6px;font-size:13px;color:#33475b;line-height:1.55}
+.admin-quote small{color:#8b9aa8;font-size:11px}
+.admin-platform-picker{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.admin-platform-tab{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:20px;border:1px solid #e2e8f0;background:#fff;color:#5b6b7c;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s ease}
+.admin-platform-tab:hover{border-color:#c2f542;color:#0f172a}
+.admin-platform-tab.is-active{background:#0a1926;border-color:#0a1926;color:#c2f542}
+.admin-platform-tab i{font-style:normal;font-weight:800}
+.admin-platform-tab em{font-style:normal;color:#3fbf74;font-size:9px}
+.admin-composer-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:11px;color:#8b9aa8;font-weight:700;margin-bottom:16px}
+.admin-composer-meta .is-over{color:#e05252}
+.admin-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.admin-actions form{display:inline}
+.admin-actions .btn{padding:10px 18px;font-size:13px}
+.admin-row-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.admin-row-actions form{display:inline}
+.admin-row-actions button{border:0;background:transparent;cursor:pointer;font-family:inherit}
+
+/* Social — review picker */
+.admin-scroll-list{max-height:430px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px}
+.admin-pick-row{display:flex;gap:11px;align-items:flex-start;padding:12px;border:1px solid #e9eef3;border-radius:11px;text-decoration:none;transition:all .15s ease}
+.admin-pick-row:hover{border-color:#c2f542;background:#fbfdf5}
+.admin-pick-row.is-active{border-color:#c2f542;background:#f7faf1;box-shadow:0 0 0 2px rgba(194,245,66,.18)}
+.admin-pick-row strong{display:block;font-size:12px;color:#0f172a}
+.admin-pick-row p{margin:4px 0;font-size:11px;color:#657789;line-height:1.45}
+.admin-pick-row small{font-size:10px;color:#9aa7b3}
+
+/* Social — connections */
+.admin-connection-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.admin-connection{border:1px solid #e2e8f0;border-radius:14px;padding:18px}
+.admin-connection.is-connected{border-color:#cfe4b6;background:#fcfef8}
+.admin-connection-head{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+.admin-connection-head strong{display:block;font-size:13px;color:#0f172a}
+.admin-connection-head small{display:block;font-size:11px;color:#8b9aa8}
+.admin-connection-head>.admin-badge{margin-left:auto}
+.admin-platform-mark{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#0a1926;color:#c2f542;font-weight:800;font-size:13px}
+.admin-connection .form-group{margin-bottom:12px}
+.admin-connection .form-group input{font-size:13px;padding:9px 12px}
+.admin-connection-error{margin:0 0 12px;font-size:11px;color:#a52c2c;background:#fdeaea;border:1px solid #f7cccc;border-radius:8px;padding:8px 10px;line-height:1.45}
+.admin-field-hint{display:block;margin-top:5px;font-size:11px;color:#8b9aa8;line-height:1.45}
+.admin-field-hint a{color:#0284c7;font-weight:600;text-decoration:none}
+
+/* ---- Dark mode ---- */
+:root[data-theme='dark'] .admin-badge.is-good{background:rgba(52,211,153,.14);color:#34d399;border-color:rgba(52,211,153,.28)}
+:root[data-theme='dark'] .admin-badge.is-info{background:rgba(96,165,250,.14);color:#7cb6f8;border-color:rgba(96,165,250,.28)}
+:root[data-theme='dark'] .admin-badge.is-warn{background:rgba(251,191,36,.14);color:#fbbf24;border-color:rgba(251,191,36,.28)}
+:root[data-theme='dark'] .admin-badge.is-bad{background:rgba(248,113,113,.14);color:#f87171;border-color:rgba(248,113,113,.28)}
+:root[data-theme='dark'] .admin-badge.is-neutral{background:rgba(255,255,255,.05);color:#94a3b8;border-color:rgba(255,255,255,.1)}
+:root[data-theme='dark'] .admin-chip{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1);color:#cbd5e1}
+:root[data-theme='dark'] .admin-chip b{color:#e2e8f0}
+:root[data-theme='dark'] .admin-chip.is-good{background:rgba(194,245,66,.12);color:#c2f542;border-color:rgba(194,245,66,.26)}
+:root[data-theme='dark'] .admin-chip.is-good b{color:#e2f8a8}
+:root[data-theme='dark'] .admin-chip.is-bad{background:rgba(248,113,113,.12);color:#f87171;border-color:rgba(248,113,113,.26)}
+:root[data-theme='dark'] .admin-chip.is-bad b{color:#fca5a5}
+:root[data-theme='dark'] .admin-keyword-block h4,:root[data-theme='dark'] .admin-subhead{color:#e2e8f0}
+:root[data-theme='dark'] .admin-insight{border-color:rgba(255,255,255,.06)}
+:root[data-theme='dark'] .admin-insight strong{color:#e2e8f0}
+:root[data-theme='dark'] .admin-insight p{color:#94a3b8}
+:root[data-theme='dark'] .admin-stat-strip{border-color:rgba(255,255,255,.06)}
+:root[data-theme='dark'] .admin-stat-strip strong{color:#e2e8f0}
+:root[data-theme='dark'] .admin-stat-strip span{color:#94a3b8}
+:root[data-theme='dark'] .admin-mini-bar{background:rgba(255,255,255,.08)}
+:root[data-theme='dark'] .admin-card-head{border-color:rgba(255,255,255,.08)}
+:root[data-theme='dark'] .admin-card-head h3{color:#e2e8f0}
+:root[data-theme='dark'] .admin-head-stats strong{color:#e2e8f0}
+:root[data-theme='dark'] .admin-meter-head{color:#94a3b8}
+:root[data-theme='dark'] .admin-meter-head strong{color:#e2e8f0}
+:root[data-theme='dark'] .admin-meter-track{background:rgba(255,255,255,.08)}
+:root[data-theme='dark'] .admin-meter small{color:#64748b}
+:root[data-theme='dark'] .admin-inline-form{color:#94a3b8}
+:root[data-theme='dark'] .admin-inline-form strong{color:#e2e8f0}
+:root[data-theme='dark'] .admin-plan{background:#0f1f2e;border-color:rgba(255,255,255,.08)}
+:root[data-theme='dark'] .admin-plan.is-current{border-color:var(--lime);box-shadow:0 0 0 3px rgba(194,245,66,.14)}
+:root[data-theme='dark'] .admin-plan-head strong,:root[data-theme='dark'] .admin-plan-price,:root[data-theme='dark'] .admin-plan-features b{color:#e2e8f0}
+:root[data-theme='dark'] .admin-plan-features{color:#94a3b8}
+:root[data-theme='dark'] .admin-quote{background:rgba(194,245,66,.06);border-color:rgba(194,245,66,.2);border-left-color:var(--lime)}
+:root[data-theme='dark'] .admin-quote p{color:#e2e8f0}
+:root[data-theme='dark'] .admin-platform-tab{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:#cbd5e1}
+:root[data-theme='dark'] .admin-platform-tab.is-active{background:var(--lime);border-color:var(--lime);color:#0a1926}
+:root[data-theme='dark'] .admin-pick-row{border-color:rgba(255,255,255,.08)}
+:root[data-theme='dark'] .admin-pick-row:hover,:root[data-theme='dark'] .admin-pick-row.is-active{background:rgba(194,245,66,.07);border-color:rgba(194,245,66,.3)}
+:root[data-theme='dark'] .admin-pick-row strong{color:#e2e8f0}
+:root[data-theme='dark'] .admin-pick-row p{color:#94a3b8}
+:root[data-theme='dark'] .admin-connection{border-color:rgba(255,255,255,.08)}
+:root[data-theme='dark'] .admin-connection.is-connected{background:rgba(194,245,66,.04);border-color:rgba(194,245,66,.22)}
+:root[data-theme='dark'] .admin-connection-head strong{color:#e2e8f0}
+:root[data-theme='dark'] .admin-connection-error{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.28);color:#fca5a5}
+:root[data-theme='dark'] .admin-field-hint{color:#64748b}
+:root[data-theme='dark'] .admin-field-hint a{color:var(--lime)}
+
+/* ---- Responsive ---- */
+@media(max-width:950px){.admin-head-stats{gap:16px}.admin-stat-strip{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){
+  .page-header .filter-form{width:100%;flex-wrap:wrap}
+  .page-header .filter-form select{flex:1;min-width:140px}
+  .admin-head-stats{width:100%;justify-content:space-between;gap:10px}
+  .admin-pending-banner{flex-direction:column;align-items:flex-start}
+  .admin-connection-grid,.admin-plan-grid{grid-template-columns:1fr}
+  .admin-actions .btn{flex:1;text-align:center}
+}
