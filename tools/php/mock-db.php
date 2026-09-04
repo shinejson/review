@@ -494,7 +494,7 @@ class MockMysqli
         if ($this->has($s, 'information_schema.tables')) {
             preg_match("/table_name = '([a-z_]+)'/i", $s, $m);
             $known = ['super_admins', 'subscription_plans', 'tenants', 'admins', 'categories', 'customers', 'ratings', 'settings', 'quote_requests',
-                      'subscription_requests', 'social_accounts', 'social_posts'];
+                      'subscription_requests', 'social_accounts', 'social_posts', 'user_sessions'];
             $c = (isset($m[1]) && in_array($m[1], $known, true)) ? 1 : 0;
             return [['c' => $c]];
         }
@@ -1272,6 +1272,84 @@ class MockMysqli
                     return (int) $r['tenant_id'] === $tid;
                 }));
             }
+            if (preg_match('/LIMIT (\d+)/i', $s, $m)) {
+                $rows = array_slice($rows, 0, (int) $m[1]);
+            }
+            return $rows;
+        }
+
+        /* ---- user sessions (sign-in tracking, includes/session.php) ---- */
+        if ($tbl === 'user_sessions') {
+            $rows = isset($D['user_sessions']) ? $D['user_sessions'] : [];
+
+            /* The suites can simulate a revocation issued from another
+               screen: the row the harness is signed in with comes back
+               closed, which must bounce it to the login screen. */
+            if (getenv('SA_SESSION_REVOKED') === '1') {
+                foreach ($rows as &$row) {
+                    if ($row['session_token'] === 'preview-session-token') {
+                        $row['logged_out_at'] = date('Y-m-d H:i:s');
+                        $row['logout_reason'] = 'revoked';
+                    }
+                }
+                unset($row);
+            }
+
+            $portal = null;
+            if (preg_match("/portal = '([a-z_]+)'/", $s, $m)) {
+                $portal = $m[1];                                    // literal (auth_session_counts)
+            } elseif ($this->has($s, 'portal = ?')) {
+                $portal = $values ? (string) $values[0] : null;     // prepared
+            }
+
+            $token = null;
+            if ($this->has($s, 'session_token = ?')) {
+                $token = $values ? (string) $values[0] : null;
+            } elseif (preg_match("/session_token = '([^']+)'/", $s, $m)) {
+                $token = $m[1];
+            }
+
+            $userId = null;
+            if ($this->has($s, 'user_id = ?')) {
+                $userId = isset($values[1]) ? (int) $values[1] : (isset($values[0]) ? (int) $values[0] : null);
+            } elseif (preg_match('/user_id = (\d+)/', $s, $m)) {
+                $userId = (int) $m[1];
+            }
+
+            /* SELECT user_id, COUNT(*) AS sessions … GROUP BY user_id */
+            if ($this->has($o, 'GROUP BY user_id')) {
+                $ids = [];
+                if (preg_match('/user_id IN \(([\d,\s]+)\)/', $s, $m)) {
+                    $ids = array_map('intval', array_map('trim', explode(',', $m[1])));
+                }
+                $counts = [];
+                foreach ($rows as $r) {
+                    if (!empty($r['logged_out_at'])) continue;
+                    if ($portal !== null && $r['portal'] !== $portal) continue;
+                    if ($ids && !in_array((int) $r['user_id'], $ids, true)) continue;
+                    $uid = (int) $r['user_id'];
+                    $counts[$uid] = isset($counts[$uid]) ? $counts[$uid] + 1 : 1;
+                }
+                $out = [];
+                foreach ($counts as $uid => $n) {
+                    $out[] = ['user_id' => $uid, 'sessions' => $n, 'COUNT(*)' => $n];
+                }
+                return $out;
+            }
+
+            $onlyLive = stripos($s, 'logged_out_at IS NULL') !== false;
+            $match = array_values(array_filter($rows, function ($r) use ($portal, $token, $userId, $onlyLive) {
+                if ($portal !== null && $r['portal'] !== $portal) return false;
+                if ($token !== null && $r['session_token'] !== $token) return false;
+                if ($userId !== null && (int) $r['user_id'] !== $userId) return false;
+                if ($onlyLive && !empty($r['logged_out_at'])) return false;
+                return true;
+            }));
+
+            if ($this->has($o, 'COUNT(*)')) {
+                return [['COUNT(*)' => count($match), 'c' => count($match)]];
+            }
+            $rows = array_map(function ($r) use ($s) { return $this->project($r, $s); }, $match);
             if (preg_match('/LIMIT (\d+)/i', $s, $m)) {
                 $rows = array_slice($rows, 0, (int) $m[1]);
             }

@@ -73,6 +73,7 @@ function copyDir(src, dest) {
 }
 
 let sessionSeq = 0;
+let logoutSeq = 0;
 function sessionDir() {
     const dir = path.join(os.tmpdir(), 'sa-adm-sess-' + process.pid + '-' + ++sessionSeq);
     fs.mkdirSync(dir, { recursive: true });
@@ -92,6 +93,9 @@ function runPhp(script, queryString, opts) {
         SA_ADMIN_ID: o.adminId ? String(o.adminId) : '1',
         SA_POST: o.post ? '1' : '',
         SA_BAD_CSRF: o.badCsrf ? '1' : '',
+        SA_SESSION_REVOKED: o.sessionRevoked ? '1' : '',
+        SA_LOGOUT_TOKEN: o.logoutToken || 'preview-logout-token',
+        SA_SESSION_DUMP: o.sessionDump || '',
         SA_SESSION_DIR: sessionDir(),
     });
     let html = '';
@@ -248,6 +252,121 @@ function main() {
         console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${label.padEnd(44)} ${ok ? describeOk : detail || 'unexpected response'}`);
         if (fatal) fail('fatal error: ' + (r.stderr || r.html).split('\n')[0].slice(0, 160));
         warnings.slice(0, 3).forEach(fail);
+    }
+
+    console.log('\nSign-out (admin/logout.php and the session row behind it):');
+    const LOGOUTS = [
+        [
+            'sign out · valid token (GET)',
+            'admin/logout.php',
+            't=preview-logout-token',
+            { noSuper: true, sessionDump: true },
+            (r) => r.writes.some((w) => /^UPDATE user_sessions SET logged_out_at/i.test(w)) && !r.session.admin_id && !r.session.tenant_id,
+            'closed the session row and cleared $_SESSION',
+        ],
+        [
+            'sign out · valid token (POST)',
+            'admin/logout.php',
+            'logout_token=preview-logout-token',
+            { noSuper: true, post: true, sessionDump: true },
+            (r) => r.writes.some((w) => /^UPDATE user_sessions SET logged_out_at/i.test(w)) && !r.session.admin_id,
+            'closed the session row and cleared $_SESSION',
+        ],
+        [
+            'sign out · forged token refused',
+            'admin/logout.php',
+            't=somebody-elses-token',
+            { noSuper: true, sessionDump: true },
+            (r) => r.writes.length === 0 && !!r.session.admin_id,
+            'left the session signed in',
+        ],
+        [
+            'sign out · no token refused',
+            'admin/logout.php',
+            '',
+            { noSuper: true, sessionDump: true },
+            (r) => r.writes.length === 0 && !!r.session.admin_id,
+            'left the session signed in',
+        ],
+        [
+            'sessions · revoked elsewhere bounces to login',
+            'admin/index.php',
+            '',
+            { noSuper: true, sessionRevoked: true, sessionDump: true },
+            (r) => r.html.length === 0 && !r.session.admin_id,
+            'redirected to the login screen with an empty session',
+        ],
+        [
+            'settings · sign out everywhere else',
+            'admin/settings.php',
+            'action=logout_other_sessions&logout_token=preview-logout-token',
+            { noSuper: true, post: true },
+            (r) =>
+                r.writes.some((w) => /^UPDATE user_sessions SET logged_out_at/i.test(w) && /session_token <> \?/.test(w)) &&
+                /other session/i.test(r.html),
+            'closed the other session rows and reported it',
+        ],
+        [
+            'settings · refused without the token',
+            'admin/settings.php',
+            'action=logout_other_sessions',
+            { noSuper: true, post: true },
+            (r) => !r.writes.some((w) => /^UPDATE user_sessions/i.test(w)),
+            'closed nothing',
+        ],
+        [
+            'sign-in · records a session row',
+            'admin/login.php',
+            'username=volta_admin&password=admin123',
+            { anonymous: true, post: true, badCsrf: true },
+            (r) => r.writes.some((w) => /^INSERT INTO user_sessions/i.test(w)) && !/auth-form/i.test(r.html),
+            'signed in and recorded the sign-in',
+        ],
+    ];
+    for (const [label, script, body, opts, assert, describeOk] of LOGOUTS) {
+        const dumpFile = path.join(os.tmpdir(), 'sa-adm-sessdump-' + process.pid + '-' + ++logoutSeq + '.json');
+        const o = Object.assign({}, opts, opts.sessionDump ? { sessionDump: dumpFile } : {});
+        const r = runPhp(script, body, o);
+        let session = null;
+        if (fs.existsSync(dumpFile)) {
+            try {
+                session = JSON.parse(fs.readFileSync(dumpFile, 'utf8'));
+            } catch (e) {
+                session = null;
+            }
+            fs.unlinkSync(dumpFile);
+        }
+        const { fatal, warnings } = diagnostics(r.html, r.stderr);
+        let ok = !fatal && warnings.length === 0;
+        let detail = '';
+        try {
+            ok = ok && assert({ html: r.html, stderr: r.stderr, writes: r.writes, session });
+        } catch (e) {
+            ok = false;
+            detail = e.message;
+        }
+        if (!ok) failures++;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${label.padEnd(44)} ${ok ? describeOk : detail || 'unexpected response'}`);
+        if (fatal) fail('fatal error: ' + (r.stderr || r.html).split('\n')[0].slice(0, 160));
+        warnings.slice(0, 3).forEach(fail);
+    }
+
+    {
+        // The security tab lists the workspace's own sign-ins, and only those.
+        const r = runPhp('admin/settings.php', '', { noSuper: true });
+        const { fatal, warnings } = diagnostics(r.html, r.stderr);
+        const card = (r.html.match(/Signed-in sessions[\s\S]*?Security Tip/) || [''])[0];
+        const notes = [];
+        if (fatal) notes.push('fatal error');
+        warnings.slice(0, 2).forEach((w) => notes.push(w.trim()));
+        if (!/\(this browser\)/.test(card)) notes.push('did not mark the current browser');
+        if (!/Sign out everywhere else/.test(card)) notes.push('no "sign out everywhere else" control');
+        if (!/logout_token/.test(card)) notes.push('the control carries no sign-out token');
+        const sessions = (card.match(/<li>/g) || []).length;
+        if (sessions !== 2) notes.push('listed ' + sessions + ' sessions, expected 2');
+        const ok = notes.length === 0;
+        if (!ok) failures++;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${'sessions · workspace list'.padEnd(44)} ${ok ? 'lists this workspace’s sign-ins' : notes.join(', ')}`);
     }
 
     console.log('\nPublic API endpoints:');

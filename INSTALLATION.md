@@ -154,6 +154,42 @@ window. The PHP `curl` extension must be enabled for live publishing.
 `database.sql`. An existing installation does not need a manual migration: the
 pages create the tables on first load if they are missing.
 
+## Sessions and sign-out
+
+Both panels share one session layer (`includes/session.php`), so signing in,
+timing out and signing out behave the same in `/superadmin/` and `/admin/`.
+
+Every successful sign-in writes a row to **`user_sessions`**: the panel
+(`superadmin` or `admin`), the account id, the device and IP, when it started
+and when it was last used. Closing the row signs that browser out on its next
+request.
+
+| What | Where |
+| --- | --- |
+| Sign out | Sidebar and avatar menu in both panels → `logout.php` |
+| See your live sessions | Super admin: Settings → Account. Workspace: Settings → Security |
+| Sign out everywhere else | Same screens — every browser but the current one |
+| Sign another super admin out | Control center → Users & roles → *Sign out* on their row |
+
+Notes:
+
+- **Sign-out is tokenised.** `logout.php` only acts when the request carries
+  the one-shot token that the panel put in the link (`logout.php?t=…`) or in
+  the posted `logout_token`, so a page on another site cannot sign a user out
+  with `<img src="logout.php">`. A request without a valid token leaves the
+  session signed in and says so.
+- **Sessions expire.** The super admin panel goes idle after 30 minutes and is
+  closed outright after 12 hours; the workspace allows 2 hours idle and 14
+  days. Override any of them by defining `AUTH_IDLE_TIMEOUT_SUPERADMIN`,
+  `AUTH_ABSOLUTE_TIMEOUT_SUPERADMIN`, `AUTH_IDLE_TIMEOUT_ADMIN` or
+  `AUTH_ABSOLUTE_TIMEOUT_ADMIN` (seconds) before `includes/auth.php` is loaded.
+  An expired visitor is sent to the login screen with an explanation.
+- **Changing a password** closes every other session of that account.
+- **Sessions recorded before an upgrade** are adopted on the next request, so
+  nobody is signed out by installing this.
+- `user_sessions` is created automatically (it is also in `database.sql`), and
+  closed rows older than 30 days are pruned when that account signs in again.
+
 ## Troubleshooting
 
 ### Database Connection Error

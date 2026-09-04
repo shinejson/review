@@ -7,8 +7,9 @@ if (isLoggedIn()) {
     redirect('index.php');
 }
 
-$error = '';
+$error  = '';
 $username = '';
+$notice = auth_login_notice();   // "you have been signed out", "session expired" …
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username']);
@@ -38,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['tenant_plan_id'] = $tenant['plan_id'];
                     $_SESSION['tenant_status'] = $tenant['subscription_status'];
                     $_SESSION['user_type'] = 'tenant';
+                    auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['company_name'], 'tenant');
                     redirect('index.php');
                 }
             } else {
@@ -57,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['admin_username'] = $admin['username'];
                     $_SESSION['admin_email'] = $admin['email'];
                     $_SESSION['user_type'] = 'admin';
+                    auth_login_session($conn, 'admin', (int)$admin['id'], $admin['username'], 'admin');
                     redirect('index.php');
                 } else {
                     $error = 'Invalid credentials. Please verify your password.';
@@ -139,6 +142,13 @@ include dirname(__DIR__) . '/includes/header.php';
                 <h2 id="authCardTitle">Tenant &amp; Admin Sign In</h2>
                 <p>Enter your tenant username or email to access your dashboard.</p>
             </header>
+
+            <?php if ($notice): ?>
+                <div class="auth-alert is-info" role="status">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span><?php echo htmlspecialchars($notice['text']); ?></span>
+                </div>
+            <?php endif; ?>
 
             <?php if ($error): ?>
                 <div class="auth-alert" role="alert">

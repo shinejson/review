@@ -279,6 +279,19 @@ body {
     display: none;
 }
 
+/* Neutral notice: "you have been signed out", "your session expired" */
+.auth-alert.is-info {
+    background: rgba(56, 189, 248, 0.12);
+    border-color: rgba(56, 189, 248, 0.35);
+    color: #7dd3fc;
+}
+
+:root[data-theme='light'] .auth-alert.is-info {
+    background: rgba(2, 132, 199, 0.1);
+    border-color: rgba(2, 132, 199, 0.3);
+    color: #075985;
+}
+
 /* Form fields */
 .auth-field {
     margin-bottom: 18px;

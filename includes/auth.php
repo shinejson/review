@@ -1,7 +1,7 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/session.php';
+
+auth_session_start();
 
 /**
  * Checks if a tenant or admin is currently logged in
@@ -48,12 +48,15 @@ function getCurrentUserName() {
 /**
  * Enforce login for Admin / Tenant area
  */
-function requireLogin() {
+function requireLogin($conn = null) {
     if (!isLoggedIn()) {
         header('Location: login.php');
         exit();
     }
-    
+
+    // Idle / absolute expiry, and honouring a sign-out issued elsewhere.
+    auth_session_enforce($conn);
+
     // If tenant, verify subscription is not cancelled or inactive
     if (isTenant() && isset($_SESSION['tenant_status'])) {
         if ($_SESSION['tenant_status'] === 'inactive' || $_SESSION['tenant_status'] === 'cancelled') {
@@ -69,11 +72,14 @@ function isSuperAdminLoggedIn() {
     return isset($_SESSION['super_admin_id']) && !empty($_SESSION['super_admin_id']);
 }
 
-function requireSuperAdminLogin() {
+function requireSuperAdminLogin($conn = null) {
     if (!isSuperAdminLoggedIn()) {
         header('Location: login.php');
         exit();
     }
+
+    // Idle / absolute expiry, and honouring a sign-out issued elsewhere.
+    auth_session_enforce($conn);
 }
 
 /* ============================================================

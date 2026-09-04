@@ -51,6 +51,28 @@ if (empty($_SESSION['sa_csrf'])) {
     $_SESSION['sa_csrf'] = 'preview-csrf-token';
 }
 
+/* Session tracking (includes/session.php): the harness signs in through
+   these variables instead of a login form, so it has to look like a
+   session that login.php recorded — a known row in `user_sessions`
+   (see tools/php/dataset.php), a start time inside the limits and a
+   sign-out token the logout endpoints can check. */
+if (!getenv('SA_ANONYMOUS')) {
+    $_SESSION['session_token']        = getenv('SA_SESSION_TOKEN') ?: 'preview-session-token';
+    $_SESSION['session_portal']       = getenv('SA_NO_SUPER') === '1' ? 'admin' : 'superadmin';
+    $_SESSION['session_started_at']   = time() - (int) (getenv('SA_SESSION_AGE') ?: 600);
+    $_SESSION['session_last_seen_at'] = time() - (int) (getenv('SA_SESSION_IDLE') ?: 30);
+    $_SESSION['session_last_touch']   = time();
+    $_SESSION['logout_token']         = getenv('SA_LOGOUT_TOKEN') ?: 'preview-logout-token';
+}
+
+/* SA_SESSION_DUMP=/path writes what is left of $_SESSION when the script
+   finishes, which is how the suites prove a sign-out really cleared it. */
+if (getenv('SA_SESSION_DUMP')) {
+    register_shutdown_function(function () {
+        @file_put_contents(getenv('SA_SESSION_DUMP'), json_encode(isset($_SESSION) ? $_SESSION : null));
+    });
+}
+
 $sa_qs = isset($_SERVER['QUERY_STRING']) ? (string) $_SERVER['QUERY_STRING'] : '';
 if ($sa_qs !== '') {
     parse_str($sa_qs, $_GET);
