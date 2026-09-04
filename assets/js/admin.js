@@ -266,6 +266,64 @@
         });
     }
 
+    /* ---------- Social composer ---------- */
+    function initComposer() {
+        var input = document.querySelector('[data-social-input]');
+        if (!input) {
+            return;
+        }
+
+        var counter = document.querySelector('[data-social-counter]');
+        var limit = parseInt(input.getAttribute('data-social-limit'), 10) || 0;
+
+        function format(n) {
+            return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+
+        function sync() {
+            if (!counter) {
+                return;
+            }
+            var used = input.value.length;
+            counter.textContent = format(used) + ' / ' + format(limit) + ' characters';
+            if (limit > 0 && used > limit) {
+                counter.classList.add('is-over');
+                counter.textContent += ' — ' + format(used - limit) + ' over the limit';
+            } else {
+                counter.classList.remove('is-over');
+            }
+        }
+
+        input.addEventListener('input', sync);
+        sync();
+
+        var copyBtn = document.querySelector('[data-social-copy]');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', function () {
+                var done = function () {
+                    var label = copyBtn.textContent;
+                    copyBtn.textContent = 'Copied ✓';
+                    setTimeout(function () {
+                        copyBtn.textContent = label;
+                    }, 1600);
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(input.value).then(done, function () {
+                        input.select();
+                    });
+                } else {
+                    input.select();
+                    try {
+                        document.execCommand('copy');
+                        done();
+                    } catch (e) {
+                        /* nothing else we can do */
+                    }
+                }
+            });
+        }
+    }
+
     onReady(function () {
         initTheme();
         initCollapse();
@@ -273,5 +331,6 @@
         initNotifications();
         initMenus();
         initSearch();
+        initComposer();
     });
 })();

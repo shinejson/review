@@ -47,7 +47,10 @@ if (!PHP_CLI) {
 
 const SIGNED_IN = [
     ['admin/index.php', 'dashboard'],
+    ['admin/analysis.php', 'response analysis'],
     ['admin/ratings.php', 'ratings list'],
+    ['admin/social.php', 'social workspace'],
+    ['admin/subscription.php', 'subscription'],
     ['admin/settings.php', 'settings'],
 ];
 
@@ -262,7 +265,8 @@ function main() {
             'api/submit_rating.php',
             'company_id=51&rating=9&customer_name=Test&customer_email=t@example.com&comment=x',
             { post: true, anonymous: true, badCsrf: true },
-            (r) => r.writes.length === 0 && /Invalid rating/i.test(r.html),
+            // the endpoint refuses the value; wording differs between revisions
+            (r) => r.writes.length === 0 && /Invalid rating|valid rating between 1 and 5/i.test(r.html),
             'rejected with no insert',
         ],
         [

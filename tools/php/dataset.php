@@ -97,27 +97,46 @@ return [
 
     /* Full rating rows for the admin panel's ratings screen */
     'ratings' => [
-        ['id' => 901, 'company_id' => 51, 'customer_name' => 'Abena Owusu', 'customer_email' => 'abena@example.com', 'rating' => 5, 'comment' => 'Drivers were on time and the cargo tracking page is excellent.', 'created_at' => '2026-09-02 06:40:00'],
-        ['id' => 900, 'company_id' => 52, 'customer_name' => 'Kojo Antwi', 'customer_email' => 'kojo@example.com', 'rating' => 4, 'comment' => 'Good service, but the invoice arrived two days late.', 'created_at' => '2026-09-02 00:15:00'],
-        ['id' => 899, 'company_id' => 53, 'customer_name' => 'Nii Armah', 'customer_email' => 'nii@example.com', 'rating' => 5, 'comment' => 'Smooth customs clearance, will use them again.', 'created_at' => '2026-09-01 12:20:00'],
-        ['id' => 898, 'company_id' => 54, 'customer_name' => 'Grace Mensah', 'customer_email' => 'grace@example.com', 'rating' => 3, 'comment' => 'Pallets were mislabelled on arrival.', 'created_at' => '2026-08-31 09:05:00'],
-        ['id' => 897, 'company_id' => 31, 'customer_name' => 'Yaw Danso', 'customer_email' => 'yaw@example.com', 'rating' => 5, 'comment' => 'Best in the western region.', 'created_at' => '2026-08-30 16:44:00'],
-        ['id' => 896, 'company_id' => 32, 'customer_name' => 'Selorm Agbeko', 'customer_email' => 'selorm@example.com', 'rating' => 4, 'comment' => 'Onboarding took a day longer than promised.', 'created_at' => '2026-08-29 11:12:00'],
-        ['id' => 895, 'company_id' => 41, 'customer_name' => 'Adjoa Mensah', 'customer_email' => 'adjoa@example.com', 'rating' => 5, 'comment' => 'Consistent quality across every shipment.', 'created_at' => '2026-08-28 15:03:00'],
+        ['id' => 901, 'question_id' => null, 'company_id' => 51, 'customer_name' => 'Abena Owusu', 'customer_email' => 'abena@example.com', 'rating' => 5, 'comment' => 'Drivers were on time and the cargo tracking page is excellent.', 'created_at' => '2026-09-02 06:40:00'],
+        ['id' => 900, 'question_id' => null, 'company_id' => 52, 'customer_name' => 'Kojo Antwi', 'customer_email' => 'kojo@example.com', 'rating' => 4, 'comment' => 'Good service, but the invoice arrived two days late.', 'created_at' => '2026-09-02 00:15:00'],
+        ['id' => 899, 'question_id' => null, 'company_id' => 53, 'customer_name' => 'Nii Armah', 'customer_email' => 'nii@example.com', 'rating' => 5, 'comment' => 'Smooth customs clearance, will use them again.', 'created_at' => '2026-09-01 12:20:00'],
+        ['id' => 898, 'question_id' => null, 'company_id' => 54, 'customer_name' => 'Grace Mensah', 'customer_email' => 'grace@example.com', 'rating' => 3, 'comment' => 'Pallets were mislabelled on arrival.', 'created_at' => '2026-08-31 09:05:00'],
+        ['id' => 897, 'question_id' => null, 'company_id' => 31, 'customer_name' => 'Yaw Danso', 'customer_email' => 'yaw@example.com', 'rating' => 5, 'comment' => 'Best in the western region.', 'created_at' => '2026-08-30 16:44:00'],
+        ['id' => 896, 'question_id' => null, 'company_id' => 32, 'customer_name' => 'Selorm Agbeko', 'customer_email' => 'selorm@example.com', 'rating' => 4, 'comment' => 'Onboarding took a day longer than promised.', 'created_at' => '2026-08-29 11:12:00'],
+        ['id' => 895, 'question_id' => null, 'company_id' => 41, 'customer_name' => 'Adjoa Mensah', 'customer_email' => 'adjoa@example.com', 'rating' => 5, 'comment' => 'Consistent quality across every shipment.', 'created_at' => '2026-08-28 15:03:00'],
     ],
 
     'ratings_recent' => [
-        ['id' => 901, 'rating' => 5, 'customer_name' => 'Abena Owusu', 'customer_email' => 'abena@example.com', 'comment' => 'Drivers were on time and the cargo tracking page is excellent.', 'company_name' => 'Volta Haulage Division', 'company_id' => 51, 'created_at' => '2026-09-02 06:40:00'],
-        ['id' => 900, 'rating' => 4, 'customer_name' => 'Kojo Antwi', 'customer_email' => 'kojo@example.com', 'comment' => 'Good service, but the invoice arrived two days late.', 'company_name' => 'Volta Cold Storage', 'company_id' => 52, 'created_at' => '2026-09-02 00:15:00'],
-        ['id' => 899, 'rating' => 5, 'customer_name' => 'Nii Armah', 'customer_email' => 'nii@example.com', 'comment' => 'Smooth customs clearance, will use them again.', 'company_name' => 'Volta Freight Forwarding', 'company_id' => 53, 'created_at' => '2026-09-01 12:20:00'],
-        ['id' => 898, 'rating' => 3, 'customer_name' => 'Grace Mensah', 'customer_email' => 'grace@example.com', 'comment' => 'Pallets were mislabelled on arrival.', 'company_name' => 'Volta Warehouse Tema', 'company_id' => 54, 'created_at' => '2026-08-31 09:05:00'],
-        ['id' => 897, 'rating' => 5, 'customer_name' => 'Yaw Danso', 'customer_email' => 'yaw@example.com', 'comment' => 'Best in the western region.', 'company_name' => 'Takoradi Marine Terminal', 'company_id' => 31, 'created_at' => '2026-08-30 16:44:00'],
+        ['id' => 901, 'rating' => 5, 'customer_name' => 'Abena Owusu', 'customer_email' => 'abena@example.com', 'comment' => 'Drivers were on time and the cargo tracking page is excellent.', 'company_name' => 'Volta Haulage Division', 'question_id' => null, 'company_id' => 51, 'created_at' => '2026-09-02 06:40:00'],
+        ['id' => 900, 'rating' => 4, 'customer_name' => 'Kojo Antwi', 'customer_email' => 'kojo@example.com', 'comment' => 'Good service, but the invoice arrived two days late.', 'company_name' => 'Volta Cold Storage', 'question_id' => null, 'company_id' => 52, 'created_at' => '2026-09-02 00:15:00'],
+        ['id' => 899, 'rating' => 5, 'customer_name' => 'Nii Armah', 'customer_email' => 'nii@example.com', 'comment' => 'Smooth customs clearance, will use them again.', 'company_name' => 'Volta Freight Forwarding', 'question_id' => null, 'company_id' => 53, 'created_at' => '2026-09-01 12:20:00'],
+        ['id' => 898, 'rating' => 3, 'customer_name' => 'Grace Mensah', 'customer_email' => 'grace@example.com', 'comment' => 'Pallets were mislabelled on arrival.', 'company_name' => 'Volta Warehouse Tema', 'question_id' => null, 'company_id' => 54, 'created_at' => '2026-08-31 09:05:00'],
+        ['id' => 897, 'rating' => 5, 'customer_name' => 'Yaw Danso', 'customer_email' => 'yaw@example.com', 'comment' => 'Best in the western region.', 'company_name' => 'Takoradi Marine Terminal', 'question_id' => null, 'company_id' => 31, 'created_at' => '2026-08-30 16:44:00'],
     ],
 
     // ratings collected per day (index 0 = 62 days ago … last = today)
     'ratings_per_day' => [2, 4, 1, 6, 3, 0, 0, 5, 2, 7, 4, 1, 3, 0, 1, 6, 8, 2, 4, 5, 0, 0, 3, 7, 9, 2, 1, 4, 0, 2,
                          5, 6, 3, 8, 1, 0, 0, 4, 7, 5, 2, 9, 3, 1, 6, 0, 0, 2, 8, 4, 7, 3, 5, 1, 0, 2, 9, 6, 4, 8,
                          3, 5, 11],
+
+    /* Plan changes a workspace asked for (admin/subscription.php) */
+    'subscription_requests' => [
+        ['id' => 3, 'tenant_id' => 18, 'current_plan_id' => 2, 'requested_plan_id' => 3, 'direction' => 'upgrade', 'note' => 'Upgrade requested from the workspace', 'status' => 'pending', 'created_at' => '2026-09-03 09:12:00', 'resolved_at' => null, 'company_name' => 'Volta Logistics', 'email' => 'ops@voltalogistics.gh', 'current_plan_name' => 'Professional', 'current_price' => '79.99', 'requested_plan_name' => 'Enterprise', 'requested_price' => '199.99'],
+        ['id' => 2, 'tenant_id' => 11, 'current_plan_id' => 1, 'requested_plan_id' => 2, 'direction' => 'upgrade', 'note' => 'Running out of monthly ratings', 'status' => 'pending', 'created_at' => '2026-09-01 16:40:00', 'resolved_at' => null, 'company_name' => 'Cape Coast Fintech', 'email' => 'admin@coastfintech.com', 'current_plan_name' => 'Starter', 'current_price' => '29.99', 'requested_plan_name' => 'Professional', 'requested_price' => '79.99'],
+        ['id' => 1, 'tenant_id' => 18, 'current_plan_id' => 1, 'requested_plan_id' => 2, 'direction' => 'upgrade', 'note' => '', 'status' => 'approved', 'created_at' => '2026-06-18 11:05:00', 'resolved_at' => '2026-06-18 15:20:00', 'company_name' => 'Volta Logistics', 'email' => 'ops@voltalogistics.gh', 'current_plan_name' => 'Starter', 'current_price' => '29.99', 'requested_plan_name' => 'Professional', 'requested_price' => '79.99'],
+    ],
+
+    /* Connected networks + the posts made from reviews (admin/social.php) */
+    'social_accounts' => [
+        ['id' => 1, 'tenant_id' => 18, 'platform' => 'facebook', 'account_name' => 'Volta Logistics GH', 'account_ref' => '102938475610', 'access_token' => 'EAAG1234567890abcdefghijklmnop', 'status' => 'connected', 'last_error' => null, 'last_used_at' => '2026-09-02 08:10:00', 'created_at' => '2026-07-11 10:00:00'],
+        ['id' => 2, 'tenant_id' => 18, 'platform' => 'linkedin', 'account_name' => 'Volta Logistics', 'account_ref' => 'urn:li:organization:8123456', 'access_token' => 'AQV1234567890abcdefghijklmnop', 'status' => 'connected', 'last_error' => null, 'last_used_at' => null, 'created_at' => '2026-08-02 10:00:00'],
+    ],
+
+    'social_posts' => [
+        ['id' => 5, 'tenant_id' => 18, 'company_id' => 51, 'rating_id' => 901, 'platform' => 'facebook', 'content' => '★★★★★ Another 5-star review for Volta Haulage Division!' . "\n\n" . '“Drivers were on time and the cargo tracking page is excellent.” — Abena O.' . "\n\n" . '#VoltaHaulageDivision #CustomerReview #5StarService', 'status' => 'published', 'remote_id' => '102938475610_889900', 'remote_url' => 'https://www.facebook.com/102938475610_889900', 'error' => null, 'created_at' => '2026-09-02 08:10:00', 'published_at' => '2026-09-02 08:10:00', 'company_name' => 'Volta Haulage Division'],
+        ['id' => 4, 'tenant_id' => 18, 'company_id' => 53, 'rating_id' => 899, 'platform' => 'linkedin', 'content' => 'Customer feedback we are proud of ★★★★★' . "\n\n" . '“Smooth customs clearance, will use them again.” — Nii A.', 'status' => 'draft', 'remote_id' => null, 'remote_url' => null, 'error' => null, 'created_at' => '2026-09-01 13:02:00', 'published_at' => null, 'company_name' => 'Volta Freight Forwarding'],
+        ['id' => 3, 'tenant_id' => 18, 'company_id' => 52, 'rating_id' => 900, 'platform' => 'twitter', 'content' => '★★★★☆ “Good service, but the invoice arrived two days late.” — Kojo A.', 'status' => 'failed', 'remote_id' => null, 'remote_url' => null, 'error' => 'Unauthorized: the access token expired.', 'created_at' => '2026-08-30 07:45:00', 'published_at' => null, 'company_name' => 'Volta Cold Storage'],
+    ],
 
     'star_distribution' => [5 => 412, 4 => 168, 3 => 54, 2 => 17, 1 => 9],
 ];

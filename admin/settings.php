@@ -770,7 +770,7 @@ include __DIR__ . '/_shell.php';
             <?php else: ?>
                 <div style="padding:24px;text-align:center;background:var(--bg);border:1px dashed var(--line);border-radius:10px;">
                     <p class="muted" style="margin:0 0 12px;">No companies currently registered under your workspace.</p>
-                    <a href="customers.php" class="btn btn-primary" style="padding:8px 18px;font-size:13px;">
+                    <a href="company.php" class="btn btn-primary" style="padding:8px 18px;font-size:13px;">
                         + Add Your First Company
                     </a>
                 </div>

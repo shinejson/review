@@ -9,7 +9,8 @@
  *   - $tenant_id, $is_tenant
  *   - $BASE = '../';
  *   - $pageTitle
- *   - $activeNav (e.g., 'dashboard', 'customers', 'ratings', 'categories', 'settings')
+ *   - $activeNav (e.g., 'dashboard', 'company', 'analysis', 'ratings', 'social',
+ *                 'subscription', 'settings')
  */
 
 if (!isset($BASE)) {
@@ -42,19 +43,22 @@ $activeNav = $activeNav ?? 'dashboard';
       <span>⌂</span><span class="nav-label">Company Profile</span>
     </a>
     <?php endif; ?>
-    <a <?php echo $activeNav === 'customers' ? 'class="active"' : ''; ?> href="customers.php" title="Companies">
-      <span>⊞</span><span class="nav-label">Companies</span>
+    <a <?php echo $activeNav === 'analysis' ? 'class="active"' : ''; ?> href="analysis.php" title="Analysis">
+      <span>◔</span><span class="nav-label">Analysis</span>
     </a>
     <a <?php echo $activeNav === 'ratings' ? 'class="active"' : ''; ?> href="ratings.php" title="Ratings & Reviews">
       <span>☆</span><span class="nav-label">Ratings &amp; Reviews</span>
     </a>
-    <a <?php echo $activeNav === 'categories' ? 'class="active"' : ''; ?> href="categories.php" title="Categories">
-      <span>◈</span><span class="nav-label">Categories</span>
+    <a <?php echo $activeNav === 'social' ? 'class="active"' : ''; ?> href="social.php" title="Social">
+      <span>❋</span><span class="nav-label">Social</span>
     </a>
   </nav>
   
   <div class="nav-caption">Manage</div>
   <nav>
+    <a <?php echo $activeNav === 'subscription' ? 'class="active"' : ''; ?> href="subscription.php" title="Subscription">
+      <span>◈</span><span class="nav-label">Subscription</span>
+    </a>
     <a <?php echo $activeNav === 'settings' ? 'class="active"' : ''; ?> href="settings.php" title="Settings">
       <span>⚙</span><span class="nav-label">Settings</span>
     </a>
@@ -128,13 +132,13 @@ $activeNav = $activeNav ?? 'dashboard';
                 <span>Someone left a great rating</span>
               </div>
             </a>
-            <a href="customers.php" class="admin-notification-item">
+            <a href="analysis.php" class="admin-notification-item">
               <div class="admin-list-icon is-info">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
               </div>
               <div class="admin-list-body">
-                <strong>New company added</strong>
-                <span>A new company was registered</span>
+                <strong>Weekly analysis is ready</strong>
+                <span>See how your companies are trending</span>
               </div>
             </a>
           </div>

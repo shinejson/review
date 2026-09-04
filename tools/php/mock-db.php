@@ -38,10 +38,19 @@ class MockResult
         if (!is_array($row)) {
             return $row;
         }
-        $map = ['COUNT(*)' => 'count', 'AVG(rating)' => 'avg', 'SUM(price)' => 'total'];
-        foreach ($map as $from => $to) {
-            if (array_key_exists($from, $row) && !array_key_exists($to, $row)) {
-                $row[$to] = $row[$from];
+        $map = [
+            'COUNT(*)'    => ['count', 'cnt'],
+            'AVG(rating)' => ['avg', 'avg_rating'],
+            'SUM(price)'  => ['total'],
+        ];
+        foreach ($map as $from => $targets) {
+            if (!array_key_exists($from, $row)) {
+                continue;
+            }
+            foreach ($targets as $to) {
+                if (!array_key_exists($to, $row)) {
+                    $row[$to] = $row[$from];
+                }
             }
         }
         return $row;
@@ -447,6 +456,11 @@ class MockMysqli
         $this->log('branch', $tbl !== '' ? $tbl : '(none)');
         $this->log('sql', preg_replace('/\s+/', ' ', trim($sql)));
 
+        /* ---- DDL: the app self-heals its schema, the mock already has it ---- */
+        if (preg_match('/^\s*(CREATE|ALTER|DROP)\s+TABLE/i', $s)) {
+            return [];
+        }
+
         /* ---- super admin schema probe (sa_ensure_user_schema) ---- */
         if (stripos($s, 'SHOW COLUMNS FROM super_admins') === 0) {
             // the permission columns are part of the migrated schema
@@ -479,7 +493,8 @@ class MockMysqli
         /* ---- schema probe ---- */
         if ($this->has($s, 'information_schema.tables')) {
             preg_match("/table_name = '([a-z_]+)'/i", $s, $m);
-            $known = ['super_admins', 'subscription_plans', 'tenants', 'admins', 'categories', 'customers', 'ratings', 'settings', 'quote_requests'];
+            $known = ['super_admins', 'subscription_plans', 'tenants', 'admins', 'categories', 'customers', 'ratings', 'settings', 'quote_requests',
+                      'subscription_requests', 'social_accounts', 'social_posts'];
             $c = (isset($m[1]) && in_array($m[1], $known, true)) ? 1 : 0;
             return [['c' => $c]];
         }
@@ -737,13 +752,40 @@ class MockMysqli
 
         /* ---- ratings joined to customers (tenant scoped) ---- */
         if ($tbl === 'ratings' && $this->has($o, 'JOIN customers')) {
+            /* workspace analysis: headline stats for one window */
+            if ($this->has($s, 'AS responses') && $this->has($s, 'promoters')) {
+                $prev = $this->has($s, 'AND r.created_at < DATE_SUB');
+                return [[
+                    'responses'  => $prev ? 138 : 164,
+                    'avg_rating' => $prev ? 4.42 : 4.61,
+                    'promoters'  => $prev ? 104 : 132,
+                    'passives'   => $prev ? 22 : 21,
+                    'detractors' => $prev ? 12 : 11,
+                    'commented'  => $prev ? 96 : 118,
+                    'companies'  => 5,
+                ]];
+            }
+            /* workspace analysis: month-by-month trend */
+            if ($this->has($s, 'AS ym')) {
+                $volume = [42, 48, 51, 60, 58, 66, 71, 69, 78, 84, 91, 97];
+                $score  = [4.10, 4.18, 4.22, 4.31, 4.28, 4.40, 4.44, 4.49, 4.52, 4.55, 4.60, 4.66];
+                $out = [];
+                for ($i = 11; $i >= 0; $i--) {
+                    $out[] = [
+                        'ym'         => date('Y-m', strtotime('first day of -' . $i . ' month')),
+                        'responses'  => $volume[11 - $i],
+                        'avg_rating' => $score[11 - $i],
+                    ];
+                }
+                return $out;
+            }
             if ($this->has($s, 'AVG(r.rating)') && $this->has($s, 'r.rating = 5')) {
                 return [['COUNT(*)' => 88]];
             }
             if ($this->has($s, 'GROUP BY r.rating')) {
                 $out = [];
                 foreach ([5 => 88, 4 => 61, 3 => 27, 2 => 12, 1 => 8] as $rating => $cnt) {
-                    $out[] = ['rating' => $rating, 'cnt' => $cnt];
+                    $out[] = ['rating' => $rating, 'cnt' => $cnt, 'total' => $cnt];
                 }
                 return $out;
             }
@@ -827,6 +869,45 @@ class MockMysqli
                 }
                 return $rows;
             }
+            /* workspace analysis: one row per company, window vs window */
+            if ($this->has($s, 'prev_avg')) {
+                preg_match('/c.tenant_id = (\d+)/', $s, $mt);
+                $tid = $mt ? (int) $mt[1] : 0;
+                $sample = [
+                    [64, 4.82, 4.61, 58, 2],
+                    [41, 4.58, 4.66, 33, 3],
+                    [38, 4.71, 4.44, 31, 1],
+                    [29, 4.10, 4.38, 18, 5],
+                    [24, 4.55, 4.52, 19, 2],
+                ];
+                $rows = [];
+                $i = 0;
+                foreach ($this->customersWithCategory() as $c) {
+                    if ($tid !== 0 && (int) $c['tenant_id'] !== $tid) {
+                        continue;
+                    }
+                    $set = $sample[$i % count($sample)];
+                    $i++;
+                    $rows[] = [
+                        'id'                 => $c['id'],
+                        'company_name'       => $c['company_name'],
+                        'category_name'      => $c['category_name'],
+                        'lifetime_responses' => $c['rating_count'],
+                        'lifetime_avg'       => $c['avg_rating'],
+                        'last_response'      => date('Y-m-d H:i:s', strtotime('-' . ($i * 2) . ' day')),
+                        'responses'          => $set[0],
+                        'avg_rating'         => $set[1],
+                        'promoters'          => $set[3],
+                        'detractors'         => $set[4],
+                        'prev_responses'     => (int) round($set[0] * 0.82),
+                        'prev_avg'           => $set[2],
+                    ];
+                }
+                usort($rows, function ($a, $b) {
+                    return $b['responses'] <=> $a['responses'];
+                });
+                return $rows;
+            }
             if ($this->has($s, 'GROUP BY c.id') || $this->has($s, 'cat.name AS category_name')) {
                 preg_match('/c.tenant_id = (\d+)/', $s, $m);
                 $tid = $m ? (int) $m[1] : 0;
@@ -849,6 +930,16 @@ class MockMysqli
 
         /* ---- tenants ---- */
         if ($tbl === 'tenants') {
+            // full plan + tenant row (admin/subscription.php, admin/index.php)
+            if ($this->has($s, 'p.plan_name') && preg_match('/t.id = (\d+)/', $s, $mf)) {
+                foreach ($this->tenants() as $t) {
+                    if ((int) $t['id'] === (int) $mf[1]) {
+                        $t['features'] = $this->planField($t['plan_id'], 'features');
+                        return [$t];
+                    }
+                }
+                return [];
+            }
             // plan limit lookup for a single tenant (superadmin/customers.php)
             if ($this->has($s, 'p.max_customers') && preg_match('/t.id = (\d+)/', $s, $m)) {
                 foreach ($this->tenants() as $t) {
@@ -1119,6 +1210,67 @@ class MockMysqli
                 usort($rows, function ($a, $b) {
                     return strtotime($b['created_at']) <=> strtotime($a['created_at']);
                 });
+            }
+            if (preg_match('/LIMIT (\d+)/i', $s, $m)) {
+                $rows = array_slice($rows, 0, (int) $m[1]);
+            }
+            return $rows;
+        }
+
+        /* ---- plan change requests (admin/subscription.php, superadmin) ---- */
+        if ($tbl === 'subscription_requests') {
+            $rows = $D['subscription_requests'];
+            if (preg_match('/sr\.tenant_id = (\d+)/', $s, $m) || preg_match('/tenant_id = (\d+)/', $s, $m)) {
+                $tid = (int) $m[1];
+                $rows = array_values(array_filter($rows, function ($r) use ($tid) {
+                    return (int) $r['tenant_id'] === $tid;
+                }));
+            }
+            if ($this->has($s, "status = 'pending'")) {
+                $rows = array_values(array_filter($rows, function ($r) {
+                    return $r['status'] === 'pending';
+                }));
+            }
+            if ($this->has($s, 'COUNT(*)')) {
+                return [['COUNT(*)' => count($rows)]];
+            }
+            if (preg_match('/sr\.id = (\d+)|WHERE id = (\d+)/', $s, $m)) {
+                $id = (int) (isset($m[2]) && $m[2] !== '' ? $m[2] : $m[1]);
+                $rows = array_values(array_filter($rows, function ($r) use ($id) {
+                    return (int) $r['id'] === $id;
+                }));
+            }
+            if (preg_match('/LIMIT (\d+)/i', $s, $m)) {
+                $rows = array_slice($rows, 0, (int) $m[1]);
+            }
+            return $rows;
+        }
+
+        /* ---- social connections + post library (admin/social.php) ---- */
+        if ($tbl === 'social_accounts') {
+            $rows = $D['social_accounts'];
+            if (preg_match('/tenant_id = (\d+)/', $s, $m)) {
+                $tid = (int) $m[1];
+                $rows = array_values(array_filter($rows, function ($r) use ($tid) {
+                    return (int) $r['tenant_id'] === $tid;
+                }));
+            }
+            if (preg_match("/platform = '([a-z]+)'/", $s, $m)) {
+                $platform = $m[1];
+                $rows = array_values(array_filter($rows, function ($r) use ($platform) {
+                    return $r['platform'] === $platform;
+                }));
+            }
+            return $rows;
+        }
+
+        if ($tbl === 'social_posts') {
+            $rows = $D['social_posts'];
+            if (preg_match('/sp\.tenant_id = (\d+)|tenant_id = (\d+)/', $s, $m)) {
+                $tid = (int) (isset($m[2]) && $m[2] !== '' ? $m[2] : $m[1]);
+                $rows = array_values(array_filter($rows, function ($r) use ($tid) {
+                    return (int) $r['tenant_id'] === $tid;
+                }));
             }
             if (preg_match('/LIMIT (\d+)/i', $s, $m)) {
                 $rows = array_slice($rows, 0, (int) $m[1]);
