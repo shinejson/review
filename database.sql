@@ -107,24 +107,45 @@ INSERT INTO customers (tenant_id, company_name, category_id, email, website) VAL
 (1, 'Health Care Plus', 2, 'contact@healthcareplus.com', 'www.healthcareplus.com'),
 (2, 'Finance Pro', 3, 'support@financepro.com', 'www.financepro.com');
 
+-- Rating questions created by tenant / admin
+CREATE TABLE IF NOT EXISTS rating_questions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    question_text VARCHAR(500) NOT NULL,
+    is_active TINYINT(1) DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Ratings table
 CREATE TABLE IF NOT EXISTS ratings (
     id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
+    question_id INT NULL,
     rating INT NOT NULL CHECK (rating BETWEEN 1 AND 5),
     customer_name VARCHAR(100) NOT NULL,
     customer_email VARCHAR(100) NOT NULL,
     comment TEXT,
+    admin_reply TEXT NULL,
+    responded_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (company_id) REFERENCES customers(id) ON DELETE CASCADE
+    FOREIGN KEY (company_id) REFERENCES customers(id) ON DELETE CASCADE,
+    FOREIGN KEY (question_id) REFERENCES rating_questions(id) ON DELETE SET NULL
 );
 
+-- Insert sample rating questions
+INSERT INTO rating_questions (tenant_id, question_text, is_active) VALUES
+(1, 'How satisfied are you with the speed and responsiveness of our technical support team?', 1),
+(1, 'How would you rate the quality and reliability of our technology solutions?', 1),
+(1, 'How likely are you to recommend Tech Solutions Inc to colleagues or other businesses?', 1);
+
 -- Insert sample ratings
-INSERT INTO ratings (company_id, rating, customer_name, customer_email, comment) VALUES 
-(1, 5, 'John Doe', 'john@example.com', 'Excellent service!'),
-(1, 4, 'Jane Smith', 'jane@example.com', 'Very good experience.'),
-(2, 5, 'Bob Johnson', 'bob@example.com', 'Outstanding care!'),
-(3, 3, 'Alice Brown', 'alice@example.com', 'Good but could be better.');
+INSERT INTO ratings (company_id, question_id, rating, customer_name, customer_email, comment) VALUES 
+(1, NULL, 5, 'John Doe', 'john@example.com', 'Excellent service!'),
+(1, NULL, 4, 'Jane Smith', 'jane@example.com', 'Very good experience.'),
+(1, 1, 5, 'Michael Scott', 'michael@dundermifflin.com', 'Tech support team answered in under 2 minutes and fixed everything!'),
+(2, NULL, 5, 'Bob Johnson', 'bob@example.com', 'Outstanding care!'),
+(3, NULL, 3, 'Alice Brown', 'alice@example.com', 'Good but could be better.');
 
 -- Settings table
 CREATE TABLE IF NOT EXISTS settings (

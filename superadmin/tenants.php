@@ -65,6 +65,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($stmt->error) {
                 sa_flash('error', 'Could not create the tenant: ' . $stmt->error);
             } else {
+                $new_id = (int) $conn->insert_id;
+
+                // Auto-create the tenant's own company profile in the customers table
+                $co_stmt = $conn->prepare(
+                    "INSERT INTO customers (tenant_id, company_name, email, phone, created_at)
+                     VALUES (?, ?, ?, ?, NOW())"
+                );
+                $co_stmt->bind_param("isss", $new_id, $company, $email, $phone);
+                $co_stmt->execute();
+                $co_stmt->close();
+
                 sa_flash('success', $company . ' was created with the login “' . $username . '”.');
             }
             $stmt->close();

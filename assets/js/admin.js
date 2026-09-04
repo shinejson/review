@@ -89,6 +89,43 @@
         }
     }
 
+    /* ---------- Sidebar collapse (desktop resize) ---------- */
+    function initCollapse() {
+        var btn = document.querySelector('[data-admin-collapse]');
+        var app = document.querySelector('.admin-app');
+        if (!btn || !app) {
+            return;
+        }
+
+        var COLLAPSE_KEY = 'optibiz-admin-sidebar-collapsed';
+
+        function applyCollapsed(collapsed, persist) {
+            app.classList.toggle('is-collapsed', collapsed);
+            btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+            if (persist !== false) {
+                try {
+                    localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+                } catch (e) { /* ignore */ }
+            }
+        }
+
+        // Restore saved preference
+        var saved = null;
+        try {
+            saved = localStorage.getItem(COLLAPSE_KEY);
+        } catch (e) {
+            saved = null;
+        }
+        if (saved === '1') {
+            applyCollapsed(true, false);
+        }
+
+        btn.addEventListener('click', function () {
+            applyCollapsed(!app.classList.contains('is-collapsed'));
+        });
+    }
+
     /* ---------- Mobile sidebar ---------- */
     function initSidebar() {
         var burger = document.querySelector('.admin-burger');
@@ -231,6 +268,7 @@
 
     onReady(function () {
         initTheme();
+        initCollapse();
         initSidebar();
         initNotifications();
         initMenus();

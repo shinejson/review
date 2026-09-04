@@ -24,9 +24,9 @@ $activeNav = $activeNav ?? 'dashboard';
 ?>
 <div class="admin-app">
 <aside class="admin-sidebar">
-  <a class="admin-brand" href="index.php">
+  <a class="admin-brand" href="index.php" title="Dashboard">
     <span class="brand-mark">★</span>
-    <span>
+    <span class="brand-text">
       <b>Optibiz</b>
       <small>Admin workspace</small>
     </span>
@@ -34,24 +34,29 @@ $activeNav = $activeNav ?? 'dashboard';
   
   <div class="nav-caption">Workspace</div>
   <nav>
-    <a <?php echo $activeNav === 'dashboard' ? 'class="active"' : ''; ?> href="index.php">
-      <span>▦</span>Dashboard
+    <a <?php echo $activeNav === 'dashboard' ? 'class="active"' : ''; ?> href="index.php" title="Dashboard">
+      <span>▦</span><span class="nav-label">Dashboard</span>
     </a>
-    <a <?php echo $activeNav === 'customers' ? 'class="active"' : ''; ?> href="customers.php">
-      <span>⌂</span>Companies
+    <?php if ($is_tenant): ?>
+    <a <?php echo $activeNav === 'company' ? 'class="active"' : ''; ?> href="company.php" title="Company Profile">
+      <span>⌂</span><span class="nav-label">Company Profile</span>
     </a>
-    <a <?php echo $activeNav === 'ratings' ? 'class="active"' : ''; ?> href="ratings.php">
-      <span>☆</span>Ratings &amp; Reviews
+    <?php endif; ?>
+    <a <?php echo $activeNav === 'customers' ? 'class="active"' : ''; ?> href="customers.php" title="Companies">
+      <span>⊞</span><span class="nav-label">Companies</span>
     </a>
-    <a <?php echo $activeNav === 'categories' ? 'class="active"' : ''; ?> href="categories.php">
-      <span>◈</span>Categories
+    <a <?php echo $activeNav === 'ratings' ? 'class="active"' : ''; ?> href="ratings.php" title="Ratings & Reviews">
+      <span>☆</span><span class="nav-label">Ratings &amp; Reviews</span>
+    </a>
+    <a <?php echo $activeNav === 'categories' ? 'class="active"' : ''; ?> href="categories.php" title="Categories">
+      <span>◈</span><span class="nav-label">Categories</span>
     </a>
   </nav>
   
   <div class="nav-caption">Manage</div>
   <nav>
-    <a <?php echo $activeNav === 'settings' ? 'class="active"' : ''; ?> href="settings.php">
-      <span>⚙</span>Settings
+    <a <?php echo $activeNav === 'settings' ? 'class="active"' : ''; ?> href="settings.php" title="Settings">
+      <span>⚙</span><span class="nav-label">Settings</span>
     </a>
   </nav>
   
@@ -59,7 +64,7 @@ $activeNav = $activeNav ?? 'dashboard';
     <div class="mini-avatar">
       <?php echo htmlspecialchars(strtoupper(substr($_SESSION['admin_username'] ?? 'A', 0, 1))); ?>
     </div>
-    <div>
+    <div class="sb-user">
       <strong><?php echo htmlspecialchars($_SESSION['admin_username'] ?? 'Admin'); ?></strong>
       <small><?php echo $is_tenant ? 'Workspace admin' : 'Global administrator'; ?></small>
     </div>
@@ -69,6 +74,10 @@ $activeNav = $activeNav ?? 'dashboard';
 
 <section class="admin-main">
   <header class="admin-topbar">
+    <!-- Sidebar Collapse Toggle (desktop) -->
+    <button type="button" class="admin-collapse-btn" data-admin-collapse aria-label="Toggle sidebar" aria-expanded="true" title="Collapse / expand sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+    </button>
     <button class="mobile-menu admin-burger" aria-label="Open menu">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
@@ -135,17 +144,21 @@ $activeNav = $activeNav ?? 'dashboard';
         </div>
       </div>
 
-      <!-- User Profile Dropdown -->
+            <!-- User Profile Dropdown -->
       <div class="admin-menu-wrap" data-admin-menu>
         <button type="button" class="admin-avatar-btn" data-admin-menu-trigger aria-haspopup="true" aria-expanded="false">
-          <span class="admin-avatar"><?php echo htmlspecialchars(strtoupper(substr($_SESSION['admin_username'] ?? 'A', 0, 1))); ?></span>
-          <span><?php echo htmlspecialchars($_SESSION['admin_username'] ?? 'Admin'); ?></span>
+          <?php if ($is_tenant && !empty($_SESSION['tenant_logo'])): ?>
+            <img src="<?php echo $BASE . htmlspecialchars($_SESSION['tenant_logo']); ?>" alt="Logo" class="admin-avatar-img">
+          <?php else: ?>
+          <span class="admin-avatar"><?php echo htmlspecialchars(strtoupper(substr(getCurrentUserName() ?? 'A', 0, 1))); ?></span>
+          <?php endif; ?>
+          <span><?php echo htmlspecialchars(getCurrentUserName() ?? 'Admin'); ?></span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="admin-menu" role="menu">
           <div class="admin-menu-head">
-            <strong><?php echo htmlspecialchars($_SESSION['admin_username'] ?? 'Admin'); ?></strong>
-            <span><?php echo $is_tenant ? 'Workspace admin' : 'Global administrator'; ?></span>
+            <strong><?php echo htmlspecialchars(getCurrentUserName() ?? 'Admin'); ?></strong>
+            <span><?php echo $is_tenant ? htmlspecialchars($_SESSION['tenant_name'] ?? 'Workspace admin') : 'Global administrator'; ?></span>
           </div>
           <a href="settings.php" role="menuitem">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>

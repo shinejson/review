@@ -26,21 +26,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($resTenant && $resTenant->num_rows === 1) {
             $tenant = $resTenant->fetch_assoc();
             
-            // Verify password (support hashed or default fallback)
             if (password_verify($password, $tenant['password'])) {
-                // If password was matched via fallback, re-hash it properly
-                if (!password_verify($password, $tenant['password'])) {
-                    $newHash = password_hash($password, PASSWORD_DEFAULT);
-                    $upStmt = $conn->prepare("UPDATE tenants SET password = ? WHERE id = ?");
-                    $upStmt->bind_param("si", $newHash, $tenant['id']);
-                    $upStmt->execute();
-                }
-
                 if ($tenant['subscription_status'] === 'cancelled') {
                     $error = 'Your account subscription has been cancelled. Please contact support.';
-                } else {
+                                } else {
                     $_SESSION['tenant_id'] = (int)$tenant['id'];
                     $_SESSION['tenant_name'] = $tenant['company_name'];
+                    $_SESSION['tenant_logo'] = $tenant['logo'] ?? '';
                     $_SESSION['tenant_username'] = $tenant['username'];
                     $_SESSION['tenant_email'] = $tenant['email'];
                     $_SESSION['tenant_plan_id'] = $tenant['plan_id'];
@@ -61,13 +53,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($resAdmin && $resAdmin->num_rows === 1) {
                 $admin = $resAdmin->fetch_assoc();
                 if (password_verify($password, $admin['password'])) {
-                    if (!password_verify($password, $admin['password'])) {
-                        $newHash = password_hash($password, PASSWORD_DEFAULT);
-                        $upStmt = $conn->prepare("UPDATE admins SET password = ? WHERE id = ?");
-                        $upStmt->bind_param("si", $newHash, $admin['id']);
-                        $upStmt->execute();
-                    }
-
                     $_SESSION['admin_id'] = (int)$admin['id'];
                     $_SESSION['admin_username'] = $admin['username'];
                     $_SESSION['admin_email'] = $admin['email'];

@@ -114,24 +114,7 @@ body {
     color: #007bff;
 }
 
-.data-table {
-    width: 100%;
-    background: white;
-    border-collapse: collapse;
-    margin-top: 20px;
-}
-
-.data-table th,
-.data-table td {
-    padding: 12px;
-    text-align: left;
-    border-bottom: 1px solid #ddd;
-}
-
-.data-table th {
-    background: #007bff;
-    color: white;
-}
+/* Legacy data-table styles removed — admin-dashboard.css handles these */
 
 .admin-content {
     padding: 20px;
