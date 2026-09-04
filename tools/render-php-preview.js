@@ -65,6 +65,7 @@ const PAGES = [
     ['superadmin/customers.php', 'customers.html', ''],
     ['superadmin/categories.php', 'categories.html', ''],
     ['superadmin/settings.php', 'settings.html', ''],
+    ['superadmin/users.php', 'users.html', ''],
     ['superadmin/login.php', 'login.html', '', { anonymous: true }],
 
     /* Edge cases — checked but not written into the preview */
@@ -135,9 +136,9 @@ const POSTS = [
     ['settings · password', 'superadmin/settings.php', 'action=change_password&current_password=superadmin123&new_password=Sup3rSecret!&confirm_password=Sup3rSecret!', /^UPDATE super_admins/i],
     ['settings · bad password rejected', 'superadmin/settings.php', 'action=change_password&current_password=wrong&new_password=Sup3rSecret!&confirm_password=Sup3rSecret!', null],
     ['csrf · forged token rejected', 'superadmin/tenants.php', 'action=delete&tenant_id=5', null, { badCsrf: true }],
-    ['login · valid credentials', 'superadmin/login.php', 'username=superadmin&password=superadmin123', null, { anonymous: true, blank: true }],
+    ['login · valid credentials', 'superadmin/login.php', 'username=superadmin&password=superadmin123', /^INSERT INTO user_sessions/i, { anonymous: true, blank: true }],
     ['login · wrong password', 'superadmin/login.php', 'username=superadmin&password=nope', null, { anonymous: true, html: /Invalid username or password/ }],
-    ['login · by email address', 'superadmin/login.php', 'username=superadmin%40optibiz.com&password=superadmin123', null, { anonymous: true, blank: true }],
+    ['login · by email address', 'superadmin/login.php', 'username=superadmin%40optibiz.com&password=superadmin123', /^INSERT INTO user_sessions/i, { anonymous: true, blank: true }],
     ['login · empty fields', 'superadmin/login.php', 'username=&password=', null, { anonymous: true, html: /Please enter both/ }],
 
     /* The bypasses that main's "fix the index appearance" commit added
@@ -184,6 +185,9 @@ function runPhp(script, queryString, opts) {
         SA_POST: opts && opts.post ? '1' : '',
         SA_BAD_CSRF: opts && opts.badCsrf ? '1' : '',
         SA_EMPTY_DB: opts && opts.emptyDb ? '1' : '',
+        SA_SESSION_REVOKED: opts && opts.sessionRevoked ? '1' : '',
+        SA_LOGOUT_TOKEN: (opts && opts.logoutToken) || 'preview-logout-token',
+        SA_SESSION_DUMP: (opts && opts.sessionDump) || '',
         SA_SESSION_DIR: sessionDir(),
     });
     try {
@@ -321,6 +325,135 @@ function main() {
             `  [${ok ? ' ok ' : 'FAIL'}] ${label.padEnd(32)} ${String(writes.length).padStart(2)} write(s)` +
                 (notes.length ? '  ' + notes.join(', ') : '')
         );
+    }
+
+    /* ---------- sign-out and session tracking ---------- */
+    console.log('\nSign-out (logout.php and the session row behind it):');
+    const SESSION_CASES = [
+        [
+            'sign out · valid token (GET)',
+            'superadmin/logout.php',
+            '?t=preview-logout-token',
+            { sessionDump: true },
+            (r) => r.writes.some((w) => /^UPDATE user_sessions SET logged_out_at/i.test(w)) && !r.session.super_admin_id,
+            'closed the session row and cleared $_SESSION',
+        ],
+        [
+            'sign out · valid token (POST)',
+            'superadmin/logout.php',
+            'logout_token=preview-logout-token',
+            { post: true, sessionDump: true },
+            (r) => r.writes.some((w) => /^UPDATE user_sessions SET logged_out_at/i.test(w)) && !r.session.super_admin_id,
+            'closed the session row and cleared $_SESSION',
+        ],
+        [
+            'sign out · forged token refused',
+            'superadmin/logout.php',
+            '?t=somebody-elses-token',
+            { sessionDump: true },
+            (r) => r.writes.length === 0 && !!r.session.super_admin_id,
+            'left the session signed in',
+        ],
+        [
+            'sign out · no token refused',
+            'superadmin/logout.php',
+            '',
+            { sessionDump: true },
+            (r) => r.writes.length === 0 && !!r.session.super_admin_id,
+            'left the session signed in',
+        ],
+        [
+            'sessions · revoked elsewhere bounces to login',
+            'superadmin/index.php',
+            '',
+            { sessionRevoked: true, sessionDump: true },
+            (r) => r.html.length === 0 && !r.session.super_admin_id,
+            'redirected to the login screen with an empty session',
+        ],
+        [
+            'settings · sign out everywhere else',
+            'superadmin/settings.php',
+            'action=logout_other_sessions',
+            { post: true },
+            (r) => r.writes.some((w) => /^UPDATE user_sessions SET logged_out_at/i.test(w) && /session_token <> \?/.test(w)),
+            'closed the other session rows only',
+        ],
+        [
+            'settings · password change closes other sessions',
+            'superadmin/settings.php',
+            'action=change_password&current_password=superadmin123&new_password=Sup3rSecret!&confirm_password=Sup3rSecret!',
+            { post: true },
+            (r) =>
+                r.writes.some((w) => /^UPDATE super_admins/i.test(w)) &&
+                r.writes.some((w) => /^UPDATE user_sessions SET logged_out_at/i.test(w)),
+            'updated the password and closed the other sessions',
+        ],
+        [
+            'users · cannot sign yourself out here',
+            'superadmin/users.php',
+            'action=revoke_sessions&user_id=1',
+            { post: true },
+            (r) => r.writes.length === 0,
+            'refused to close the account it is signed in with',
+        ],
+        [
+            'users · sign another account out',
+            'superadmin/users.php',
+            'action=revoke_sessions&user_id=2',
+            { post: true },
+            (r) => r.writes.some((w) => /^UPDATE user_sessions SET logged_out_at/i.test(w)),
+            'closed that account’s session rows',
+        ],
+    ];
+    for (const [label, script, body, opts, assert, describeOk] of SESSION_CASES) {
+        const dumpFile = path.join(require('os').tmpdir(), 'sa-sessdump-' + process.pid + '-' + sessionSeq + '.json');
+        const o = Object.assign({}, opts, opts.sessionDump ? { sessionDump: dumpFile } : {});
+        const r = runPhp(script, body.startsWith('?') ? body : '?' + body, o);
+        const writes = readSqlLog()
+            .filter((l) => l.startsWith('write\t'))
+            .map((l) => l.slice(6));
+        let session = null;
+        if (fs.existsSync(dumpFile)) {
+            try {
+                session = JSON.parse(fs.readFileSync(dumpFile, 'utf8'));
+            } catch (e) {
+                session = null;
+            }
+            fs.unlinkSync(dumpFile);
+        }
+        const fatal = /Fatal error|Parse error|Uncaught/.test(r.html + r.stderr);
+        const warns = [...new Set((r.html + r.stderr).match(/(Warning|Notice|Deprecated):[^<\n]{0,110}/g) || [])];
+        let ok = !fatal && warns.length === 0;
+        let detail = '';
+        try {
+            ok = ok && assert({ html: r.html, stderr: r.stderr, writes, session });
+        } catch (e) {
+            ok = false;
+            detail = e.message;
+        }
+        if (!ok) failures++;
+        console.log(
+            `  [${ok ? ' ok ' : 'FAIL'}] ${label.padEnd(46)} ${ok ? describeOk : detail || 'unexpected result'}` +
+                (fatal ? '  fatal error' : '') +
+                (warns.length ? '  ' + warns[0].trim() : '')
+        );
+    }
+
+    /* The session list must only show the panel the user is signed in to. */
+    {
+        const r = runPhp('superadmin/settings.php', '', {});
+        const sql = readSqlLog();
+        const unmatched = sql.filter((l) => l.startsWith('unmatched\t'));
+        const card = (r.html.match(/Signed-in sessions[\s\S]*?<\/section>/) || [''])[0];
+        const notes = [];
+        if (!/2 live sign-ins/.test(card)) notes.push('did not list the 2 control-center sessions');
+        if (/Windows|iPhone/.test(card)) notes.push('listed a session from the tenant panel');
+        if (!/This browser/.test(card)) notes.push('did not mark the current browser');
+        if (!/Sign out everywhere else/.test(card)) notes.push('no "sign out everywhere else" control');
+        if (unmatched.length) notes.push(unmatched.length + ' unmatched SQL');
+        const ok = notes.length === 0;
+        if (!ok) failures++;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${'sessions · control-center list'.padEnd(46)} ${ok ? 'only this panel’s sessions, current one marked' : notes.join(', ')}`);
     }
 
     /* ---------- fresh install: empty database ---------- */

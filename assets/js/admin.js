@@ -324,6 +324,20 @@
         }
     }
 
+    /* ---------- Confirm destructive actions (sign out) ---------- */
+    function initConfirms() {
+        document.addEventListener('click', function (e) {
+            var el = e.target.closest ? e.target.closest('[data-admin-confirm]') : null;
+            if (!el) {
+                return;
+            }
+            if (!window.confirm(el.getAttribute('data-admin-confirm'))) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        });
+    }
+
     onReady(function () {
         initTheme();
         initCollapse();
@@ -332,5 +346,6 @@
         initMenus();
         initSearch();
         initComposer();
+        initConfirms();
     });
 })();

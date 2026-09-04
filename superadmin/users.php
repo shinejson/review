@@ -151,6 +151,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('users.php');
     }
 
+    if ($action === 'revoke_sessions') {
+        $id     = (int) (isset($_POST['user_id']) ? $_POST['user_id'] : 0);
+        $target = $id > 0 ? sa_one($conn, 'SELECT * FROM super_admins WHERE id = ' . $id, 'super_admins') : null;
+
+        if (!$target) {
+            sa_flash('error', 'That account no longer exists.');
+        } elseif ($id === (int) $me['id']) {
+            sa_flash('warning', 'Use “Sign out everywhere else” in Settings for your own sessions.');
+        } elseif ((int) $target['is_owner'] === 1 && !$i_am_owner) {
+            sa_flash('error', 'Only the platform owner can end the owner’s sessions.');
+        } else {
+            $closed = auth_revoke_user_sessions($conn, 'superadmin', $id);
+            sa_flash($closed > 0 ? 'success' : 'warning', $closed > 0
+                ? $target['username'] . ' was signed out of ' . $closed . ' session' . ($closed === 1 ? '' : 's')
+                    . ' and has to sign in again.'
+                : $target['username'] . ' has no live session to close.');
+        }
+        redirect('users.php');
+    }
+
     if ($action === 'delete_user') {
         $id     = (int) (isset($_POST['user_id']) ? $_POST['user_id'] : 0);
         $target = $id > 0 ? sa_one($conn, 'SELECT * FROM super_admins WHERE id = ' . $id, 'super_admins') : null;
@@ -179,6 +199,9 @@ $users = sa_query(
     'SELECT id, username, email, is_owner, permissions, created_at FROM super_admins ORDER BY is_owner DESC, id ASC',
     ['super_admins']
 );
+
+/* How many live sessions each account has right now. */
+$session_counts = auth_session_counts($conn, 'superadmin', array_column($users, 'id'));
 
 /* ---------- page meta ---------- */
 $robots       = 'noindex, nofollow';
@@ -221,12 +244,13 @@ include __DIR__ . '/_shell.php';
         <table class="sa-table" id="usersTable">
             <thead>
                 <tr>
-                    <th>Account</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>May access</th>
-                    <th>Created</th>
-                    <th data-no-export></th>
+                    <th scope="col">Account</th>
+                    <th scope="col">Email</th>
+                    <th scope="col">Role</th>
+                    <th scope="col">May access</th>
+                    <th scope="col">Sessions</th>
+                    <th scope="col">Created</th>
+                    <th scope="col" data-no-export></th>
                 </tr>
             </thead>
             <tbody>
@@ -267,6 +291,28 @@ include __DIR__ . '/_shell.php';
 <?php endif; ?>
 <?php endif; ?>
                         </div>
+                    </td>
+<?php
+    $live_sessions = isset($session_counts[(int) $u['id']]) ? (int) $session_counts[(int) $u['id']] : 0;
+    $can_revoke    = $live_sessions > 0 && !$is_me && ($i_am_owner || !$is_owner_row);
+?>
+                    <td>
+<?php if ($live_sessions > 0): ?>
+                        <span class="sa-badge sa-badge-active"><?php echo sa_num($live_sessions); ?> live</span>
+<?php if ($can_revoke): ?>
+                        <form method="POST" action="users.php" style="display:inline">
+                            <?php echo sa_csrf_field(); ?>
+                            <input type="hidden" name="action" value="revoke_sessions">
+                            <input type="hidden" name="user_id" value="<?php echo (int) $u['id']; ?>">
+                            <button type="submit" class="sa-btn sa-btn-sm sa-btn-ghost" title="End every live session of <?php echo sa_e($u['username']); ?>"
+                                    data-sa-confirm="Sign <?php echo sa_e($u['username']); ?> out of all <?php echo (int) $live_sessions; ?> session<?php echo $live_sessions === 1 ? '' : 's'; ?>? They will have to sign in again.">
+                                <?php echo sa_icon('logout'); ?> Sign out
+                            </button>
+                        </form>
+<?php endif; ?>
+<?php else: ?>
+                        <span style="color:var(--sa-faint)">Not signed in</span>
+<?php endif; ?>
                     </td>
                     <td><?php echo sa_e(sa_date($u['created_at'])); ?></td>
                     <td data-no-export>

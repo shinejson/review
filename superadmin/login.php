@@ -8,8 +8,9 @@ if (isSuperAdminLoggedIn()) {
     redirect('index.php');
 }
 
-$error = '';
+$error  = '';
 $username = '';
+$notice = auth_login_notice();   // "you have been signed out", "session expired" …
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
@@ -35,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['super_admin_id']       = (int) $admin['id'];
             $_SESSION['super_admin_username'] = $admin['username'];
             $_SESSION['super_admin_email']    = $admin['email'];
+            auth_login_session($conn, 'superadmin', (int) $admin['id'], $admin['username'], 'super_admin');
             redirect('index.php');
         }
         $error = 'Invalid username or password. Please try again.';
@@ -118,6 +120,13 @@ include dirname(__DIR__) . '/includes/header.php';
                 <h2 id="authCardTitle">Super Admin Sign In</h2>
                 <p>Enter your platform credentials to access the command center.</p>
             </header>
+
+            <?php if ($notice): ?>
+                <div class="auth-alert is-info" role="status">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span><?php echo htmlspecialchars($notice['text']); ?></span>
+                </div>
+            <?php endif; ?>
 
             <?php if ($error): ?>
                 <div class="auth-alert" role="alert">
