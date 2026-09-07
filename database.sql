@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS customers (
     category_id INT,
     email VARCHAR(100),
     phone VARCHAR(20),
+    whatsapp_number VARCHAR(30) NULL COMMENT 'Click-to-chat number shown as a WhatsApp button on the public pages',
     website VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -122,10 +123,10 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 
 -- Insert sample customers (linked to tenants)
-INSERT INTO customers (tenant_id, company_name, category_id, email, website) VALUES 
-(1, 'Tech Solutions Inc', 1, 'info@techsolutions.com', 'www.techsolutions.com'),
-(1, 'Health Care Plus', 2, 'contact@healthcareplus.com', 'www.healthcareplus.com'),
-(2, 'Finance Pro', 3, 'support@financepro.com', 'www.financepro.com');
+INSERT INTO customers (tenant_id, company_name, category_id, email, phone, whatsapp_number, website) VALUES 
+(1, 'Tech Solutions Inc', 1, 'info@techsolutions.com', '030 245 0101', '+233 24 555 0101', 'www.techsolutions.com'),
+(1, 'Health Care Plus', 2, 'contact@healthcareplus.com', NULL, NULL, 'www.healthcareplus.com'),
+(2, 'Finance Pro', 3, 'support@financepro.com', NULL, NULL, 'www.financepro.com');
 
 -- Rating questions created by tenant / admin
 CREATE TABLE IF NOT EXISTS rating_questions (

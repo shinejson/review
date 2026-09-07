@@ -48,6 +48,91 @@ function getRatingDistribution($company_id, $conn) {
     return $dist;
 }
 
+/* ============================================================
+ *  WhatsApp click-to-chat
+ * ============================================================
+ *  Every business stores its number however it likes
+ *  ("+233 24 555 0118", "024 555 0118", "00233245550118" …).
+ *  wa.me only accepts international digits, so everything is
+ *  normalised here once and shared by the public rating page,
+ *  the company directory and the workspace profile screen.
+ */
+
+/**
+ * Normalise any typed phone number into wa.me digits.
+ * Returns '' when nothing usable is left, so callers can simply
+ * hide the button instead of linking to a broken chat.
+ */
+function whatsappDigits($raw) {
+    $digits = preg_replace('/\D+/', '', (string)$raw);
+    if ($digits === '') {
+        return '';
+    }
+    // Trunk prefix written the long way: 00233… -> 233…
+    if (strncmp($digits, '00', 2) === 0) {
+        $digits = substr($digits, 2);
+    }
+    // Local Ghanaian format: 024 555 0118 -> 233245550118
+    if (strncmp($digits, '0', 1) === 0 && strlen($digits) >= 9 && strlen($digits) <= 10) {
+        $digits = '233' . substr($digits, 1);
+    }
+    return (strlen($digits) >= 7 && strlen($digits) <= 15) ? $digits : '';
+}
+
+/**
+ * Build the wa.me deep link for a business number.
+ * Returns '' when there is no usable number.
+ */
+function whatsappChatUrl($rawNumber, $companyName = '', $message = '') {
+    $digits = whatsappDigits($rawNumber);
+    if ($digits === '') {
+        return '';
+    }
+    $name = trim((string)$companyName);
+    if (trim((string)$message) === '') {
+        $message = 'Hello' . ($name !== '' ? ' ' . $name : '') . ', I found you on Optibiz and would like to inquire.';
+    }
+    return 'https://wa.me/' . $digits . '?text=' . rawurlencode($message);
+}
+
+/** Human-readable copy of a normalised number: "+233 24 555 0118". */
+function whatsappDisplay($rawNumber) {
+    $digits = whatsappDigits($rawNumber);
+    if ($digits === '') {
+        return '';
+    }
+    if (strncmp($digits, '233', 3) === 0 && strlen($digits) === 12) {
+        return '+233 ' . substr($digits, 3, 2) . ' ' . substr($digits, 5, 3) . ' ' . substr($digits, 8);
+    }
+    return '+' . $digits;
+}
+
+/**
+ * Make sure customers.whatsapp_number exists, so installs created
+ * before the WhatsApp feature keep working without a manual SQL
+ * update (mirrors sa_ensure_user_schema()). Runs once per request
+ * and is only called from the workspace profile save handler.
+ */
+function ensureWhatsappColumn($conn) {
+    static $done = false;
+    if ($done || !is_object($conn) || !method_exists($conn, 'query')) {
+        return;
+    }
+    $done = true;
+
+    $res = @$conn->query("SHOW COLUMNS FROM customers LIKE 'whatsapp_number'");
+    if ($res) {
+        $exists = (int)$res->num_rows > 0;
+        if (method_exists($res, 'free')) {
+            $res->free();
+        }
+        if ($exists) {
+            return;
+        }
+    }
+    @$conn->query("ALTER TABLE customers ADD COLUMN whatsapp_number VARCHAR(30) NULL AFTER phone");
+}
+
 function getInitials($name) {
     $words = explode(' ', trim($name));
     $initials = '';
