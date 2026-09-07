@@ -689,8 +689,8 @@ if ($plan_result) {
         /* Feature Cards Strip */
         .feature-strip-section {
             background: #ffffff;
-            padding: 0 5% 100px;
-            margin-top: -50px;
+            padding: 60px 5% 70px;
+            margin-top: 0;
             position: relative;
             z-index: 10;
         }
@@ -1418,6 +1418,9 @@ if ($plan_result) {
             }
             .hero-title {
                 font-size: 36px;
+            }
+            .feature-strip-section {
+                padding: 40px 5% 50px;
             }
             .consulting-cards-grid {
                 grid-template-columns: 1fr;

@@ -189,9 +189,10 @@ include dirname(__DIR__) . '/includes/header.php';
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
                     Back to website
                 </a>
-                <a href="../superadmin/login.php" style="color:#64748b;font-size:13px;text-decoration:none;">
-                    Super Admin Portal &rarr;
-                </a>
+                <span class="auth-secure">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Secure login
+                </span>
             </footer>
         </section>
     </main>

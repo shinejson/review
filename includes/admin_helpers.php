@@ -72,9 +72,17 @@ if (!function_exists('admin_ensure_schema')) {
                 status ENUM('connected','disabled') DEFAULT 'connected',
                 last_error TEXT NULL,
                 last_used_at DATETIME NULL,
+                metadata TEXT NULL COMMENT 'JSON data for custom platforms',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE KEY uniq_tenant_platform (tenant_id, platform)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+        
+        // Add metadata column if it doesn't exist (migration for existing installations)
+        @$conn->query(
+            "ALTER TABLE social_accounts 
+             ADD COLUMN metadata TEXT NULL COMMENT 'JSON data for custom platforms' 
+             AFTER last_used_at"
         );
 
         @$conn->query(

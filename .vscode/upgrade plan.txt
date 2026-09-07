@@ -1,0 +1,171 @@
+Viewed database.sql:1-150
+Viewed database.sql:151-256
+Ran command: `php -r "require 'config/database.php'; \$r = \$conn->query('SHOW TABLES'); while(\$row = \$r->fetch_row()) echo \$row[0].\"\n\";"`
+Ran command: `php -r 'require "config/database.php"; $r = $conn->query("SHOW TABLES"); while($row = $r->fetch_row()) echo $row[0] . PHP_EOL;'`
+Ran command: `php "C:\Users\Administrator\.gemini\antigravity\brain\48d0d022-136c-49d5-ad58-4629051b2158\scratch\schema_check.php"`
+Used tool: manage_task
+Used tool: manage_task
+
+Here is an in-depth analysis of the documentation, mapped directly to your current **Optibiz / Rate Platform** codebase (PHP, MySQL, Vanilla JS/CSS, Multi-Tenant architecture), along with a concrete feature roadmap to make the platform business-robust and ready for monetization.
+
+---
+
+### 1. Strategic Analysis: Why This Wins in Ghana & Emerging Markets
+
+Generic review platforms like Google Reviews and Trustpilot have three fatal flaws in the Ghanaian/African market:
+1. **No direct conversion channel**: In Ghana, business happens on **WhatsApp**, not emails or contact forms. A good review without a direct "Chat on WhatsApp" button loses 80% of potential leads.
+2. **The "Fake Review" Trust Deficit**: Anyone with a Gmail account can leave 5-star spam or competitor sabotage. Businesses and shoppers have low trust in unverified reviews.
+3. **High Friction to Collect In-Person Reviews**: Asking walk-in customers at a restaurant in Osu, a hotel in Airport West, or a tech shop at Circle to "find us on Google" rarely works. A branded, printable counter QR stand card changes this completely.
+
+---
+
+### 2. Platform Audit: Where Optibiz Stands Today
+
+| Feature Area | Current Status in Codebase | The Missing "Business Robust" Gap |
+| :--- | :--- | :--- |
+| **Public Review Page** | Star rating, comments, multi-question surveys, photo uploads, helpful votes | No direct WhatsApp ordering/inquiry, no verification badges, no printable QR generator |
+| **Tenant Workspace** | Company profile, custom questions manager, review moderation & admin replies | No embeddable website widget, no AI response generator, no conversion metrics (e.g. clicks to WhatsApp) |
+| **Directory (`companies.php`)** | Listing of companies, category filter | No "Featured/Sponsored" badges, no WhatsApp CTA, no SEO schema markup |
+| **Super Admin** | Tenant management, plans, quote request conversion | Pricing plans are static; need automated feature gating (e.g. free vs. pro features) |
+
+---
+
+### 3. Recommended Feature Roadmap (Grouped by Business Impact)
+
+```mermaid
+graph TD
+    A["Optibiz Review Platform"] --> B["1. Instant Conversion Tools (WhatsApp & QR)"]
+    A --> C["2. Trust & Verification (MoMo & Receipt)"]
+    A --> D["3. Embeddable Widget & Virality"]
+    A --> E["4. AI & Retention Tools (Paid SaaS Driver)"]
+    A --> F["5. Platform Monetization"]
+
+    B --> B1["'Chat on WhatsApp' from Profile & Reviews"]
+    B --> B2["Printable Table/Counter QR Stand Generator"]
+    
+    C --> C1["'Verified Customer' (MoMo Ref / Receipt Upload)"]
+    C --> C2["Anti-Spam / Rate-Limiting Authenticity Engine"]
+
+    D --> D1["Embeddable Website Review Widget (Iframe/JS)"]
+    D --> D2["Google SEO Rich Snippets (AggregateRating Schema)"]
+
+    E --> E1["AI Reply Generator for Negative/Positive Reviews"]
+    E --> E2["Sentiment & Key Highlights Breakdown"]
+
+    F --> F1["Tiered Plan Feature Gating (Free / Starter / Pro)"]
+    F --> F2["'Promoted / Featured' Listing in Directory"]
+```
+
+---
+
+### 4. Detailed Feature Specifications
+
+#### Tier 1: High-Impact Conversion Tools (Build First)
+
+##### 1. WhatsApp Business Integration ("Click-to-Chat")
+* **What it does**:
+  - Adds a prominent green **"Chat with Us on WhatsApp"** button on the public profile (`rate/index.php`) and company cards in `companies.php`.
+  - Also adds a micro-CTA under exceptional 5-star reviews: *"Inspired by this review? Inquire on WhatsApp"*.
+  - Opens `https://wa.me/233XXXXXXXXX?text=Hello%20[Company],%20I%20saw%20your%20reviews%20on%20Optibiz%20and%20would%20like%20to%20inquire...`
+* **Why businesses pay for it**: Directly turns social proof into paying customers and orders.
+* **Database addition**: Add `whatsapp_number` and `whatsapp_message` to `customers` table.
+
+##### 2. Instant Printable Counter QR Code Generator
+* **What it does**:
+  - Inside the tenant panel (`admin/company.php` or a dedicated `admin/qr.php`), the business owner gets a **"Download Counter Stand"** button.
+  - Generates a print-ready PDF/image (e.g. A5 or tent card) with:
+    - The tenant's logo and company name
+    - Current average rating (e.g. `4.9 ★★★★★`)
+    - High-resolution QR code pointing directly to `rate/index.php?tenant=X`
+    - Call to action: *"Loved our service? Scan here to review us on Optibiz!"*
+* **Why businesses pay for it**: Overcomes the #1 barrier to getting reviews: getting customers to review before they leave the shop/hotel/restaurant.
+
+---
+
+#### Tier 2: Trust & Localized Verification (Differentiator)
+
+##### 3. "Verified Purchase / Customer" Badge (Ghana-Specific)
+* **What it does**:
+  - During review submission, an optional checkbox: *"I am a verified customer"*.
+  - Customers can enter a **Mobile Money (MoMo) Transaction ID / Receipt Number** or upload a photo/screenshot of their invoice/receipt.
+  - Reviews verified by receipt show a distinct **`✓ Verified Customer`** green badge.
+  - Businesses can also mark a review as verified from their admin panel if they recognize the customer name or order number.
+* **Database addition**: Add `is_verified TINYINT(1) DEFAULT 0` and `receipt_photo VARCHAR(255)` to `ratings` table.
+
+##### 4. Anti-Fraud & Authenticity Safeguard
+* **What it does**:
+  - Blocks duplicate reviews from the same IP address or device fingerprint within 24 hours.
+  - Flags submissions with suspicious disposable email domains (`mailinator`, `tempmail`).
+  - Displays an **"Authenticity Score"** (e.g., *98% Verified Feedback*) based on verified reviews vs unverified submissions.
+
+---
+
+#### Tier 3: Growth & Virality Tools
+
+##### 5. Embeddable Review Widget (For Business Websites & Link-in-Bio)
+* **What it does**:
+  - In `admin/settings.php`, provide a copy-paste embed code:
+    ```html
+    <iframe src="https://optibiz.com/widget.php?tenant=3" width="100%" height="220" frameborder="0"></iframe>
+    ```
+  - Shows a sleek, compact badge featuring their average score, star rating, verified tick, and latest 3 testimonials with a "Reviewed on Optibiz" trust mark.
+* **Why businesses pay for it**: Allows businesses to show real, trusted reviews directly on their own landing page or Shopify/WordPress store without coding.
+
+##### 6. SEO Google Rich Snippet (Schema.org)
+* **What it does**:
+  - Injects `schema.org/AggregateRating` and `schema.org/Review` JSON-LD into `rate/index.php`.
+  - When someone searches for *"Airport West Hotel reviews"* or *"Tech Solutions Accra"*, Google displays star ratings directly in search results (`★★★★★ 4.9 (128 reviews)`).
+* **Why businesses pay for it**: Drastically increases organic Google search click-through rates.
+
+---
+
+#### Tier 4: AI & Tenant Value Add (Justifies Higher Monthly Retainers)
+
+##### 7. AI Review Reply Assistant (OpenAI / Gemini Integration)
+* **What it does**:
+  - In `admin/ratings.php`, next to the "Reply to Customer" text box, add a **"✨ Generate AI Response"** button.
+  - For positive reviews: Generates a gracious, personalized thank-you note highlighting what they loved.
+  - For negative reviews: Generates a polite, de-escalating customer service response with an offer to resolve the issue offline.
+* **Why businesses pay for it**: Saves business owners time and prevents emotional, brand-damaging replies to negative feedback.
+
+##### 8. Post-Review Incentive ("Review & Get Discount")
+* **What it does**:
+  - After a customer submits a 4 or 5-star review, the success screen shows:
+    *"Thank you! Here is your exclusive 10% discount code for your next visit: [PROMO-OPTIBIZ]"*.
+  - Tenant can enable/disable this promo code from their dashboard.
+
+---
+
+### 5. Monetization & Packaging Matrix
+
+| Feature | **Free Plan** (Freemium) | **Starter Plan** (GH₵ 99/mo) | **Pro Plan** (GH₵ 249/mo) |
+| :--- | :---: | :---: | :---: |
+| Public Rating Page & Directory Listing | Yes | Yes | Yes |
+| Max Reviews / Month | 20 | 150 | Unlimited |
+| Custom Rating Questions | 1 | 3 | Unlimited |
+| Click-to-WhatsApp Buttons | No | **Yes** | **Yes** |
+| Printable QR Counter Stand | Standard | **Custom Branded** | **Custom Branded** |
+| Verified MoMo/Receipt Badges | No | **Yes** | **Yes** |
+| Embeddable Website Widget | No | No | **Yes** |
+| AI Response Generator | No | No | **Yes** |
+| Promoted Listing in Directory | No | No | **Yes** |
+
+---
+
+### 6. Recommended Execution Plan: What to Build First
+
+If you want to move quickly and deliver maximum immediate value to businesses:
+
+1. **Step 1: WhatsApp Click-to-Chat** (1-2 hours)
+   - Add `whatsapp_number` field to `admin/company.php`.
+   - Add direct "Chat on WhatsApp" button to `rate/index.php` and `companies.php`.
+2. **Step 2: Printable Counter QR Stand** (2-3 hours)
+   - Add a "Print QR Stand" card in `admin/company.php` that formats a clean printable stand with business name, logo, stars, and QR code.
+3. **Step 3: Verified Badge (MoMo / Receipt upload)** (2-3 hours)
+   - Add receipt upload or MoMo reference input to the review form and display the green `✓ Verified Customer` badge on verified reviews.
+4. **Step 4: Embeddable Widget (`widget.php`)** (2-3 hours)
+   - Create a clean `widget.php?tenant=ID` endpoint with embed snippet in `admin/settings.php`.
+5. **Step 5: SEO Schema JSON-LD** (30 minutes)
+   - Add Google `AggregateRating` JSON-LD to `rate/index.php` for organic search stars.
+
+Let me know which feature you would like to implement first!

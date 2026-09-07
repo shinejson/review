@@ -302,7 +302,7 @@ if (!function_exists('sa_stars')) {
 
 if (!function_exists('sa_date')) {
     /** "2026-03-04 11:22:33" -> "Mar 04, 2026" (or the fallback). */
-    function sa_date($value, $format = 'M d, Y', $fallback = '&mdash;')
+    function sa_date($value, $format = 'M d, Y', $fallback = '—')
     {
         if (!$value || $value === '0000-00-00' || $value === '0000-00-00 00:00:00') {
             return $fallback;
@@ -317,7 +317,7 @@ if (!function_exists('sa_time_ago')) {
     function sa_time_ago($value)
     {
         if (!$value) {
-            return '&mdash;';
+            return '—';
         }
         $ts = strtotime($value);
         if (!$ts) {
@@ -372,7 +372,14 @@ if (!function_exists('sa_renewal_badge')) {
             return ['<span class="sa-badge sa-badge-cancelled">No end date</span>', 'none'];
         }
         if ($days < 0) {
-            $label = 'Expired ' . abs($days) . 'd ago';
+            $abs_days = abs($days);
+            // Format large numbers of days more readably
+            if ($abs_days > 365) {
+                $years = floor($abs_days / 365);
+                $label = 'Expired ' . $years . 'y ago';
+            } else {
+                $label = 'Expired ' . $abs_days . 'd ago';
+            }
             return ['<span class="sa-badge sa-badge-expired">' . sa_e($label) . '</span>', 'expired'];
         }
         if ($days === 0) {

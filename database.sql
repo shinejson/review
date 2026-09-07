@@ -232,6 +232,7 @@ CREATE TABLE IF NOT EXISTS social_accounts (
     status ENUM('connected', 'disabled') DEFAULT 'connected',
     last_error TEXT NULL,
     last_used_at DATETIME NULL,
+    metadata TEXT NULL COMMENT 'JSON data for custom platforms',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_tenant_platform (tenant_id, platform)
 );

@@ -394,8 +394,8 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
         }
         /* Divided Section Navigation Tabs */
         .rt-divider-section {
-            margin-top: 30px;
-            padding-top: 36px;
+            margin-top: 56px;
+            padding-top: 48px;
             border-top: 1px solid #e2e8f0;
         }
         .rt-tab-nav {

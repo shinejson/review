@@ -640,7 +640,7 @@ body {
 /* ---------- Light theme ---------- */
 :root[data-theme='light'] {
     --ob-navy: #eef2f7;
-    --ob-navy-deep: #ffffff;
+    --ob-navy-deep: #0f2438;
     --ob-card: #ffffff;
     --ob-text: #1b2c3d;
     --ob-muted: #55697d;
@@ -664,6 +664,138 @@ body {
     background: #ffffff;
     border-color: var(--ob-line);
     box-shadow: 0 24px 60px rgba(15, 36, 56, 0.12);
+}
+
+/* Light mode: Fix text contrast on left panel */
+:root[data-theme='light'] .auth-logo-name strong {
+    color: var(--ob-navy-deep);
+}
+
+:root[data-theme='light'] .auth-logo-name span {
+    color: #0a7a3e;
+}
+
+:root[data-theme='light'] .auth-brand-body h1 {
+    color: #0f2438;
+}
+
+:root[data-theme='light'] .auth-brand-body h1 em {
+    color: #0a7a3e;
+}
+
+:root[data-theme='light'] .auth-brand-body > p {
+    color: #55697d;
+}
+
+:root[data-theme='light'] .auth-points li {
+    color: #2c3e50;
+}
+
+:root[data-theme='light'] .auth-check {
+    background: rgba(10, 122, 62, 0.12);
+    border-color: rgba(10, 122, 62, 0.35);
+    color: #0a7a3e;
+}
+
+:root[data-theme='light'] .auth-brand-foot {
+    color: #7d8ea1;
+}
+
+/* Light mode: Card header text */
+:root[data-theme='light'] .auth-card-head h2 {
+    color: #0f2438;
+}
+
+:root[data-theme='light'] .auth-card-head p {
+    color: #55697d;
+}
+
+/* Light mode: Form labels */
+:root[data-theme='light'] .auth-field label {
+    color: #2c3e50;
+}
+
+/* Light mode: Form inputs */
+:root[data-theme='light'] .auth-form input {
+    background: #f8fafc;
+    border-color: rgba(15, 36, 56, 0.15);
+    color: #1b2c3d;
+}
+
+:root[data-theme='light'] .auth-form input::placeholder {
+    color: #94a3b8;
+}
+
+:root[data-theme='light'] .auth-form input:hover {
+    border-color: rgba(15, 36, 56, 0.25);
+}
+
+:root[data-theme='light'] .auth-form input:focus {
+    background: #ffffff;
+    border-color: #0a7a3e;
+    box-shadow: 0 0 0 3px rgba(10, 122, 62, 0.12);
+}
+
+:root[data-theme='light'] .auth-input-icon {
+    color: #7d8ea1;
+}
+
+:root[data-theme='light'] .auth-input-wrap:focus-within .auth-input-icon {
+    color: #0a7a3e;
+}
+
+/* Light mode: Toggle button */
+:root[data-theme='light'] .auth-toggle {
+    color: #7d8ea1;
+}
+
+:root[data-theme='light'] .auth-toggle:hover {
+    background: rgba(15, 36, 56, 0.06);
+    color: #2c3e50;
+}
+
+/* Light mode: Submit button - keep gradient visible */
+:root[data-theme='light'] .auth-submit {
+    background: linear-gradient(135deg, #d6fb62, #a8e030);
+    color: #0f2438;
+    box-shadow: 0 12px 28px rgba(168, 224, 48, 0.25);
+}
+
+:root[data-theme='light'] .auth-submit:hover {
+    box-shadow: 0 16px 34px rgba(168, 224, 48, 0.35);
+}
+
+/* Light mode: Footer links */
+:root[data-theme='light'] .auth-card-foot a {
+    color: #55697d;
+}
+
+:root[data-theme='light'] .auth-card-foot a:hover {
+    color: #0a7a3e;
+}
+
+:root[data-theme='light'] .auth-secure {
+    color: #7d8ea1;
+}
+
+:root[data-theme='light'] .auth-secure svg {
+    color: #0a7a3e;
+}
+
+/* Light mode: Error alert */
+:root[data-theme='light'] .auth-alert {
+    background: rgba(220, 38, 38, 0.1);
+    border-color: rgba(220, 38, 38, 0.3);
+    color: #991b1b;
+}
+
+/* Light mode: Autofill */
+:root[data-theme='light'] .auth-form input:-webkit-autofill,
+:root[data-theme='light'] .auth-form input:-webkit-autofill:hover,
+:root[data-theme='light'] .auth-form input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #1b2c3d;
+    -webkit-box-shadow: 0 0 0 1000px #f8fafc inset;
+    caret-color: #1b2c3d;
 }
 
 :root[data-theme='light'] .auth-theme-toggle {
