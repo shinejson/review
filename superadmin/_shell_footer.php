@@ -11,6 +11,6 @@
     </div>
 </div>
 
-<script src="<?php echo sa_asset('assets/js/superadmin.js'); ?>"></script>
+<script src="<?php echo $BASE; ?>assets/js/superadmin.js"></script>
 </body>
 </html>

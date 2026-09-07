@@ -2,7 +2,12 @@
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/functions.php';
 
-$customers = $conn->query("SELECT c.*, cat.name as category_name FROM customers c LEFT JOIN categories cat ON c.category_id = cat.id ORDER BY c.company_name");
+// Company list joined with tenant branding (logo + banner)
+$customers = $conn->query("SELECT c.*, cat.name as category_name, t.company_name AS tenant_name, t.logo AS tenant_logo, t.banner AS tenant_banner
+                           FROM customers c
+                           LEFT JOIN categories cat ON c.category_id = cat.id
+                           LEFT JOIN tenants t ON c.tenant_id = t.id
+                           ORDER BY c.company_name");
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -10,341 +15,270 @@ $customers = $conn->query("SELECT c.*, cat.name as category_name FROM customers 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Companies - Optibiz Rating Platform</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        :root {
+            --primary-dark: #0f2438;
+            --accent-lime: #c2f542;
+            --accent-lime-hover: #a8e030;
+            --card-dark: #1a3852;
+            --accent-green-bg: #ecfccb;
+            --accent-green-text: #4d7c0f;
+            --text-muted: #64748b;
+            --star: #fbbf24;
+            --line: #e6ebf1;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #f8fafc;
             color: #1e293b;
+            background: #f5f7fb;
+            overflow-x: hidden;
         }
-        
-        .cmp-header {
-            background: #1e293b;
-            padding: 20px 80px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+
+        /* ===== Header & Navigation (matches index.php) ===== */
+        .top-bar-wrap {
+            background: var(--primary-dark);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
         }
-        .cmp-logo {
-            font-size: 24px;
-            font-weight: 700;
-            color: white;
-        }
-        .cmp-nav {
-            display: flex;
-            gap: 40px;
-            align-items: center;
-        }
-        .cmp-nav a {
-            color: white;
-            text-decoration: none;
-            font-size: 14px;
-            transition: opacity 0.3s;
-        }
-        .cmp-nav a:hover { opacity: 0.7; }
-        
-        .cmp-page-header {
-            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-            padding: 60px 80px;
-            text-align: center;
-            color: white;
-        }
-        .cmp-page-header h1 {
-            font-size: 48px;
-            margin-bottom: 15px;
-        }
-        .cmp-page-header p {
-            font-size: 18px;
-            color: #cbd5e1;
-        }
-        
-        .cmp-container {
-            max-width: 1400px;
+        .navbar {
+            max-width: 1280px;
             margin: 0 auto;
-            padding: 60px 80px;
-        }
-        
-        .cmp-search-filter {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            margin-bottom: 40px;
+            padding: 18px 5%;
             display: flex;
-            gap: 20px;
             align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        .cmp-search-input {
-            flex: 1;
-            padding: 12px 20px;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-        .cmp-search-input:focus {
-            outline: none;
-            border-color: #a3e635;
-        }
-        .cmp-filter-select {
-            padding: 12px 20px;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            font-size: 14px;
-            background: white;
-            cursor: pointer;
-        }
-        
-        .cmp-companies-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            justify-content: space-between;
             gap: 30px;
         }
-        
-        .cmp-company-card {
-            background: white;
-            border-radius: 16px;
-            padding: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            transition: transform 0.3s, box-shadow 0.3s;
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            color: #ffffff;
+            font-size: 24px;
+            font-weight: 800;
+            text-decoration: none;
+            letter-spacing: -0.5px;
         }
-        .cmp-company-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-        }
-        
-        .cmp-company-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 20px;
-        }
-        .cmp-company-logo {
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, #a3e635 0%, #84cc16 100%);
-            border-radius: 12px;
+        .logo-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: var(--accent-lime);
+            color: var(--primary-dark);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
-            font-weight: 700;
-            color: white;
+            font-size: 16px;
         }
-        .cmp-company-category {
-            background: #f1f5f9;
-            color: #64748b;
+        .nav-pill {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+        }
+        .nav-pill a {
+            color: #cbd5e1;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.25s ease;
+            position: relative;
+            padding: 6px 0;
+        }
+        .nav-pill a:hover { color: var(--accent-lime); }
+        .nav-pill a.active { color: #ffffff; }
+        .nav-pill a.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: var(--accent-lime);
+            border-radius: 2px;
+        }
+        .btn-quote {
+            background: var(--accent-lime);
+            color: var(--primary-dark);
+            text-decoration: none;
+            padding: 10px 22px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+        }
+        .btn-quote:hover {
+            background: var(--accent-lime-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(194, 245, 66, 0.3);
+        }
+/* ===== Company Cards Grid ===== */
+        .cmp-companies-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+            gap: 28px;
+        }
+        .cmp-company-card {
+            background: #ffffff;
+            border-radius: 18px;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            box-shadow: 0 2px 12px rgba(15,23,42,.05);
+            transition: transform .3s ease, box-shadow .3s ease, border-color .3s ease;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        .cmp-company-card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 18px 42px rgba(15,23,42,.12);
+            border-color: rgba(194,245,66,.6);
+        }
+
+        /* Banner */
+        .cmp-card-banner {
+            height: 140px;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a3852, #2c5c8a);
+        }
+        .cmp-card-banner img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: transform .5s ease;
+        }
+        .cmp-company-card:hover .cmp-card-banner img { transform: scale(1.06); }
+        .cmp-banner-fallback {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 46px;
+            color: rgba(255,255,255,.25);
+            background:
+                radial-gradient(circle at 20% 30%, rgba(194,245,66,.2), transparent 45%),
+                linear-gradient(135deg, #1a3852, #2c5c8a);
+        }
+        .cmp-card-category {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(15,36,56,.82);
+            color: #fff;
             padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .cmp-company-name {
-            font-size: 22px;
+            border-radius: 30px;
+            font-size: 11.5px;
             font-weight: 700;
-            color: #1e293b;
-            margin-bottom: 10px;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255,255,255,.18);
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
         }
-        
+        .cmp-card-category i { color: var(--accent-lime); font-size: 10px; }
+
+        /* Logo badge overlapping banner */
+        .cmp-card-logo-wrap {
+            margin-top: -34px;
+            padding: 0 22px;
+            position: relative;
+            z-index: 3;
+        }
+        .cmp-card-logo {
+            width: 68px;
+            height: 68px;
+            border-radius: 16px;
+            background: #fff;
+            border: 3px solid #fff;
+            box-shadow: 0 6px 18px rgba(15,23,42,.18);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .cmp-card-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .cmp-card-logo .cmp-initials {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #c2f542, #84cc16);
+            color: #0f2438;
+            font-weight: 800;
+            font-size: 22px;
+        }
+
+        /* Card body */
+        .cmp-card-body {
+            padding: 16px 22px 22px;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+        .cmp-company-name {
+            font-size: 20px;
+            font-weight: 800;
+            color: #0f2438;
+            margin-bottom: 4px;
+            letter-spacing: -.3px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .cmp-company-name i { color: #2563eb; font-size: 14px; }
+        .cmp-tenant-name {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .cmp-tenant-name i { color: var(--accent-lime-hover); font-size: 11px; }
+
         .cmp-company-info {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            margin-bottom: 20px;
+            gap: 7px;
+            margin-bottom: 16px;
         }
         .cmp-info-item {
             display: flex;
             align-items: center;
-            gap: 8px;
-            color: #64748b;
-            font-size: 14px;
+            gap: 9px;
+            color: #475569;
+            font-size: 13px;
+            min-width: 0;
         }
-        .cmp-info-icon {
-            color: #a3e635;
-        }
-        
-        .cmp-rating-section {
+        .cmp-info-item i {
+            width: 30px;
+            height: 30px;
+            border-radius: 9px;
+            background: #f1f5f9;
+            color: var(--primary-dark);
             display: flex;
             align-items: center;
-            gap: 15px;
-            padding: 15px 0;
-            border-top: 1px solid #e2e8f0;
-            border-bottom: 1px solid #e2e8f0;
-            margin-bottom: 20px;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
         }
-        .cmp-rating-score {
-            font-size: 32px;
-            font-weight: 700;
-            color: #1e293b;
+        .cmp-info-item span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
-        .cmp-rating-details {
-            flex: 1;
-        }
-        .cmp-stars {
-            color: #fbbf24;
-            font-size: 18px;
-            margin-bottom: 5px;
-        }
-        .cmp-rating-count {
-            color: #64748b;
-            font-size: 13px;
-        }
-        
-        .cmp-rate-btn {
-            width: 100%;
-            background: #a3e635;
-            color: #1e293b;
-            padding: 14px;
-            border: none;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: block;
-            text-align: center;
-            transition: background 0.3s;
-        }
-        .cmp-rate-btn:hover {
-            background: #84cc16;
-        }
-        
-        .cmp-empty-state {
-            text-align: center;
-            padding: 80px 20px;
-            color: #64748b;
-        }
-        .cmp-empty-state h2 {
-            font-size: 24px;
-            margin-bottom: 10px;
-        }
-    </style>
-</head>
-<body>
-    <header class="cmp-header">
-        <div class="cmp-logo">Optibiz</div>
-        <nav class="cmp-nav">
-            <a href="index.php">Home</a>
-            <a href="companies.php">Companies</a>
-            <a href="#about">About</a>
-            <a href="admin/login.php">Admin Login</a>
-        </nav>
-    </header>
-
-    <div class="cmp-page-header">
-        <h1>Browse Companies</h1>
-        <p>Rate and review companies to help others make informed decisions</p>
-    </div>
-
-    <div class="cmp-container">
-        <div class="cmp-search-filter">
-            <input type="text" class="cmp-search-input" id="searchInput" placeholder="Search companies by name...">
-            <select class="cmp-filter-select" id="categoryFilter">
-                <option value="">All Categories</option>
-                <?php
-                $categories = $conn->query("SELECT DISTINCT cat.id, cat.name FROM categories cat INNER JOIN customers c ON cat.id = c.category_id ORDER BY cat.name");
-                while ($cat = $categories->fetch_assoc()):
-                ?>
-                <option value="<?php echo $cat['id']; ?>"><?php echo htmlspecialchars($cat['name']); ?></option>
-                <?php endwhile; ?>
-            </select>
-        </div>
-
-        <div class="cmp-companies-grid" id="companiesGrid">
-            <?php if ($customers->num_rows > 0): ?>
-                <?php while ($company = $customers->fetch_assoc()): 
-                    $avg_rating = getAverageRating($company['id'], $conn);
-                    $rating_count = getRatingCount($company['id'], $conn);
-                    $initials = strtoupper(substr($company['company_name'], 0, 2));
-                ?>
-                <div class="cmp-company-card" data-category="<?php echo $company['category_id']; ?>" data-name="<?php echo strtolower($company['company_name']); ?>">
-                    <div class="cmp-company-header">
-                        <div class="cmp-company-logo"><?php echo $initials; ?></div>
-                        <?php if ($company['category_name']): ?>
-                        <span class="cmp-company-category"><?php echo htmlspecialchars($company['category_name']); ?></span>
-                        <?php endif; ?>
-                    </div>
-                    
-                    <h3 class="cmp-company-name"><?php echo htmlspecialchars($company['company_name']); ?></h3>
-                    
-                    <div class="cmp-company-info">
-                        <?php if ($company['email']): ?>
-                        <div class="cmp-info-item">
-                            <span class="cmp-info-icon">✉</span>
-                            <?php echo htmlspecialchars($company['email']); ?>
-                        </div>
-                        <?php endif; ?>
-                        <?php if ($company['phone']): ?>
-                        <div class="cmp-info-item">
-                            <span class="cmp-info-icon">📞</span>
-                            <?php echo htmlspecialchars($company['phone']); ?>
-                        </div>
-                        <?php endif; ?>
-                        <?php if ($company['website']): ?>
-                        <div class="cmp-info-item">
-                            <span class="cmp-info-icon">🌐</span>
-                            <?php echo htmlspecialchars($company['website']); ?>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                    
-                    <div class="cmp-rating-section">
-                        <div class="cmp-rating-score"><?php echo number_format($avg_rating, 1); ?></div>
-                        <div class="cmp-rating-details">
-                            <div class="cmp-stars">
-                                <?php
-                                $full_stars = floor($avg_rating);
-                                for ($i = 0; $i < $full_stars; $i++) echo '★';
-                                if (($avg_rating - $full_stars) >= 0.5) echo '★';
-                                for ($i = 0; $i < (5 - ceil($avg_rating)); $i++) echo '☆';
-                                ?>
-                            </div>
-                            <div class="cmp-rating-count"><?php echo $rating_count; ?> reviews</div>
-                        </div>
-                    </div>
-                    
-                    <a href="rate/index.php?company=<?php echo $company['id']; ?>" class="cmp-rate-btn">Rate This Company →</a>
-                </div>
-                <?php endwhile; ?>
-            <?php else: ?>
-                <div class="cmp-empty-state">
-                    <h2>No Companies Yet</h2>
-                    <p>Check back soon for companies to rate</p>
-                </div>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <script>
-        // Search functionality
-        document.getElementById('searchInput').addEventListener('input', function(e) {
-            filterCompanies();
-        });
-
-        // Category filter
-        document.getElementById('categoryFilter').addEventListener('change', function(e) {
-            filterCompanies();
-        });
-
-        function filterCompanies() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const categoryFilter = document.getElementById('categoryFilter').value;
-            const cards = document.querySelectorAll('.cmp-company-card');
-
-            cards.forEach(card => {
-                const name = card.getAttribute('data-name');
-                const category = card.getAttribute('data-category');
-                
-                const matchesSearch = name.includes(searchTerm);
-                const matchesCategory = !categoryFilter || category === categoryFilter;
-                
-                if (matchesSearch && matchesCategory) {
-                    card.style.display = 'block';
-                } else {
-                    card.style.display = 'none';
-                }
-            });
-        }
-    </script>
-</body>
-</html>

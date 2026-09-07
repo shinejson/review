@@ -49,9 +49,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     $category_id  = (int)($_POST['category_id'] ?? 0);
 
     if (empty($company_name)) {
-        $error = 'Company name is required.';
+        $_SESSION['error'] = 'Company name is required.';
     } elseif (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = 'Please enter a valid email address.';
+        $_SESSION['error'] = 'Please enter a valid email address.';
     } else {
         $cat_val = $category_id > 0 ? $category_id : null;
 
@@ -73,15 +73,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         $sync->execute();
         $sync->close();
 
-        $success = 'Company profile saved successfully!';
-
-        // Re-fetch
-        $cp = $conn->prepare("SELECT * FROM customers WHERE tenant_id=? ORDER BY id ASC LIMIT 1");
-        $cp->bind_param("i", $tenant_id);
-        $cp->execute();
-        $company_profile = $cp->get_result()->fetch_assoc();
-        $cp->close();
+        $_SESSION['success'] = 'Company profile saved successfully!';
     }
+    
+    // Redirect to prevent form resubmission
+    header('Location: company.php');
+    exit;
+}
+
+// Get flash messages from session
+if (isset($_SESSION['success'])) {
+    $success = $_SESSION['success'];
+    unset($_SESSION['success']);
+}
+if (isset($_SESSION['error'])) {
+    $error = $_SESSION['error'];
+    unset($_SESSION['error']);
 }
 
 // Categories dropdown

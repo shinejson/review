@@ -20,54 +20,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     if ($is_tenant && $tenant_id) {
         $logo_path = null;
+        $banner_path = null;
 
-        // Handle logo upload
-        if (isset($_FILES['company_logo']) && $_FILES['company_logo']['error'] !== UPLOAD_ERR_NO_FILE) {
+        // Helper closure to store an uploaded image into /uploads
+        $handle_image_upload = function ($field, $prefix) use ($tenant_id) {
+            if (!isset($_FILES[$field]) || $_FILES[$field]['error'] === UPLOAD_ERR_NO_FILE) {
+                return null;
+            }
             $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            $mime = finfo_file($finfo, $_FILES['company_logo']['tmp_name']);
+            $mime = finfo_file($finfo, $_FILES[$field]['tmp_name']);
             finfo_close($finfo);
 
-            if (in_array($mime, $allowed_types) && $_FILES['company_logo']['size'] <= 2 * 1024 * 1024) {
-                $upload_dir = __DIR__ . '/../uploads/';
-                if (!is_dir($upload_dir)) {
-                    mkdir($upload_dir, 0755, true);
-                }
-                $ext = pathinfo($_FILES['company_logo']['name'], PATHINFO_EXTENSION);
-                $filename = 'tenant_logo_' . $tenant_id . '_' . time() . '.' . $ext;
-                $target_file = $upload_dir . $filename;
+            if (!in_array($mime, $allowed_types) || $_FILES[$field]['size'] > 2 * 1024 * 1024) {
+                $_SESSION['error'] = "Invalid file type or file too large. Only JPG, PNG, GIF, WEBP allowed (max 2MB).";
+                return false;
+            }
 
-                if (move_uploaded_file($_FILES['company_logo']['tmp_name'], $target_file)) {
-                    // Remove old logo if exists
-                    $old_logo = $tenant['logo'] ?? '';
-                    if (!empty($old_logo) && file_exists(__DIR__ . '/../' . $old_logo)) {
-                        unlink(__DIR__ . '/../' . $old_logo);
-                    }
-                    $logo_path = 'uploads/' . $filename;
-                } else {
-                    $error = "Failed to upload logo. Please try again.";
-                }
+            $upload_dir = __DIR__ . '/../uploads/';
+            if (!is_dir($upload_dir)) {
+                mkdir($upload_dir, 0755, true);
+            }
+            $ext = pathinfo($_FILES[$field]['name'], PATHINFO_EXTENSION);
+            $filename = $prefix . '_' . $tenant_id . '_' . time() . '.' . $ext;
+            $target_file = $upload_dir . $filename;
+
+            if (move_uploaded_file($_FILES[$field]['tmp_name'], $target_file)) {
+                return 'uploads/' . $filename;
+            }
+            $_SESSION['error'] = "Failed to upload {$prefix}. Please try again.";
+            return false;
+        };
+
+        // Handle logo upload
+        $logo_result = $handle_image_upload('company_logo', 'tenant_logo');
+        if ($logo_result === false) {
+            $logo_result = null;
+        }
+        if ($logo_result !== null) {
+            $logo_path = $logo_result;
+            // Remove old logo if exists
+            $old_logo = $tenant['logo'] ?? '';
+            if (!empty($old_logo) && file_exists(__DIR__ . '/../' . $old_logo)) {
+                unlink(__DIR__ . '/../' . $old_logo);
+            }
+        }
+
+        // Handle banner upload
+        $banner_result = $handle_image_upload('company_banner', 'tenant_banner');
+        if ($banner_result === false) {
+            $banner_result = null;
+        }
+        if ($banner_result !== null) {
+            $banner_path = $banner_result;
+            // Remove old banner if exists
+            $old_banner = $tenant['banner'] ?? '';
+            if (!empty($old_banner) && file_exists(__DIR__ . '/../' . $old_banner)) {
+                unlink(__DIR__ . '/../' . $old_banner);
+            }
+        }
+
+        if (!isset($_SESSION['error'])) {
+            if ($logo_path !== null && $banner_path !== null) {
+                $stmt = $conn->prepare("UPDATE tenants SET company_name = ?, email = ?, phone = ?, logo = ?, banner = ? WHERE id = ?");
+                $stmt->bind_param("sssssi", $company_name, $email, $phone, $logo_path, $banner_path, $tenant_id);
+            } elseif ($logo_path !== null) {
+                $stmt = $conn->prepare("UPDATE tenants SET company_name = ?, email = ?, phone = ?, logo = ? WHERE id = ?");
+                $stmt->bind_param("ssssi", $company_name, $email, $phone, $logo_path, $tenant_id);
+            } elseif ($banner_path !== null) {
+                $stmt = $conn->prepare("UPDATE tenants SET company_name = ?, email = ?, phone = ?, banner = ? WHERE id = ?");
+                $stmt->bind_param("ssssi", $company_name, $email, $phone, $banner_path, $tenant_id);
             } else {
-                $error = "Invalid file type or file too large. Only JPG, PNG, GIF, WEBP allowed (max 2MB).";
+                $stmt = $conn->prepare("UPDATE tenants SET company_name = ?, email = ?, phone = ? WHERE id = ?");
+                $stmt->bind_param("sssi", $company_name, $email, $phone, $tenant_id);
             }
-        }
-
-        if ($logo_path !== null) {
-            $stmt = $conn->prepare("UPDATE tenants SET company_name = ?, email = ?, phone = ?, logo = ? WHERE id = ?");
-            $stmt->bind_param("ssssi", $company_name, $email, $phone, $logo_path, $tenant_id);
-        } else {
-            $stmt = $conn->prepare("UPDATE tenants SET company_name = ?, email = ?, phone = ? WHERE id = ?");
-            $stmt->bind_param("sssi", $company_name, $email, $phone, $tenant_id);
-        }
-                if ($stmt->execute()) {
-            $_SESSION['tenant_name'] = $company_name;
-            $_SESSION['tenant_email'] = $email;
-            if ($logo_path !== null) {
-                $_SESSION['tenant_logo'] = $logo_path;
+            if ($stmt->execute()) {
+                $_SESSION['tenant_name'] = $company_name;
+                $_SESSION['tenant_email'] = $email;
+                if ($logo_path !== null) {
+                    $_SESSION['tenant_logo'] = $logo_path;
+                }
+                if ($banner_path !== null) {
+                    $_SESSION['tenant_banner'] = $banner_path;
+                }
+                $_SESSION['success'] = "Profile updated successfully!";
+            } else {
+                $_SESSION['error'] = "Failed to update profile: " . $conn->error;
             }
-            $success = "Profile updated successfully!";
-        } else {
-            $error = "Failed to update profile: " . $conn->error;
         }
     } elseif (isAdmin()) {
         $admin_id = (int)$_SESSION['admin_id'];
@@ -76,11 +115,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         if ($stmt->execute()) {
             $_SESSION['admin_username'] = $company_name;
             $_SESSION['admin_email']    = $email;
-            $success = "Account updated successfully!";
+            $_SESSION['success'] = "Account updated successfully!";
         } else {
-            $error = "Failed to update account: " . $conn->error;
+            $_SESSION['error'] = "Failed to update account: " . $conn->error;
         }
     }
+    
+    header('Location: settings.php');
+    exit;
+}
+
+// Get flash messages from session
+if (isset($_SESSION['success'])) {
+    $success = $_SESSION['success'];
+    unset($_SESSION['success']);
+}
+if (isset($_SESSION['error'])) {
+    $error = $_SESSION['error'];
+    unset($_SESSION['error']);
 }
 
 // Handle Password Change
@@ -332,6 +384,24 @@ include __DIR__ . '/_shell.php';
                         <div style="flex:1;">
                             <input type="file" name="company_logo" accept="image/*" style="font-size:13px;">
                             <small class="muted" style="display:block;margin-top:4px;font-size:11.5px;">PNG, JPG, GIF, WEBP - max 2MB</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:24px;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#334155;margin-bottom:8px;">
+                        Company Banner (shown at the front of your company cards)
+                    </label>
+                    <div style="display:flex;align-items:center;gap:14px;">
+                        <?php if (!empty($tenant['banner'])): ?>
+                            <img src="<?php echo $BASE . htmlspecialchars($tenant['banner']); ?>" alt="Current Banner" style="width:120px;height:68px;border-radius:8px;object-fit:cover;border:1px solid var(--line);flex-shrink:0;">
+                        <?php else: ?>
+                            <div style="width:120px;height:68px;border-radius:8px;border:1px dashed var(--line);display:grid;place-items:center;color:var(--muted);font-size:11px;text-align:center;">No Banner
+                            </div>
+                        <?php endif; ?>
+                        <div style="flex:1;">
+                            <input type="file" name="company_banner" accept="image/*" style="font-size:13px;">
+                            <small class="muted" style="display:block;margin-top:4px;font-size:11.5px;">PNG, JPG, GIF, WEBP - max 2MB, recommended 1200 x 400px</small>
                         </div>
                     </div>
                 </div>

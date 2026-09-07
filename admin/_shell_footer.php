@@ -2,7 +2,7 @@
 </section>
 </div>
 
-<script src="<?php echo sa_asset('assets/js/admin.js'); ?>"></script>
+<script src="<?php echo $BASE; ?>assets/js/admin.js"></script>
 
 </body>
 </html>
