@@ -201,7 +201,19 @@ nav a .nav-label{font-size:13px;width:auto;font-weight:600;color:inherit;line-he
 :root[data-theme='dark'] ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.25)}
 
 /* Responsive */
-@media(max-width:768px){.admin-burger{display:flex}.admin-search{display:none}.admin-topbar-actions{gap:8px}.status-dot{display:none}.admin-avatar-btn span{display:none}.admin-avatar-btn{padding:5px}}
+@media(max-width:768px){
+  .admin-burger{display:flex}
+  .admin-collapse-btn{display:none}
+  .admin-search{display:none}
+  .admin-topbar{padding:0 16px;gap:12px}
+  .admin-topbar-actions{gap:10px;margin-left:auto}
+  .status-dot{display:none}
+  .admin-avatar-btn span{display:none}
+  .admin-avatar-btn{padding:6px;min-width:44px;min-height:44px}
+  .admin-icon-btn{min-width:44px;min-height:44px}
+  .admin-theme-toggle{min-width:44px;min-height:32px}
+  .crumb{display:none}
+}
 
 /* Table scroll wrapper */
 .table-scroll-wrap{overflow-x:auto;overflow-y:auto;max-height:600px;border-radius:12px}

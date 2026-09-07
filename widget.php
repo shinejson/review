@@ -92,8 +92,13 @@ if ($actual_company_id > 0 && $show_reviews) {
     $top_reviews = $r_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 }
 
-// Target URL for clicks
-$public_url = 'rate/index.php?' . ($tenant_id > 0 ? 'tenant=' . $tenant_id : 'company=' . $actual_company_id);
+// Target URL for clicks (tagged with &src=widget for analytics)
+$public_url = 'rate/index.php?' . ($tenant_id > 0 ? 'tenant=' . $tenant_id : 'company=' . $actual_company_id) . '&src=widget';
+
+// Log widget view event
+if ($actual_company_id > 0) {
+    @logAnalyticsEvent($conn, (int)($tenant_info['id'] ?? $tenant_id), $actual_company_id, 'widget_view', 'embed_widget', $layout, 'widget');
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">

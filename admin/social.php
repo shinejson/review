@@ -496,9 +496,14 @@ include __DIR__ . '/_shell.php';
                 <h1>Social &amp; lead content</h1>
                 <p class="muted">Turn what customers wrote about you into posts that bring the next customer in.</p>
             </div>
-            <button type="button" class="primary-button" onclick="openAddSocialModal()">
-                ＋ Add social account
-            </button>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <a href="social_card.php" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;font-weight:700;background:#091a27;color:#c2f542;border:none;">
+                    🎨 Create Review Graphics (IG / WhatsApp)
+                </a>
+                <button type="button" class="primary-button" onclick="openAddSocialModal()">
+                    ＋ Add social account
+                </button>
+            </div>
         </div>
         
         <div class="metric-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:28px;">
@@ -506,6 +511,22 @@ include __DIR__ . '/_shell.php';
             <div class="metric-card"><div class="metric-icon lime">✓</div><span>Published posts</span><strong><?php echo sa_e(sa_num($published_count)); ?></strong><small>Live on networks</small></div>
             <div class="metric-card"><div class="metric-icon amber">📝</div><span>Draft posts</span><strong><?php echo sa_e(sa_num($draft_count)); ?></strong><small>Ready to publish</small></div>
             <div class="metric-card"><div class="metric-icon green">🔗</div><span>Connected accounts</span><strong><?php echo count($accounts); ?></strong><small><?php echo count($platforms); ?> networks available</small></div>
+        </div>
+
+        <!-- Social Proof Graphic Generator Feature Banner -->
+        <div style="background:linear-gradient(135deg, #091a27 0%, #0e2a40 100%);border:1px solid rgba(194,245,66,0.25);border-radius:14px;padding:18px 24px;margin-bottom:28px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;color:#fff;">
+            <div style="display:flex;align-items:center;gap:16px;">
+                <div style="width:48px;height:48px;border-radius:12px;background:rgba(194,245,66,0.15);color:#c2f542;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">
+                    🎨
+                </div>
+                <div>
+                    <h3 style="margin:0;font-size:16px;color:#fff;font-weight:800;">Looking to post review images to WhatsApp Status or Instagram Stories?</h3>
+                    <p style="margin:4px 0 0;font-size:12.5px;color:#94a3b8;">Use our studio card generator to render 1080p branded review graphics in 9:16 vertical, 1:1 square, or landscape banners with 1 click.</p>
+                </div>
+            </div>
+            <a href="social_card.php" class="btn btn-primary" style="background:#c2f542;color:#091a27;font-weight:800;padding:10px 18px;text-decoration:none;border-radius:8px;white-space:nowrap;">
+                Open Card Generator ↗
+            </a>
         </div>
 
         <?php if ($flash): ?>

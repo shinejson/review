@@ -525,9 +525,12 @@ include __DIR__ . '/_shell.php';
         <h1>Ratings &amp; Reviews Hub</h1>
         <p class="muted">Create, edit, and moderate customer ratings (CRUD) or inspect in-depth customer feedback and responses.</p>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
-        <a href="../rate/index.php?tenant=<?php echo (int)$current_tenant_id; ?>" target="_blank" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;">
-            ↗ Rate <?php echo htmlspecialchars($default_company_name); ?>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <a href="whatsapp_sender.php" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;font-weight:700;background:#dcfce7;color:#15803d;border:1px solid #86efac;">
+            💬 Ask for Reviews
+        </a>
+        <a href="../rate/index.php?tenant=<?php echo (int)$current_tenant_id; ?>" target="_blank" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;">
+            ↗ View Public Portal
         </a>
         <button type="button" class="btn btn-primary" onclick="openCreateRatingModal()">
             ＋ Log Review Manually
@@ -813,6 +816,11 @@ include __DIR__ . '/_shell.php';
                                             <?php echo !empty($r['is_verified']) ? '✓ Unverify' : '○ Verify'; ?>
                                         </button>
                                     </form>
+                                    <?php if ((int)$r['rating'] >= 4 && !empty($r['comment'])): ?>
+                                        <a href="social_card.php?rating_id=<?php echo (int)$r['id']; ?>" class="admin-sm-btn" title="Generate graphic card for WhatsApp Status or IG" style="color:#0284c7;border-color:rgba(2,132,199,0.3);text-decoration:none;">
+                                            🎨 Card
+                                        </a>
+                                    <?php endif; ?>
                                     <button type="button" class="admin-sm-btn" title="Edit this review"
                                             onclick='populateEditRating(<?php echo json_encode([
                                                 "id" => (int)$r["id"],
@@ -1031,6 +1039,11 @@ include __DIR__ . '/_shell.php';
                         </div>
 
                         <div style="display:flex;gap:12px;align-items:center;">
+                            <?php if ((int)$r['rating'] >= 4 && !empty($r['comment'])): ?>
+                                <a href="social_card.php?rating_id=<?php echo (int)$r['id']; ?>" class="btn-link" style="font-size:12px;color:#0284c7;font-weight:700;">
+                                    🎨 Social Card ↗
+                                </a>
+                            <?php endif; ?>
                             <a href="<?php echo $BASE; ?>rate/index.php?company=<?php echo (int)$r['company_id']; ?>" target="_blank" rel="noopener" class="btn-link" style="font-size:12px;">
                                 View Public Rating Page ↗
                             </a>

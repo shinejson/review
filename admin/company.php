@@ -41,7 +41,7 @@ $error   = '';
 // ============================================================
 // POST — save company profile
 // ============================================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_profile') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') === 'update_profile') {
     $company_name  = trim($_POST['company_name'] ?? '');
     $email         = trim($_POST['email'] ?? '');
     $phone         = trim($_POST['phone'] ?? '');
@@ -55,6 +55,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     $whatsapp_raw  = trim($_POST['whatsapp_number'] ?? '');
     $whatsapp_num  = whatsappDigits($whatsapp_raw);
 
+    // Google Maps directions & location description
+    $google_map_url       = cleanMapUrl($_POST['google_map_url'] ?? '');
+    $map_embed_code       = trim($_POST['map_embed_code'] ?? '');
+    $location_description = trim($_POST['location_description'] ?? '');
+
+    // Configured Social Media profiles
+    $facebook_url  = cleanMapUrl($_POST['facebook_url'] ?? '');
+    $instagram_url = cleanMapUrl($_POST['instagram_url'] ?? '');
+    $twitter_url   = cleanMapUrl($_POST['twitter_url'] ?? '');
+    $linkedin_url  = cleanMapUrl($_POST['linkedin_url'] ?? '');
+    $tiktok_url    = cleanMapUrl($_POST['tiktok_url'] ?? '');
+    $youtube_url   = cleanMapUrl($_POST['youtube_url'] ?? '');
+
     if (empty($company_name)) {
         $_SESSION['error'] = 'Company name is required.';
     } elseif (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -64,18 +77,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     } else {
         $cat_val = $category_id > 0 ? $category_id : null;
 
-        // Installs created before the WhatsApp and Booster features may not have the columns yet.
+        // Ensure schema columns exist
         ensureWhatsappColumn($conn);
         ensureBoosterColumns($conn);
+        ensureLocationAndSocialColumns($conn);
 
         if ($company_profile) {
-            $upd = $conn->prepare("UPDATE customers SET company_name=?,email=?,phone=?,whatsapp_number=?,website=?,google_store_url=?,booster_enabled=?,booster_min_stars=?,address=?,description=?,category_id=? WHERE id=? AND tenant_id=?");
-            $upd->bind_param("ssssssiissiii", $company_name, $email, $phone, $whatsapp_num, $website, $google_url, $booster_enabled, $booster_min_stars, $address, $description, $cat_val, $company_profile['id'], $tenant_id);
+            $upd = $conn->prepare("UPDATE customers SET company_name=?,email=?,phone=?,whatsapp_number=?,website=?,google_store_url=?,booster_enabled=?,booster_min_stars=?,address=?,description=?,google_map_url=?,map_embed_code=?,location_description=?,facebook_url=?,instagram_url=?,twitter_url=?,linkedin_url=?,tiktok_url=?,youtube_url=?,category_id=? WHERE id=? AND tenant_id=?");
+            $upd->bind_param("ssssssiisssssssssssiii", $company_name, $email, $phone, $whatsapp_num, $website, $google_url, $booster_enabled, $booster_min_stars, $address, $description, $google_map_url, $map_embed_code, $location_description, $facebook_url, $instagram_url, $twitter_url, $linkedin_url, $tiktok_url, $youtube_url, $cat_val, $company_profile['id'], $tenant_id);
             $upd->execute();
             $upd->close();
         } else {
-            $ins = $conn->prepare("INSERT INTO customers (tenant_id,company_name,email,phone,whatsapp_number,website,google_store_url,booster_enabled,booster_min_stars,address,description,category_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())");
-            $ins->bind_param("issssssiissi", $tenant_id, $company_name, $email, $phone, $whatsapp_num, $website, $google_url, $booster_enabled, $booster_min_stars, $address, $description, $cat_val);
+            $ins = $conn->prepare("INSERT INTO customers (tenant_id,company_name,email,phone,whatsapp_number,website,google_store_url,booster_enabled,booster_min_stars,address,description,google_map_url,map_embed_code,location_description,facebook_url,instagram_url,twitter_url,linkedin_url,tiktok_url,youtube_url,category_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())");
+            $ins->bind_param("issssssiisssssssssssi", $tenant_id, $company_name, $email, $phone, $whatsapp_num, $website, $google_url, $booster_enabled, $booster_min_stars, $address, $description, $google_map_url, $map_embed_code, $location_description, $facebook_url, $instagram_url, $twitter_url, $linkedin_url, $tiktok_url, $youtube_url, $cat_val);
             $ins->execute();
             $ins->close();
         }
@@ -137,6 +151,22 @@ $booster_min_stars = isset($company_profile['booster_min_stars']) ? (int)$compan
 $google_store_url  = $company_profile['google_store_url'] ?? '';
 $booster_active    = !empty($google_store_url) && $booster_enabled;
 
+// Google Maps directions & location description
+$google_map_url       = $company_profile['google_map_url'] ?? '';
+$map_embed_code       = $company_profile['map_embed_code'] ?? '';
+$location_description = $company_profile['location_description'] ?? '';
+
+// Configured Social Media profiles
+$facebook_url  = $company_profile['facebook_url'] ?? '';
+$instagram_url = $company_profile['instagram_url'] ?? '';
+$twitter_url   = $company_profile['twitter_url'] ?? '';
+$linkedin_url  = $company_profile['linkedin_url'] ?? '';
+$tiktok_url    = $company_profile['tiktok_url'] ?? '';
+$youtube_url   = $company_profile['youtube_url'] ?? '';
+
+// Profile Strength score and recommendations
+$strength = getProfileStrength($tenant_id, $conn);
+
 $BASE      = '../';
 $pageTitle = 'Company Profile';
 $activeNav = 'company';
@@ -147,8 +177,15 @@ include __DIR__ . '/_shell.php';
 <div class="welcome-row" style="margin-bottom:22px;">
     <div>
         <p class="eyebrow">Your Workspace &middot; Company Profile</p>
-        <h1><?php echo htmlspecialchars($company_profile['company_name'] ?? $tenant['company_name'] ?? 'Company Profile'); ?></h1>
-        <p class="muted">Your company information shown on the public rating page and all reports.</p>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <h1 style="margin:0;"><?php echo htmlspecialchars($company_profile['company_name'] ?? $tenant['company_name'] ?? 'Company Profile'); ?></h1>
+            <a href="index.php" title="Profile Strength Meter" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:rgba(9,26,39,0.05);color:var(--ink);border:1px solid var(--line);text-decoration:none;transition:all 0.2s;">
+                <span><?php echo $strength['tier_icon']; ?></span>
+                <span style="color:<?php echo $strength['tier_color']; ?>;font-weight:800;"><?php echo $strength['score']; ?>%</span>
+                <span style="color:#64748b;">&middot; <?php echo htmlspecialchars($strength['tier']); ?></span>
+            </a>
+        </div>
+        <p class="muted" style="margin-top:6px;">Your company information shown on the public rating page and all reports.</p>
     </div>
     <a href="<?php echo htmlspecialchars($public_url); ?>" target="_blank"
        class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;">
@@ -350,6 +387,128 @@ include __DIR__ . '/_shell.php';
                               placeholder="A short description of your business shown in the footer of your public rating page."
                               style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;"><?php echo htmlspecialchars($company_profile['description'] ?? ''); ?></textarea>
                 </div>
+
+                <!-- Google Map & Landmark Directions Card -->
+                <div style="grid-column:1/-1;background:var(--bg, #f8fafc);border:1px solid var(--line, #e2e8f0);border-radius:12px;padding:20px;margin:6px 0 10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div style="width:36px;height:36px;border-radius:8px;background:#e0f2fe;display:flex;align-items:center;justify-content:center;font-size:18px;color:#0284c7;">
+                                📍
+                            </div>
+                            <div>
+                                <h4 style="margin:0;font-size:14.5px;color:var(--ink);font-weight:700;">Google Map Location &amp; Directions</h4>
+                                <p class="muted" style="margin:2px 0 0;font-size:12px;">Help customers find and navigate directly to your premises with Google Maps directions.</p>
+                            </div>
+                        </div>
+                        <?php if (!empty($google_map_url)): ?>
+                            <a href="<?php echo htmlspecialchars($google_map_url); ?>" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:700;color:#0284c7;text-decoration:none;">
+                                🚗 Test Direction Link ↗
+                            </a>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label for="google_map_url" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                            <span>Google Maps Direction / Location URL</span>
+                            <small class="muted">Shown as "Get Directions" in rating footer</small>
+                        </label>
+                        <input type="text" id="google_map_url" name="google_map_url" maxlength="1000"
+                               placeholder="e.g. https://maps.app.goo.gl/... or https://maps.google.com/?q=..."
+                               value="<?php echo htmlspecialchars($google_map_url); ?>">
+                        <small class="muted" style="display:block;margin-top:4px;">
+                            💡 Open Google Maps, search your company, click <strong>Share</strong> &rarr; copy the location link.
+                        </small>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label for="location_description">Location &amp; Landmark Directions Guide</label>
+                        <textarea id="location_description" name="location_description" rows="2" maxlength="1000"
+                                  placeholder="e.g. Located on 10 Senchi Street in Airport Residential Area, 5 minutes drive from Kotoka Airport. Opposite Skybar, with dedicated secure guest parking."
+                                  style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:13.5px;font-family:inherit;resize:vertical;"><?php echo htmlspecialchars($location_description); ?></textarea>
+                        <small class="muted" style="display:block;margin-top:4px;">
+                            Describe notable nearby landmarks, parking availability, or specific entrance instructions for visiting customers.
+                        </small>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="map_embed_code">Google Map Embed Code or URL (Optional)</label>
+                        <textarea id="map_embed_code" name="map_embed_code" rows="2"
+                                  placeholder="Paste Google Maps iframe embed code or embed URL: <iframe src=&quot;https://www.google.com/maps/embed?...&quot;></iframe>"
+                                  style="width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-family:monospace;resize:vertical;"><?php echo htmlspecialchars($map_embed_code); ?></textarea>
+                        <small class="muted" style="display:block;margin-top:4px;">
+                            Optional: In Google Maps, click <strong>Share &rarr; Embed a map</strong> &rarr; Copy HTML. If provided, an interactive map preview is rendered in the footer.
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Social Media Profiles & Company Links Card -->
+                <div style="grid-column:1/-1;background:var(--bg, #f8fafc);border:1px solid var(--line, #e2e8f0);border-radius:12px;padding:20px;margin:6px 0 16px;">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                        <div style="width:36px;height:36px;border-radius:8px;background:#fdf2f8;display:flex;align-items:center;justify-content:center;font-size:18px;color:#db2777;">
+                            🔗
+                        </div>
+                        <div>
+                            <h4 style="margin:0;font-size:14.5px;color:var(--ink);font-weight:700;">Company Social Media Profiles</h4>
+                            <p class="muted" style="margin:2px 0 0;font-size:12px;">Display clickable, branded social icons alongside your company website link in the footer.</p>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:14px;">
+                        <div class="form-group" style="margin:0;">
+                            <label for="facebook_url" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;">
+                                <span style="color:#1877F2;font-weight:bold;font-size:14px;">f</span> Facebook Page
+                            </label>
+                            <input type="text" id="facebook_url" name="facebook_url" maxlength="255"
+                                   placeholder="https://facebook.com/yourbrand"
+                                   value="<?php echo htmlspecialchars($facebook_url); ?>">
+                        </div>
+
+                        <div class="form-group" style="margin:0;">
+                            <label for="instagram_url" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;">
+                                <span style="color:#E4405F;font-weight:bold;font-size:14px;">📸</span> Instagram Profile
+                            </label>
+                            <input type="text" id="instagram_url" name="instagram_url" maxlength="255"
+                                   placeholder="https://instagram.com/yourbrand"
+                                   value="<?php echo htmlspecialchars($instagram_url); ?>">
+                        </div>
+
+                        <div class="form-group" style="margin:0;">
+                            <label for="twitter_url" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;">
+                                <span style="color:#0f1419;font-weight:bold;font-size:14px;">𝕏</span> X (Twitter)
+                            </label>
+                            <input type="text" id="twitter_url" name="twitter_url" maxlength="255"
+                                   placeholder="https://x.com/yourbrand"
+                                   value="<?php echo htmlspecialchars($twitter_url); ?>">
+                        </div>
+
+                        <div class="form-group" style="margin:0;">
+                            <label for="linkedin_url" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;">
+                                <span style="color:#0A66C2;font-weight:bold;font-size:14px;">in</span> LinkedIn
+                            </label>
+                            <input type="text" id="linkedin_url" name="linkedin_url" maxlength="255"
+                                   placeholder="https://linkedin.com/company/yourbrand"
+                                   value="<?php echo htmlspecialchars($linkedin_url); ?>">
+                        </div>
+
+                        <div class="form-group" style="margin:0;">
+                            <label for="tiktok_url" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;">
+                                <span style="color:#000000;font-weight:bold;font-size:14px;">♪</span> TikTok
+                            </label>
+                            <input type="text" id="tiktok_url" name="tiktok_url" maxlength="255"
+                                   placeholder="https://tiktok.com/@yourbrand"
+                                   value="<?php echo htmlspecialchars($tiktok_url); ?>">
+                        </div>
+
+                        <div class="form-group" style="margin:0;">
+                            <label for="youtube_url" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;">
+                                <span style="color:#FF0000;font-weight:bold;font-size:14px;">▶</span> YouTube Channel
+                            </label>
+                            <input type="text" id="youtube_url" name="youtube_url" maxlength="255"
+                                   placeholder="https://youtube.com/@yourbrand"
+                                   value="<?php echo htmlspecialchars($youtube_url); ?>">
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div style="display:flex;gap:10px;margin-top:8px;">
@@ -363,6 +522,63 @@ include __DIR__ . '/_shell.php';
 
     <!-- Sidebar info -->
     <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <!-- Profile Strength Mini Widget -->
+        <div class="form-card" style="padding:22px;border-left:4px solid <?php echo $strength['tier_color']; ?>;background:linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="position:relative;width:52px;height:52px;flex-shrink:0;">
+                        <svg width="52" height="52" viewBox="0 0 48 48" style="transform:rotate(-90deg);">
+                            <circle cx="24" cy="24" r="20" fill="none" stroke="#e2e8f0" stroke-width="4.5"/>
+                            <circle cx="24" cy="24" r="20" fill="none" stroke="<?php echo $strength['tier_color']; ?>" stroke-width="4.5"
+                                    stroke-dasharray="125.66"
+                                    stroke-dashoffset="<?php echo round(125.66 * (1 - ($strength['score'] / 100)), 2); ?>"
+                                    stroke-linecap="round" style="transition:stroke-dashoffset 0.8s ease;"/>
+                        </svg>
+                        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--ink);">
+                            <?php echo $strength['score']; ?>%
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">Profile Strength</div>
+                        <div style="font-size:15px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:6px;">
+                            <span><?php echo $strength['tier_icon']; ?></span>
+                            <span><?php echo htmlspecialchars($strength['tier']); ?></span>
+                        </div>
+                    </div>
+                </div>
+                <span style="font-size:11.5px;font-weight:700;color:<?php echo $strength['tier_color']; ?>;background:rgba(0,0,0,0.04);padding:4px 8px;border-radius:6px;white-space:nowrap;">
+                    <?php echo $strength['completed_count']; ?>/<?php echo $strength['total_items']; ?> Done
+                </span>
+            </div>
+
+            <!-- Progress bar -->
+            <div style="height:6px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-bottom:10px;">
+                <div style="height:100%;width:<?php echo $strength['score']; ?>%;background:<?php echo $strength['tier_color']; ?>;border-radius:99px;transition:width 0.6s ease;"></div>
+            </div>
+
+            <p class="muted" style="margin:0 0 14px;font-size:12px;line-height:1.45;">
+                <?php echo htmlspecialchars($strength['message']); ?>
+            </p>
+
+            <div style="display:flex;flex-direction:column;gap:7px;padding-top:12px;border-top:1px solid var(--line);">
+                <?php foreach ($strength['items'] as $item): ?>
+                    <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:<?php echo $item['done'] ? '#16a34a' : '#475569'; ?>;">
+                        <span style="display:flex;align-items:center;gap:6px;min-width:0;">
+                            <span style="font-weight:800;font-size:11px;"><?php echo $item['done'] ? '✓' : '○'; ?></span>
+                            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;<?php echo $item['done'] ? '' : 'font-weight:600;color:var(--ink);'; ?>"><?php echo htmlspecialchars($item['title']); ?></span>
+                        </span>
+                        <span style="font-weight:700;font-size:11px;white-space:nowrap;margin-left:6px;"><?php echo $item['done'] ? 'Done' : '+' . $item['weight'] . '%'; ?></span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--line);text-align:right;">
+                <a href="index.php" style="font-size:12px;font-weight:700;color:var(--ink);text-decoration:none;">
+                    View Dashboard Checklist &rarr;
+                </a>
+            </div>
+        </div>
 
         <!-- Public Rating Link -->
         <div class="form-card" style="padding:22px;">
@@ -378,6 +594,9 @@ include __DIR__ . '/_shell.php';
             <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                 <span class="muted" style="font-size:12px;">Marketing &amp; Embeds:</span>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <a href="whatsapp_sender.php" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;background:#dcfce7;color:#15803d;border:1px solid #86efac;font-weight:700;">
+                        💬 WhatsApp Invites
+                    </a>
                     <a href="qr_stand.php" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
                         ◫ Counter QR Stand
                     </a>

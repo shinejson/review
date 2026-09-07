@@ -58,12 +58,151 @@ while(count($trend_data) < 7) {
     array_unshift($trend_months, date('M', strtotime($month.'-01')));
 }
 
+// Calculate Profile Strength (Gamified Setup Checklist & Circular Progress Ring)
+$profile_strength = null;
+if ($is_tenant && $tenant_id) {
+    $profile_strength = getProfileStrength($tenant_id, $conn);
+}
+
 $BASE = '../';
 $pageTitle = 'Dashboard';
 $activeNav = 'dashboard';
 include __DIR__ . '/_shell.php';
 ?>
-  <div class="welcome-row"><div><p class="eyebrow">Good morning, <?php echo htmlspecialchars($is_tenant?($tenant_info['company_name']??'there'):($_SESSION['admin_username']??'Admin')); ?></p><h1>Performance overview</h1><p class="muted">Track your customer feedback and business health in one place.</p></div><a class="primary-button" href="company.php">＋ Add company</a></div>
+  <div class="welcome-row">
+    <div>
+      <p class="eyebrow">Good morning, <?php echo htmlspecialchars($is_tenant?($tenant_info['company_name']??'there'):($_SESSION['admin_username']??'Admin')); ?></p>
+      <h1 style="margin:0;">Performance overview</h1>
+      <p class="muted" style="margin-top:4px;">Track your customer feedback and business health in one place.</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <?php if ($is_tenant): ?>
+      <a href="whatsapp_sender.php" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;text-decoration:none;font-weight:700;background:#dcfce7;color:#15803d;border:1px solid #86efac;">
+        💬 Ask for Reviews
+      </a>
+      <a href="qr_stand.php" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;font-weight:600;">
+        ◫ QR Stand
+      </a>
+      <a href="qa.php" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;font-weight:600;">
+        💡 Community Q&amp;A
+      </a>
+      <?php endif; ?>
+      <a class="primary-button" href="company.php" style="text-decoration:none;">＋ Manage Company</a>
+    </div>
+  </div>
+
+  <?php if ($profile_strength): ?>
+  <!-- Profile Strength & Setup Completion Card -->
+  <div class="profile-strength-card" style="background:#ffffff;border:1px solid var(--line, #e2e8f0);border-radius:18px;padding:24px 28px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.03);">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:center;" class="profile-strength-grid">
+          
+          <!-- Left: Gamified Ring & Tier Summary -->
+          <div style="display:flex;align-items:center;gap:20px;padding-right:24px;border-right:1px solid var(--line, #e2e8f0);min-width:240px;" class="profile-strength-left">
+              <div style="position:relative;width:96px;height:96px;flex-shrink:0;">
+                  <svg width="96" height="96" viewBox="0 0 96 96" style="transform:rotate(-90deg);">
+                      <!-- Background Track -->
+                      <circle cx="48" cy="48" r="42" stroke="#f1f5f9" stroke-width="8" fill="none" />
+                      <!-- Progress Arc -->
+                      <circle cx="48" cy="48" r="42"
+                              stroke="<?php echo htmlspecialchars($profile_strength['tier_color']); ?>"
+                              stroke-width="8"
+                              stroke-linecap="round"
+                              stroke-dasharray="263.89"
+                              stroke-dashoffset="<?php echo round(263.89 * (1 - ($profile_strength['score'] / 100)), 2); ?>"
+                              fill="none"
+                              style="transition:stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);" />
+                  </svg>
+                  <!-- Percentage in Center -->
+                  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+                      <span style="font-size:22px;font-weight:800;color:var(--ink, #091a27);line-height:1;"><?php echo $profile_strength['score']; ?>%</span>
+                      <span style="font-size:10px;font-weight:700;color:var(--muted, #64748b);letter-spacing:0.5px;margin-top:2px;">STRENGTH</span>
+                  </div>
+              </div>
+
+              <div>
+                  <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,0.04);padding:4px 10px;border-radius:99px;font-size:12px;font-weight:700;color:var(--ink, #091a27);margin-bottom:6px;">
+                      <span><?php echo $profile_strength['tier_icon']; ?></span>
+                      <span><?php echo htmlspecialchars($profile_strength['tier']); ?></span>
+                  </div>
+                  <h3 style="margin:0 0 4px;font-size:16px;color:var(--ink, #091a27);font-weight:700;">Profile Strength</h3>
+                  <p class="muted" style="margin:0;font-size:12.5px;line-height:1.4;">
+                      <?php echo htmlspecialchars($profile_strength['completed_count']); ?> of <?php echo htmlspecialchars($profile_strength['total_items']); ?> tasks completed
+                  </p>
+              </div>
+          </div>
+
+          <!-- Right: Actionable Checklist Grid -->
+          <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                  <p style="margin:0;font-size:13px;color:var(--ink, #091a27);font-weight:600;">
+                      <?php echo htmlspecialchars($profile_strength['message']); ?>
+                  </p>
+                  <button type="button" onclick="toggleStrengthChecklist()" id="strengthToggleBtn" class="btn btn-secondary" style="padding:4px 10px;font-size:11.5px;cursor:pointer;">
+                      Hide Tasks ▴
+                  </button>
+              </div>
+
+              <div id="strengthChecklistGrid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:10px;">
+                  <?php foreach ($profile_strength['items'] as $item): ?>
+                      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:10px;background:<?php echo $item['done'] ? '#f8fafc' : '#ffffff'; ?>;border:1px solid <?php echo $item['done'] ? '#e2e8f0' : 'rgba(194,245,66,0.8)'; ?>;transition:all 0.2s;">
+                          <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+                              <div style="width:22px;height:22px;border-radius:50%;background:<?php echo $item['done'] ? '#dcfce7' : '#f1f5f9'; ?>;color:<?php echo $item['done'] ? '#16a34a' : '#94a3b8'; ?>;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;">
+                                  <?php echo $item['done'] ? '✓' : '○'; ?>
+                              </div>
+                              <div style="min-width:0;">
+                                  <strong style="font-size:13px;color:var(--ink, #091a27);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                      <?php echo htmlspecialchars($item['title']); ?>
+                                  </strong>
+                                  <span class="muted" style="font-size:11px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                      <?php echo htmlspecialchars($item['desc']); ?>
+                                  </span>
+                              </div>
+                          </div>
+                          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:10px;">
+                              <span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:99px;background:<?php echo $item['done'] ? 'rgba(22,163,74,0.1)' : 'rgba(59,130,246,0.1)'; ?>;color:<?php echo $item['done'] ? '#16a34a' : '#2563eb'; ?>;">
+                                  <?php echo $item['done'] ? 'Done' : '+' . $item['weight'] . '%'; ?>
+                              </span>
+                              <a href="<?php echo htmlspecialchars($item['action_url']); ?>" class="btn btn-secondary" style="padding:5px 10px;font-size:11px;text-decoration:none;font-weight:600;white-space:nowrap;border-radius:6px;">
+                                  <?php echo htmlspecialchars($item['action_label']); ?>
+                              </a>
+                          </div>
+                      </div>
+                  <?php endforeach; ?>
+              </div>
+          </div>
+
+      </div>
+  </div>
+
+  <style>
+  @media (max-width: 820px) {
+      .profile-strength-grid { grid-template-columns: 1fr !important; }
+      .profile-strength-left { border-right: none !important; border-bottom: 1px solid var(--line, #e2e8f0); padding-right: 0 !important; padding-bottom: 18px !important; }
+  }
+  </style>
+
+  <script>
+  function toggleStrengthChecklist() {
+      var grid = document.getElementById('strengthChecklistGrid');
+      var btn = document.getElementById('strengthToggleBtn');
+      if (!grid || !btn) return;
+      if (grid.style.display === 'none') {
+          grid.style.display = 'grid';
+          btn.innerHTML = 'Hide Tasks ▴';
+          localStorage.setItem('optibiz_strength_checklist', 'expanded');
+      } else {
+          grid.style.display = 'none';
+          btn.innerHTML = 'View Tasks (<?php echo $profile_strength['completed_count']; ?>/<?php echo $profile_strength['total_items']; ?>) ▾';
+          localStorage.setItem('optibiz_strength_checklist', 'collapsed');
+      }
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+      if (localStorage.getItem('optibiz_strength_checklist') === 'collapsed' && <?php echo $profile_strength['score']; ?> >= 70) {
+          toggleStrengthChecklist();
+      }
+  });
+  </script>
+  <?php endif; ?>
 
   <div class="metric-grid">
    <div class="metric-card"><div class="metric-icon lime">⌂</div><span>Total companies</span><strong><?php echo number_format($total_customers); ?></strong><small>Active locations</small></div>

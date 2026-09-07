@@ -62,10 +62,10 @@ $brand_initials = strtoupper(substr($brand_name, 0, 2));
 $wa_number  = $company_profile['whatsapp_number'] ?? '';
 $wa_display = function_exists('whatsappDisplay') ? whatsappDisplay($wa_number) : $wa_number;
 
-// Target review URL
+// Target review URL (tagged with &src=qr for offline scan analytics)
 $__scheme   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $__root     = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
-$public_url = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/rate/index.php?tenant=' . (int)$tenant_id;
+$public_url = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/rate/index.php?tenant=' . (int)$tenant_id . '&src=qr';
 
 // Direct QR Code image (high-res PNG, margin 15)
 $qr_api_url = 'https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=15&format=png&data=' . rawurlencode($public_url);
@@ -84,6 +84,9 @@ include __DIR__ . '/_shell.php';
         <p class="muted">Display this on your reception, checkout counter, or dining tables so customers can scan and leave a review in 30 seconds.</p>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <a href="whatsapp_sender.php" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:11px 18px;text-decoration:none;font-weight:700;background:#dcfce7;color:#15803d;border:1px solid #86efac;">
+            💬 WhatsApp Invites
+        </a>
         <button type="button" class="btn btn-secondary" onclick="window.print()" style="display:inline-flex;align-items:center;gap:8px;padding:11px 20px;font-weight:700;">
             🖨 Print Stand Card
         </button>

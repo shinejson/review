@@ -121,6 +121,15 @@ CREATE TABLE IF NOT EXISTS customers (
     booster_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1 = route 4-5 star reviews to Google Business Profile',
     booster_min_stars TINYINT(1) NOT NULL DEFAULT 4 COMMENT 'Minimum rating threshold to trigger Google review prompt',
     address VARCHAR(500) NULL,
+    google_map_url VARCHAR(1000) NULL COMMENT 'Google Maps direction / location URL',
+    map_embed_code TEXT NULL COMMENT 'Google Map embed iframe code or embed URL',
+    location_description TEXT NULL COMMENT 'Location directions and landmark description',
+    facebook_url VARCHAR(255) NULL,
+    instagram_url VARCHAR(255) NULL,
+    twitter_url VARCHAR(255) NULL,
+    linkedin_url VARCHAR(255) NULL,
+    tiktok_url VARCHAR(255) NULL,
+    youtube_url VARCHAR(255) NULL,
     description TEXT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -266,3 +275,74 @@ CREATE TABLE IF NOT EXISTS social_posts (
     INDEX idx_social_posts_tenant (tenant_id),
     INDEX idx_social_posts_status (status)
 );
+
+-- Customer review invitations sent via WhatsApp / SMS (admin/whatsapp_sender.php)
+CREATE TABLE IF NOT EXISTS review_invites (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    customer_name VARCHAR(100) NOT NULL,
+    customer_phone VARCHAR(30) NOT NULL,
+    order_ref VARCHAR(100) NULL,
+    template_key VARCHAR(50) NOT NULL,
+    invite_message TEXT NOT NULL,
+    channel VARCHAR(20) NOT NULL DEFAULT 'whatsapp',
+    status VARCHAR(20) NOT NULL DEFAULT 'sent',
+    sent_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL,
+    INDEX idx_tenant (tenant_id),
+    INDEX idx_sent (sent_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Public Community Questions & Official Answers (rate/index.php & admin/qa.php)
+CREATE TABLE IF NOT EXISTS community_questions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    company_id INT NOT NULL,
+    customer_name VARCHAR(100) NOT NULL,
+    customer_email VARCHAR(100) NULL,
+    customer_phone VARCHAR(30) NULL,
+    question_text TEXT NOT NULL,
+    official_answer TEXT NULL,
+    answered_by INT NULL,
+    answered_at DATETIME NULL,
+    helpful_count INT NOT NULL DEFAULT 0,
+    is_pinned TINYINT(1) NOT NULL DEFAULT 0,
+    status ENUM('published', 'pending', 'hidden') NOT NULL DEFAULT 'published',
+    created_at DATETIME NOT NULL,
+    INDEX idx_comp_status (company_id, status),
+    INDEX idx_tenant (tenant_id),
+    INDEX idx_pinned (is_pinned)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Upvotes tracking for Community Q&A
+CREATE TABLE IF NOT EXISTS qa_helpful_votes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    question_id INT NOT NULL,
+    voter_ip VARCHAR(50) NOT NULL,
+    created_at DATETIME NOT NULL,
+    UNIQUE KEY uniq_qa_vote (question_id, voter_ip)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Performance & Interaction Analytics Events
+CREATE TABLE IF NOT EXISTS analytics_events (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    company_id INT NOT NULL,
+    event_type VARCHAR(40) NOT NULL,
+    event_category VARCHAR(60) NULL,
+    event_label VARCHAR(255) NULL,
+    traffic_source VARCHAR(50) NOT NULL DEFAULT 'direct',
+    page_url VARCHAR(255) NULL,
+    referrer VARCHAR(255) NULL,
+    session_id VARCHAR(64) NULL,
+    visitor_ip VARCHAR(45) NULL,
+    user_agent VARCHAR(255) NULL,
+    device_type VARCHAR(20) DEFAULT 'desktop',
+    created_at DATETIME NOT NULL,
+    INDEX idx_tenant_created (tenant_id, created_at),
+    INDEX idx_comp_event_created (company_id, event_type, created_at),
+    INDEX idx_type_created (event_type, created_at),
+    INDEX idx_source (traffic_source)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+

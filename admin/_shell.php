@@ -75,6 +75,15 @@ $activeNav = $activeNav ?? 'dashboard';
     <a <?php echo $activeNav === 'qr_stand' ? 'class="active"' : ''; ?> href="qr_stand.php" title="Counter QR Stand">
       <span>◫</span><span class="nav-label">Counter QR Stand</span>
     </a>
+    <a <?php echo $activeNav === 'whatsapp_sender' ? 'class="active"' : ''; ?> href="whatsapp_sender.php" title="Ask for Reviews (WhatsApp)">
+      <span>💬</span><span class="nav-label">Ask for Reviews</span>
+    </a>
+    <a <?php echo $activeNav === 'social_card' ? 'class="active"' : ''; ?> href="social_card.php" title="Social Proof Cards">
+      <span>🎨</span><span class="nav-label">Social Proof Cards</span>
+    </a>
+    <a <?php echo $activeNav === 'qa' ? 'class="active"' : ''; ?> href="qa.php" title="Community Q&amp;A">
+      <span>💡</span><span class="nav-label">Community Q&amp;A</span>
+    </a>
     <?php endif; ?>
     <a <?php echo $activeNav === 'analysis' ? 'class="active"' : ''; ?> href="analysis.php" title="Analysis">
       <span>◔</span><span class="nav-label">Analysis</span>
