@@ -225,6 +225,50 @@ include __DIR__ . '/_shell.php';
             <a class="btn btn-secondary" href="settings.php">Billing details</a>
         </div>
 
+        <?php
+        // Check for subscription expiration or cancellation
+        $status_param = isset($_GET['status']) ? $_GET['status'] : '';
+        $show_expiration_notice = false;
+        $expiration_message = '';
+        $expiration_type = 'error';
+
+        if ($status_param === 'subscription_expired' || ($tenant && !empty($tenant['subscription_end_date']) && $tenant['subscription_end_date'] < date('Y-m-d'))) {
+            $show_expiration_notice = true;
+            $expiration_type = 'error';
+            $status_text = $tenant['subscription_status'] === 'trial' ? 'trial' : 'subscription';
+            $expiration_message = '<strong>⚠ Your ' . $status_text . ' has expired</strong><br>'
+                . 'Your workspace access is restricted. Please upgrade to a paid plan to continue using the platform.';
+        } elseif ($status_param === 'subscription_cancelled' || ($tenant && ($tenant['subscription_status'] === 'cancelled' || $tenant['subscription_status'] === 'inactive'))) {
+            $show_expiration_notice = true;
+            $expiration_type = 'error';
+            $expiration_message = '<strong>⚠ Subscription ' . ($tenant['subscription_status'] === 'cancelled' ? 'cancelled' : 'inactive') . '</strong><br>'
+                . 'Your workspace is currently ' . $tenant['subscription_status'] . '. Please contact support or choose a plan below to reactivate.';
+        }
+        ?>
+
+        <?php if ($show_expiration_notice): ?>
+            <div class="alert alert-<?php echo $expiration_type; ?>" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.06)); border: 1px solid rgba(239, 68, 68, 0.3); padding: 20px 24px; margin-bottom: 24px; border-radius: 12px;">
+                <div style="display: flex; align-items: flex-start; gap: 14px;">
+                    <span style="font-size: 24px; line-height: 1;">🔒</span>
+                    <div style="flex: 1;">
+                        <div style="font-size: 15px; line-height: 1.6; color: var(--text-dark);">
+                            <?php echo $expiration_message; ?>
+                        </div>
+                        <div style="margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap;">
+                            <a href="#plans" class="btn" onclick="document.querySelector('.admin-plan-grid')?.scrollIntoView({behavior:'smooth'})" style="background: #ef4444; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
+                                View Plans & Upgrade
+                            </a>
+                            <?php if ($tenant && !empty($tenant['email'])): ?>
+                            <a href="mailto:<?php echo sa_e(sa_setting($conn, 'support_email', 'support@optibiz.com')); ?>?subject=Subscription%20Renewal%20-%20<?php echo urlencode($tenant['company_name'] ?? ''); ?>" class="btn btn-ghost" style="padding: 10px 20px; border-radius: 8px; text-decoration: none;">
+                                Contact Support
+                            </a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
         <?php if ($flash): ?>
             <div class="alert alert-<?php echo $flash['type'] === 'error' ? 'error' : 'success'; ?>">
                 <?php echo $flash['type'] === 'error' ? '⚠' : '✓'; ?> <?php echo sa_e($flash['message']); ?>

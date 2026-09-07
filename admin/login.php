@@ -28,20 +28,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $tenant = $resTenant->fetch_assoc();
             
             if (password_verify($password, $tenant['password'])) {
-                if ($tenant['subscription_status'] === 'cancelled') {
-                    $error = 'Your account subscription has been cancelled. Please contact support.';
-                                } else {
-                    $_SESSION['tenant_id'] = (int)$tenant['id'];
-                    $_SESSION['tenant_name'] = $tenant['company_name'];
-                    $_SESSION['tenant_logo'] = $tenant['logo'] ?? '';
-                    $_SESSION['tenant_username'] = $tenant['username'];
-                    $_SESSION['tenant_email'] = $tenant['email'];
-                    $_SESSION['tenant_plan_id'] = $tenant['plan_id'];
-                    $_SESSION['tenant_status'] = $tenant['subscription_status'];
-                    $_SESSION['user_type'] = 'tenant';
-                    auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['company_name'], 'tenant');
-                    redirect('index.php');
-                }
+                // Store tenant session data
+                $_SESSION['tenant_id'] = (int)$tenant['id'];
+                $_SESSION['tenant_name'] = $tenant['company_name'];
+                $_SESSION['tenant_logo'] = $tenant['logo'] ?? '';
+                $_SESSION['tenant_username'] = $tenant['username'];
+                $_SESSION['tenant_email'] = $tenant['email'];
+                $_SESSION['tenant_plan_id'] = $tenant['plan_id'];
+                $_SESSION['tenant_status'] = $tenant['subscription_status'];
+                $_SESSION['tenant_subscription_end'] = $tenant['subscription_end_date'] ?? null;
+                $_SESSION['user_type'] = 'tenant';
+                auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['company_name'], 'tenant');
+                redirect('index.php');
             } else {
                 $error = 'Invalid credentials. Please verify your password.';
             }

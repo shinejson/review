@@ -198,11 +198,24 @@ if (!function_exists('sa_platform_favicon')) {
 }
 
 if (!function_exists('sa_money')) {
-    /** 1234.5 -> "$1,234.50" (symbol from settings). */
+    /** 1234.5 -> "$1,234.50" or "1,234.50$" depending on currency_position setting. */
     function sa_money($amount, $decimals = 2)
     {
         global $conn;
-        return sa_currency_symbol($conn) . number_format((float) $amount, $decimals);
+        $symbol = sa_currency_symbol($conn);
+        $position = $conn ? sa_setting($conn, 'currency_position', 'before') : 'before';
+        $formatted = number_format((float) $amount, $decimals);
+        return $position === 'after' ? $formatted . $symbol : $symbol . $formatted;
+    }
+}
+
+if (!function_exists('sa_currency_code')) {
+    /** ISO currency code, configurable via the `currency_code` setting. */
+    function sa_currency_code($conn = null)
+    {
+        global $conn;
+        $code = $conn ? sa_setting($conn, 'currency_code', 'USD') : 'USD';
+        return $code !== '' ? $code : 'USD';
     }
 }
 
@@ -212,15 +225,17 @@ if (!function_exists('sa_money_short')) {
     {
         global $conn;
         $symbol = sa_currency_symbol($conn);
+        $position = $conn ? sa_setting($conn, 'currency_position', 'before') : 'before';
         $n = (float) $amount;
         $abs = abs($n);
         if ($abs >= 1000000) {
-            return $symbol . round($n / 1000000, 1) . 'M';
+            $val = $symbol . round($n / 1000000, 1) . 'M';
+        } elseif ($abs >= 1000) {
+            $val = $symbol . round($n / 1000, 1) . 'k';
+        } else {
+            $val = $symbol . round($n, $abs < 100 && fmod($n, 1) ? 2 : 0);
         }
-        if ($abs >= 1000) {
-            return $symbol . round($n / 1000, 1) . 'k';
-        }
-        return $symbol . round($n, $abs < 100 && fmod($n, 1) ? 2 : 0);
+        return $val;
     }
 }
 

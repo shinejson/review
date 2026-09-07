@@ -17,12 +17,14 @@ require_sa_permission('settings');
 
 /* Which settings this screen is allowed to write */
 $sa_setting_fields = [
-    'site_name'        => ['label' => 'Platform name', 'type' => 'text', 'hint' => 'Shown in emails, the header and the footer.'],
-    'admin_email'      => ['label' => 'Admin email', 'type' => 'email', 'hint' => 'Where system notifications are sent.'],
-    'support_email'    => ['label' => 'Support email', 'type' => 'email', 'hint' => 'Published to tenants as the support contact.'],
-    'currency_symbol'  => ['label' => 'Currency symbol', 'type' => 'text', 'hint' => 'Used everywhere money is shown ($, €, £, GH₵…).'],
-    'ratings_per_page' => ['label' => 'Ratings per page', 'type' => 'number', 'hint' => 'Pagination size on the public and tenant views.'],
-    'trial_days'       => ['label' => 'Default trial length (days)', 'type' => 'number', 'hint' => 'Suggested length when creating a tenant.'],
+    'site_name'        => ['label' => 'Platform name', 'type' => 'text', 'hint' => 'Shown in emails, the header and the footer.', 'tab' => 'branding'],
+    'admin_email'      => ['label' => 'Admin email', 'type' => 'email', 'hint' => 'Where system notifications are sent.', 'tab' => 'branding'],
+    'support_email'    => ['label' => 'Support email', 'type' => 'email', 'hint' => 'Published to tenants as the support contact.', 'tab' => 'branding'],
+    'currency_symbol'  => ['label' => 'Currency symbol', 'type' => 'text', 'hint' => 'Symbol displayed before amounts ($, €, £, GH₵, ₦, KSh…).', 'tab' => 'currency', 'class' => 'sa-field-sm'],
+    'currency_code'    => ['label' => 'Currency code (ISO)', 'type' => 'text', 'hint' => 'Three-letter code for reference — USD, EUR, GBP, GHS, NGN, KES…', 'tab' => 'currency', 'class' => 'sa-field-sm'],
+    'currency_position'=> ['label' => 'Symbol position', 'type' => 'select', 'hint' => 'Where the symbol appears relative to the amount.', 'options' => ['before' => 'Before amount ($100)', 'after' => 'After amount (100$)'], 'tab' => 'currency'],
+    'ratings_per_page' => ['label' => 'Ratings per page', 'type' => 'number', 'hint' => 'Pagination size on the public and tenant views.', 'tab' => 'defaults'],
+    'trial_days'       => ['label' => 'Default trial length (days)', 'type' => 'number', 'hint' => 'Suggested length when creating a tenant.', 'tab' => 'defaults'],
 ];
 
 /* ---------- POST handlers ---------- */
@@ -417,8 +419,14 @@ include __DIR__ . '/_shell.php';
 
 <!-- ============ TAB NAV ============ -->
 <nav class="sa-tabs" role="tablist" aria-label="Settings sections">
-    <button class="sa-tab-btn is-active" role="tab" aria-selected="true"  aria-controls="tab-platform" id="tabBtn-platform" onclick="saTab('platform')">
-        <?php echo sa_icon('zap'); ?> Platform
+    <button class="sa-tab-btn is-active" role="tab" aria-selected="true"  aria-controls="tab-system" id="tabBtn-system" onclick="saTab('system')">
+        <?php echo sa_icon('zap'); ?> System
+    </button>
+    <button class="sa-tab-btn" role="tab" aria-selected="false" aria-controls="tab-branding" id="tabBtn-branding" onclick="saTab('branding')">
+        <?php echo sa_icon('star'); ?> Branding
+    </button>
+    <button class="sa-tab-btn" role="tab" aria-selected="false" aria-controls="tab-currency" id="tabBtn-currency" onclick="saTab('currency')">
+        <?php echo sa_icon('dollar'); ?> Currency
     </button>
     <button class="sa-tab-btn" role="tab" aria-selected="false" aria-controls="tab-email"    id="tabBtn-email"    onclick="saTab('email')">
         <?php echo sa_icon('mail'); ?> Email & SMTP
@@ -434,8 +442,8 @@ include __DIR__ . '/_shell.php';
     </button>
 </nav>
 
-<!-- ============ TAB: PLATFORM ============ -->
-<div class="sa-tab-panel is-active" id="tab-platform" role="tabpanel" aria-labelledby="tabBtn-platform">
+<!-- ============ TAB: SYSTEM CONFIGURATION ============ -->
+<div class="sa-tab-panel is-active" id="tab-system" role="tabpanel" aria-labelledby="tabBtn-system">
     <div class="sa-grid sa-split-2-1">
         <!-- Platform defaults -->
         <section class="sa-card">
@@ -445,18 +453,28 @@ include __DIR__ . '/_shell.php';
                 <div class="sa-card-head">
                     <div>
                         <h3>Platform defaults</h3>
-                        <p>Branding, currency and the numbers the platform runs on</p>
+                        <p>Application defaults and operational parameters</p>
                     </div>
                     <span class="sa-kpi-icon" style="--kpi-accent:var(--sa-accent);--kpi-soft:var(--sa-accent-soft);--kpi-line:var(--sa-accent-line)"><?php echo sa_icon('zap'); ?></span>
                 </div>
                 <div class="sa-card-pad">
+                    <!-- Platform Defaults -->
                     <div class="sa-form-grid">
 <?php foreach ($sa_setting_fields as $key => $meta): ?>
-                        <div class="sa-field">
+<?php if (isset($meta['tab']) && $meta['tab'] === 'currency') continue; ?>
+                        <div class="sa-field<?php echo isset($meta['class']) ? ' ' . $meta['class'] : ''; ?>">
                             <label for="s_<?php echo sa_e($key); ?>"><?php echo sa_e($meta['label']); ?></label>
+<?php if (isset($meta['type']) && $meta['type'] === 'select' && isset($meta['options'])): ?>
+                            <select id="s_<?php echo sa_e($key); ?>" name="<?php echo sa_e($key); ?>">
+<?php foreach ($meta['options'] as $opt_val => $opt_label): ?>
+                                <option value="<?php echo sa_e($opt_val); ?>" <?php echo (isset($settings[$key]) ? $settings[$key] : '') === $opt_val ? 'selected' : ''; ?>><?php echo sa_e($opt_label); ?></option>
+<?php endforeach; ?>
+                            </select>
+<?php else: ?>
                             <input id="s_<?php echo sa_e($key); ?>" type="<?php echo sa_e($meta['type']); ?>" name="<?php echo sa_e($key); ?>"
                                    value="<?php echo sa_e(isset($settings[$key]) ? $settings[$key] : ''); ?>"
                                    <?php echo $meta['type'] === 'number' ? 'min="0" step="1"' : ''; ?>>
+<?php endif; ?>
                             <span class="sa-hint"><?php echo sa_e($meta['hint']); ?></span>
                         </div>
 <?php endforeach; ?>
@@ -473,74 +491,6 @@ include __DIR__ . '/_shell.php';
                 <div class="sa-card-foot">
                     <span>Stored in the <span class="sa-mono">settings</span> table</span>
                     <button type="submit" class="sa-btn sa-btn-primary"><?php echo sa_icon('save'); ?> Save settings</button>
-                </div>
-            </form>
-        </section>
-
-        <!-- Branding & assets -->
-        <section class="sa-card" style="grid-column:1/-1">
-            <form method="POST" action="settings.php" class="sa-form" enctype="multipart/form-data" id="brandAssetsForm">
-                <?php echo sa_csrf_field(); ?>
-                <input type="hidden" name="action" value="save_brand_assets">
-                <div class="sa-card-head">
-                    <div>
-                        <h3>Branding &amp; assets</h3>
-                        <p>Logo and favicon shown across the platform (sidebar, login, public site and browser tab).</p>
-                    </div>
-                    <span class="sa-kpi-icon" style="--kpi-accent:var(--sa-accent);--kpi-soft:var(--sa-accent-soft);--kpi-line:var(--sa-accent-line)"><?php echo sa_icon('star'); ?></span>
-                </div>
-                <div class="sa-card-pad">
-                    <div class="sa-form-grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">
-                        <!-- Logo -->
-                        <div class="sa-field">
-                            <label for="brandLogo">Logo</label>
-                            <div class="sa-brand-preview">
-                                <div class="sa-brand-preview-box sa-brand-preview-box--logo">
-                                    <?php if ($logo_url): ?>
-                                        <img src="<?php echo sa_e($logo_url); ?>" alt="Current platform logo">
-                                    <?php else: ?>
-                                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                                    <?php endif; ?>
-                                </div>
-                                <div>
-                                    <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" data-sa-pick="#brandLogo"><?php echo sa_icon('upload'); ?> Choose image</button>
-                                    <span class="sa-hint" id="brandLogoName">No logo set</span>
-                                    <input type="file" id="brandLogo" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden data-sa-brand-picker data-preview-target="brandLogoName" data-target="#brandLogoField">
-                                </div>
-                            </div>
-                            <span class="sa-hint" style="display:block;margin-top:6px">PNG, JPG, SVG or WebP up to 2 MB. Shown in the sidebar, login page and public header.</span>
-                            <input type="hidden" id="brandLogoField" name="logo_asset" value="<?php echo sa_e($logo_url ? $logo_url : ($logo_stored ?? '')); ?>">
-                        </div>
-<!-- Favicon -->
-                        <div class="sa-field">
-                            <label for="brandFavicon">Favicon</label>
-                            <div class="sa-brand-preview">
-                                <div class="sa-brand-preview-box sa-brand-preview-box--favicon">
-                                    <?php if ($favicon_url): ?>
-                                        <img src="<?php echo sa_e($favicon_url); ?>" alt="Current favicon">
-                                    <?php else: ?>
-                                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                                    <?php endif; ?>
-                                </div>
-                                <div>
-                                    <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" data-sa-pick="#brandFavicon"><?php echo sa_icon('upload'); ?> Choose image</button>
-                                    <span class="sa-hint" id="brandFaviconName">No favicon set</span>
-                                    <input type="file" id="brandFavicon" accept="image/png,image/x-icon,image/svg+xml" hidden data-sa-brand-picker data-preview-target="brandFaviconName" data-target="#brandFaviconField">
-                                </div>
-                            </div>
-                            <span class="sa-hint" style="display:block;margin-top:6px">PNG, ICO or SVG up to 512 KB. Shown in the browser tab.</span>
-                            <input type="hidden" id="brandFaviconField" name="favicon_asset" value="<?php echo sa_e($favicon_url ? $favicon_url : ($favicon_stored ?? '')); ?>">
-                        </div>
-                    </div>
-
-                    <div class="sa-muted" style="margin-top:16px;font-size:12.3px">
-                        <?php echo sa_icon('info'); ?>
-                        <span>Also supports an external URL (paste into the field above) — e.g. <span class="sa-mono">https://cdn.example.com/logo.png</span>.</span>
-                    </div>
-                </div>
-                <div class="sa-card-foot">
-                    <span>Stored in the <span class="sa-mono">settings</span> table</span>
-                    <button type="submit" class="sa-btn sa-btn-primary" id="brandAssetsSave"><?php echo sa_icon('save'); ?> Save branding</button>
                 </div>
             </form>
         </section>
@@ -572,6 +522,173 @@ include __DIR__ . '/_shell.php';
             </section>
         </div>
     </div>
+</div>
+
+<!-- ============ TAB: BRANDING ============ -->
+<div class="sa-tab-panel" id="tab-branding" role="tabpanel" aria-labelledby="tabBtn-branding">
+    <section class="sa-card">
+        <form method="POST" action="settings.php" class="sa-form" enctype="multipart/form-data" id="brandAssetsForm">
+            <?php echo sa_csrf_field(); ?>
+            <input type="hidden" name="action" value="save_brand_assets">
+            <div class="sa-card-head">
+                <div>
+                    <h3>Branding &amp; assets</h3>
+                    <p>Logo and favicon shown across the platform (sidebar, login, public site and browser tab).</p>
+                </div>
+                <span class="sa-kpi-icon" style="--kpi-accent:var(--sa-warning);--kpi-soft:var(--sa-warning-soft);--kpi-line:var(--sa-warning-line)"><?php echo sa_icon('star'); ?></span>
+            </div>
+            <div class="sa-card-pad">
+                <div class="sa-form-grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">
+                    <!-- Logo -->
+                    <div class="sa-field">
+                        <label for="brandLogo">Logo</label>
+                        <div class="sa-brand-preview">
+                            <div class="sa-brand-preview-box sa-brand-preview-box--logo">
+                                <?php if ($logo_url): ?>
+                                    <img src="<?php echo sa_e($logo_url); ?>" alt="Current platform logo">
+                                <?php else: ?>
+                                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                                <?php endif; ?>
+                            </div>
+                            <div>
+                                <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" data-sa-pick="#brandLogo"><?php echo sa_icon('upload'); ?> Choose image</button>
+                                <span class="sa-hint" id="brandLogoName">No logo set</span>
+                                <input type="file" id="brandLogo" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden data-sa-brand-picker data-preview-target="brandLogoName" data-target="#brandLogoField">
+                            </div>
+                        </div>
+                        <span class="sa-hint" style="display:block;margin-top:6px">PNG, JPG, SVG or WebP up to 2 MB. Shown in the sidebar, login page and public header.</span>
+                        <input type="hidden" id="brandLogoField" name="logo_asset" value="<?php echo sa_e($logo_url ? $logo_url : ($logo_stored ?? '')); ?>">
+                    </div>
+                    <!-- Favicon -->
+                    <div class="sa-field">
+                        <label for="brandFavicon">Favicon</label>
+                        <div class="sa-brand-preview">
+                            <div class="sa-brand-preview-box sa-brand-preview-box--favicon">
+                                <?php if ($favicon_url): ?>
+                                    <img src="<?php echo sa_e($favicon_url); ?>" alt="Current favicon">
+                                <?php else: ?>
+                                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                                <?php endif; ?>
+                            </div>
+                            <div>
+                                <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" data-sa-pick="#brandFavicon"><?php echo sa_icon('upload'); ?> Choose image</button>
+                                <span class="sa-hint" id="brandFaviconName">No favicon set</span>
+                                <input type="file" id="brandFavicon" accept="image/png,image/x-icon,image/svg+xml" hidden data-sa-brand-picker data-preview-target="brandFaviconName" data-target="#brandFaviconField">
+                            </div>
+                        </div>
+                        <span class="sa-hint" style="display:block;margin-top:6px">PNG, ICO or SVG up to 512 KB. Shown in the browser tab.</span>
+                        <input type="hidden" id="brandFaviconField" name="favicon_asset" value="<?php echo sa_e($favicon_url ? $favicon_url : ($favicon_stored ?? '')); ?>">
+                    </div>
+                </div>
+
+                <div class="sa-muted" style="margin-top:16px;font-size:12.3px">
+                    <?php echo sa_icon('info'); ?>
+                    <span>Also supports an external URL (paste into the field above) — e.g. <span class="sa-mono">https://cdn.example.com/logo.png</span>.</span>
+                </div>
+            </div>
+            <div class="sa-card-foot">
+                <span>Stored in the <span class="sa-mono">settings</span> table</span>
+                <button type="submit" class="sa-btn sa-btn-primary" id="brandAssetsSave"><?php echo sa_icon('save'); ?> Save branding</button>
+            </div>
+        </form>
+    </section>
+</div>
+
+<!-- ============ TAB: CURRENCY ============ -->
+<div class="sa-tab-panel" id="tab-currency" role="tabpanel" aria-labelledby="tabBtn-currency">
+    <section class="sa-card">
+        <form method="POST" action="settings.php" class="sa-form">
+            <?php echo sa_csrf_field(); ?>
+            <input type="hidden" name="action" value="save_settings">
+            <div class="sa-card-head">
+                <div>
+                    <h3>Currency configuration</h3>
+                    <p>Set the currency symbol, code and display format — affects all monetary values across the platform</p>
+                </div>
+                <span class="sa-kpi-icon" style="--kpi-accent:var(--sa-success);--kpi-soft:var(--sa-success-soft);--kpi-line:var(--sa-success-line)"><?php echo sa_icon('dollar'); ?></span>
+            </div>
+            <div class="sa-card-pad">
+                <!-- Currency Settings -->
+                <div style="background:linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.02));border:1px solid rgba(16,185,129,0.2);border-radius:12px;padding:24px;margin-bottom:24px;">
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+                        <span style="width:42px;height:42px;border-radius:12px;background:rgba(16,185,129,0.15);color:#10b981;display:grid;place-items:center;font-size:22px;">💰</span>
+                        <div>
+                            <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--sa-ink);">Global Currency Settings</h4>
+                            <p style="margin:2px 0 0;font-size:13px;color:var(--sa-muted);">These settings apply to all prices, plans, subscriptions and invoices system-wide</p>
+                        </div>
+                    </div>
+
+                    <div class="sa-form-grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;">
+<?php foreach ($sa_setting_fields as $key => $meta): ?>
+<?php if (!isset($meta['tab']) || $meta['tab'] !== 'currency') continue; ?>
+                        <div class="sa-field">
+                            <label for="c_<?php echo sa_e($key); ?>"><?php echo sa_e($meta['label']); ?></label>
+<?php if (isset($meta['type']) && $meta['type'] === 'select' && isset($meta['options'])): ?>
+                            <select id="c_<?php echo sa_e($key); ?>" name="<?php echo sa_e($key); ?>" style="width:100%;">
+<?php foreach ($meta['options'] as $opt_val => $opt_label): ?>
+                                <option value="<?php echo sa_e($opt_val); ?>" <?php echo (isset($settings[$key]) ? $settings[$key] : '') === $opt_val ? 'selected' : ''; ?>><?php echo sa_e($opt_label); ?></option>
+<?php endforeach; ?>
+                            </select>
+<?php else: ?>
+                            <input id="c_<?php echo sa_e($key); ?>" type="<?php echo sa_e($meta['type']); ?>" name="<?php echo sa_e($key); ?>"
+                                   value="<?php echo sa_e(isset($settings[$key]) ? $settings[$key] : ($key === 'currency_symbol' ? '$' : ($key === 'currency_code' ? 'USD' : ''))); ?>"
+                                   placeholder="<?php echo $key === 'currency_symbol' ? '$, €, £, ₦, GH₵…' : ($key === 'currency_code' ? 'USD' : ''); ?>"
+                                   <?php echo $key === 'currency_code' ? 'maxlength="3" style="text-transform:uppercase;"' : ($key === 'currency_symbol' ? 'maxlength="5"' : ''); ?>>
+<?php endif; ?>
+                            <span class="sa-hint"><?php echo sa_e($meta['hint']); ?></span>
+                        </div>
+<?php endforeach; ?>
+                    </div>
+
+                    <!-- Live Preview -->
+                    <div style="margin-top:22px;padding:18px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:10px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+                            <div>
+                                <strong style="font-size:13px;color:var(--sa-muted);display:block;margin-bottom:6px;">Preview</strong>
+                                <p style="margin:0;font-size:13px;color:var(--sa-muted);">How prices will appear throughout the system</p>
+                            </div>
+                            <div style="font-family:monospace;font-size:28px;font-weight:700;color:var(--sa-ink);">
+                                <?php
+                                $preview_symbol = isset($settings['currency_symbol']) && $settings['currency_symbol'] !== '' ? $settings['currency_symbol'] : '$';
+                                $preview_position = isset($settings['currency_position']) ? $settings['currency_position'] : 'before';
+                                $preview_amount = '1,250.00';
+                                echo $preview_position === 'after' ? $preview_amount . $preview_symbol : $preview_symbol . $preview_amount;
+                                ?>
+                            </div>
+                        </div>
+                        <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(16,185,129,0.15);font-size:12px;color:var(--sa-muted);">
+                            <strong style="color:var(--sa-ink);">Examples:</strong>
+                            <div style="display:flex;gap:20px;margin-top:6px;flex-wrap:wrap;">
+                                <span>Plans: <span style="font-weight:600;">$29.99/mo</span></span>
+                                <span>MRR: <span style="font-weight:600;">$12,450</span></span>
+                                <span>Invoices: <span style="font-weight:600;">$99.00</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Common Currency Presets -->
+                <div>
+                    <div class="sa-section-title" style="margin:0 0 14px;">Quick presets</div>
+                    <p class="sa-muted" style="font-size:12.5px;margin-bottom:14px;">Click to quickly configure for common currencies</p>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" onclick="applyCurrencyPreset('USD', '$', 'before')">💵 US Dollar (USD)</button>
+                        <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" onclick="applyCurrencyPreset('EUR', '€', 'before')">💶 Euro (EUR)</button>
+                        <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" onclick="applyCurrencyPreset('GBP', '£', 'before')">💷 British Pound (GBP)</button>
+                        <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" onclick="applyCurrencyPreset('NGN', '₦', 'before')">🇳🇬 Nigerian Naira (NGN)</button>
+                        <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" onclick="applyCurrencyPreset('GHS', 'GH₵', 'before')">🇬🇭 Ghana Cedi (GHS)</button>
+                        <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" onclick="applyCurrencyPreset('KES', 'KSh', 'before')">🇰🇪 Kenyan Shilling (KES)</button>
+                        <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" onclick="applyCurrencyPreset('ZAR', 'R', 'before')">🇿🇦 South African Rand (ZAR)</button>
+                        <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" onclick="applyCurrencyPreset('INR', '₹', 'before')">🇮🇳 Indian Rupee (INR)</button>
+                    </div>
+                </div>
+            </div>
+            <div class="sa-card-foot">
+                <span>Changes apply immediately to all prices, plans and invoices</span>
+                <button type="submit" class="sa-btn sa-btn-primary"><?php echo sa_icon('save'); ?> Save currency settings</button>
+            </div>
+        </form>
+    </section>
 </div>
 
 <!-- ============ TAB: EMAIL ============ -->
@@ -920,7 +1037,7 @@ function saTab(id) {
 /* Restore tab from URL hash on load */
 (function () {
     var hash = location.hash.replace('#tab=', '').replace('#', '');
-    var valid = ['platform', 'email', 'account', 'database'];
+    var valid = ['system', 'branding', 'currency', 'email', 'account', 'database'];
     if (valid.indexOf(hash) !== -1) {
         saTab(hash);
     }
@@ -959,6 +1076,29 @@ function togglePasswordVisibility(fieldId, btn) {
     if (!field) return;
     field.type = (field.type === 'password') ? 'text' : 'password';
     btn.style.color = (field.type === 'text') ? 'var(--sa-accent)' : 'var(--sa-muted)';
+}
+
+/* ---- Currency presets ---- */
+function applyCurrencyPreset(code, symbol, position) {
+    var codeField = document.getElementById('c_currency_code');
+    var symbolField = document.getElementById('c_currency_symbol');
+    var positionField = document.getElementById('c_currency_position');
+    
+    if (codeField) codeField.value = code;
+    if (symbolField) symbolField.value = symbol;
+    if (positionField) positionField.value = position;
+    
+    // Show visual feedback
+    [codeField, symbolField, positionField].forEach(function(field) {
+        if (field) {
+            field.style.borderColor = 'var(--sa-success)';
+            field.style.background = 'rgba(16,185,129,0.05)';
+            setTimeout(function() {
+                field.style.borderColor = '';
+                field.style.background = '';
+            }, 1000);
+        }
+    });
 }
 </script>
 

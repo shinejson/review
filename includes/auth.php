@@ -57,12 +57,77 @@ function requireLogin($conn = null) {
     // Idle / absolute expiry, and honouring a sign-out issued elsewhere.
     auth_session_enforce($conn);
 
-    // If tenant, verify subscription is not cancelled or inactive
-    if (isTenant() && isset($_SESSION['tenant_status'])) {
-        if ($_SESSION['tenant_status'] === 'inactive' || $_SESSION['tenant_status'] === 'cancelled') {
-            // Can allow read-only or redirect to payment notice
-        }
+    // If tenant, verify subscription is valid and not expired
+    if (isTenant()) {
+        checkTenantSubscription($conn);
     }
+}
+
+/**
+ * Check if tenant's subscription/trial is valid
+ * Blocks access if expired, cancelled, or inactive
+ */
+function checkTenantSubscription($conn = null) {
+    if ($conn === null && isset($GLOBALS['conn'])) {
+        $conn = $GLOBALS['conn'];
+    }
+    
+    $tenant_id = getTenantId();
+    if (!$tenant_id || !is_object($conn)) {
+        return;
+    }
+
+    // Fetch fresh subscription data from database
+    $stmt = $conn->prepare("SELECT subscription_status, subscription_end_date, plan_id FROM tenants WHERE id = ?");
+    $stmt->bind_param("i", $tenant_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $tenant = $result->fetch_assoc();
+    $stmt->close();
+
+    if (!$tenant) {
+        // Tenant not found, logout
+        session_destroy();
+        header('Location: login.php');
+        exit();
+    }
+
+    $status = $tenant['subscription_status'];
+    $end_date = $tenant['subscription_end_date'];
+    $today = date('Y-m-d');
+
+    // Update session with fresh data
+    $_SESSION['tenant_status'] = $status;
+    $_SESSION['tenant_subscription_end'] = $end_date;
+
+    // Check if subscription is cancelled or inactive
+    if ($status === 'cancelled' || $status === 'inactive') {
+        redirectToUpgrade('subscription_cancelled');
+    }
+
+    // Check if trial or subscription has expired
+    if ($end_date && $end_date < $today) {
+        // Expired - block access
+        redirectToUpgrade('subscription_expired');
+    }
+}
+
+/**
+ * Redirect tenant to upgrade/renewal page
+ */
+function redirectToUpgrade($reason = 'expired') {
+    // Allow access to upgrade page itself and logout
+    $current_page = basename($_SERVER['PHP_SELF']);
+    $allowed_pages = ['subscription.php', 'logout.php', 'upgrade.php'];
+    
+    if (in_array($current_page, $allowed_pages)) {
+        // Show banner but don't redirect (they're already on upgrade/subscription page)
+        return;
+    }
+
+    // Redirect to subscription page with reason
+    header('Location: subscription.php?status=' . $reason);
+    exit();
 }
 
 /**
