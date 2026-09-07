@@ -42,27 +42,34 @@ $error   = '';
 // POST — save company profile
 // ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_profile') {
-    $company_name = trim($_POST['company_name'] ?? '');
-    $email        = trim($_POST['email'] ?? '');
-    $phone        = trim($_POST['phone'] ?? '');
-    $website      = trim($_POST['website'] ?? '');
-    $category_id  = (int)($_POST['category_id'] ?? 0);
+    $company_name  = trim($_POST['company_name'] ?? '');
+    $email         = trim($_POST['email'] ?? '');
+    $phone         = trim($_POST['phone'] ?? '');
+    $website       = trim($_POST['website'] ?? '');
+    $category_id   = (int)($_POST['category_id'] ?? 0);
+    $whatsapp_raw  = trim($_POST['whatsapp_number'] ?? '');
+    $whatsapp_num  = whatsappDigits($whatsapp_raw);
 
     if (empty($company_name)) {
         $_SESSION['error'] = 'Company name is required.';
     } elseif (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $_SESSION['error'] = 'Please enter a valid email address.';
+    } elseif ($whatsapp_raw !== '' && $whatsapp_num === '') {
+        $_SESSION['error'] = 'That WhatsApp number is not usable. Enter it with the country code, e.g. +233 24 555 0118.';
     } else {
         $cat_val = $category_id > 0 ? $category_id : null;
 
+        // Installs created before the WhatsApp feature may not have the column yet.
+        ensureWhatsappColumn($conn);
+
         if ($company_profile) {
-            $upd = $conn->prepare("UPDATE customers SET company_name=?,email=?,phone=?,website=?,category_id=? WHERE id=? AND tenant_id=?");
-            $upd->bind_param("ssssiii", $company_name, $email, $phone, $website, $cat_val, $company_profile['id'], $tenant_id);
+            $upd = $conn->prepare("UPDATE customers SET company_name=?,email=?,phone=?,whatsapp_number=?,website=?,category_id=? WHERE id=? AND tenant_id=?");
+            $upd->bind_param("sssssiii", $company_name, $email, $phone, $whatsapp_num, $website, $cat_val, $company_profile['id'], $tenant_id);
             $upd->execute();
             $upd->close();
         } else {
-            $ins = $conn->prepare("INSERT INTO customers (tenant_id,company_name,email,phone,website,category_id,created_at) VALUES (?,?,?,?,?,?,NOW())");
-            $ins->bind_param("issssi", $tenant_id, $company_name, $email, $phone, $website, $cat_val);
+            $ins = $conn->prepare("INSERT INTO customers (tenant_id,company_name,email,phone,whatsapp_number,website,category_id,created_at) VALUES (?,?,?,?,?,?,?,NOW())");
+            $ins->bind_param("isssssi", $tenant_id, $company_name, $email, $phone, $whatsapp_num, $website, $cat_val);
             $ins->execute();
             $ins->close();
         }
@@ -112,6 +119,11 @@ if ($company_id > 0) {
 $__scheme   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $__root     = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
 $public_url = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/rate/index.php?tenant=' . (int)$tenant_id;
+
+// WhatsApp click-to-chat (customers.whatsapp_number)
+$wa_number  = $company_profile['whatsapp_number'] ?? '';
+$wa_url     = whatsappChatUrl($wa_number, $company_profile['company_name'] ?? $tenant['company_name'] ?? '');
+$wa_display = whatsappDisplay($wa_number);
 
 $BASE      = '../';
 $pageTitle = 'Company Profile';
@@ -222,6 +234,23 @@ include __DIR__ . '/_shell.php';
                            value="<?php echo htmlspecialchars($company_profile['phone'] ?? $tenant['phone'] ?? ''); ?>">
                 </div>
 
+                <div class="form-group">
+                    <label for="whatsapp_number">WhatsApp Number</label>
+                    <input type="text" id="whatsapp_number" name="whatsapp_number" maxlength="30"
+                           placeholder="+233 24 555 0118"
+                           value="<?php echo htmlspecialchars($wa_number); ?>"
+                           oninput="previewWhatsapp(this.value)">
+                    <small class="muted">
+                        Adds a green <strong>“Chat on WhatsApp”</strong> button to your public rating page
+                        and your directory listing. Leave blank to hide it.
+                        <a href="<?php echo $wa_url !== '' ? htmlspecialchars($wa_url) : '#'; ?>" id="waPreview"
+                           target="_blank" rel="noopener noreferrer"
+                           style="color:var(--ink);font-weight:700;text-decoration:none;<?php echo $wa_url !== '' ? '' : 'display:none;'; ?>">
+                            Test this number ↗
+                        </a>
+                    </small>
+                </div>
+
                 <div class="form-group" style="grid-column:1/-1;">
                     <label for="website">Website URL</label>
                     <input type="text" id="website" name="website" maxlength="255"
@@ -255,6 +284,31 @@ include __DIR__ . '/_shell.php';
             </div>
         </div>
 
+        <!-- WhatsApp click-to-chat -->
+        <div class="form-card" style="padding:22px;<?php echo $wa_url ? 'border-left:3px solid #25D366;' : ''; ?>">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
+                <h3 style="margin:0;font-size:15px;">💬 WhatsApp Click-to-Chat</h3>
+                <?php echo $wa_url
+                    ? '<span class="status-badge-replied" style="font-size:11px;">● Active</span>'
+                    : '<span class="status-badge-pending" style="font-size:11px;">● Not set</span>'; ?>
+            </div>
+            <?php if ($wa_url): ?>
+                <p class="muted" style="margin:0 0 14px;font-size:12.5px;">
+                    Customers can start a chat with <strong><?php echo htmlspecialchars($wa_display); ?></strong>
+                    straight from your rating page and directory card.
+                </p>
+                <a href="<?php echo htmlspecialchars($wa_url); ?>" target="_blank" rel="noopener noreferrer"
+                   style="display:inline-flex;align-items:center;gap:8px;background:#25D366;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:10px 16px;border-radius:99px;">
+                    Chat on WhatsApp ↗
+                </a>
+            <?php else: ?>
+                <p class="muted" style="margin:0;font-size:12.5px;line-height:1.6;">
+                    Add a WhatsApp number above and a <strong>“Chat on WhatsApp”</strong> button appears on your
+                    public rating page — the fastest way to turn a good review into an order.
+                </p>
+            <?php endif; ?>
+        </div>
+
         <!-- Account Details -->
         <div class="form-card" style="padding:22px;">
             <h3 style="margin:0 0 16px;font-size:15px;">🔐 Account Details</h3>
@@ -273,7 +327,7 @@ include __DIR__ . '/_shell.php';
                 </div>
                 <div class="admin-kv-row">
                     <dt>Member Since</dt>
-                    <dd><?php echo $tenant['created_at'] ? date('M d, Y', strtotime($tenant['created_at'])) : '—'; ?></dd>
+                    <dd><?php echo !empty($tenant['created_at']) ? date('M d, Y', strtotime($tenant['created_at'])) : '—'; ?></dd>
                 </div>
                 <div class="admin-kv-row" style="border-bottom:none;">
                     <dt>Current Plan</dt>
@@ -300,6 +354,20 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <script>
+// Mirrors whatsappDigits() in includes/functions.php so the "test this
+// number" link matches the wa.me URL customers will get.
+function previewWhatsapp(value) {
+    var link = document.getElementById('waPreview');
+    if (!link) return;
+    var digits = String(value || '').replace(/\D+/g, '');
+    if (digits.indexOf('00') === 0) digits = digits.slice(2);
+    if (digits.charAt(0) === '0' && digits.length >= 9 && digits.length <= 10) digits = '233' + digits.slice(1);
+    if (digits.length < 7 || digits.length > 15) { link.style.display = 'none'; return; }
+    link.href = 'https://wa.me/' + digits
+        + '?text=' + encodeURIComponent('Hello, I found you on Optibiz and would like to inquire.');
+    link.style.display = '';
+}
+
 function copyPublicUrl() {
     var el = document.getElementById('publicUrl');
     if (navigator.clipboard && navigator.clipboard.writeText) {

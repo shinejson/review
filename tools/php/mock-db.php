@@ -469,6 +469,19 @@ class MockMysqli
                 return ['Field' => $c, 'Type' => 'text', 'Null' => 'YES', 'Key' => '', 'Default' => null, 'Extra' => ''];
             }, $cols);
         }
+        /* ---- workspace schema probe (ensureWhatsappColumn) ---- */
+        if (stripos($s, 'SHOW COLUMNS FROM customers') === 0) {
+            // the fixture database is already migrated to database.sql
+            $cols = ['id', 'tenant_id', 'company_name', 'category_id', 'email', 'phone', 'whatsapp_number', 'website', 'created_at'];
+            if (preg_match("/LIKE '([a-z_]+)'/i", $s, $lm)) {
+                $cols = array_values(array_filter($cols, function ($c) use ($lm) {
+                    return $c === $lm[1];
+                }));
+            }
+            return array_map(function ($c) {
+                return ['Field' => $c, 'Type' => 'text', 'Null' => 'YES', 'Key' => '', 'Default' => null, 'Extra' => ''];
+            }, $cols);
+        }
         if ($tbl === 'super_admins' && $this->has($s, 'COUNT(*)') && $this->has($s, 'is_owner = 1')) {
             return [['COUNT(*)' => 1, 'c' => 1]];   // the dataset owner account
         }
@@ -822,6 +835,21 @@ class MockMysqli
 
         /* ---- customers ---- */
         if ($tbl === 'customers') {
+            /* public directory (companies.php): c.* + category/tenant join
+               + a per-company review summary in subqueries. Matched before
+               the COUNT(*) branches, which would otherwise read the counts
+               inside those subqueries as a table total. */
+            if ($this->has($s, 'AS tenant_banner')) {
+                $rows = [];
+                foreach ($this->customersWithCategory() as $c) {
+                    $c['tenant_name'] = $c['tenant_company'];
+                    $rows[] = $c;
+                }
+                usort($rows, function ($a, $b) {
+                    return strcmp($a['company_name'], $b['company_name']);
+                });
+                return $rows;
+            }
             if ($this->has($s, 'COUNT(*)') && $this->has($s, 'category_id IS NULL')) {
                 return [['COUNT(*)' => 0]];
             }

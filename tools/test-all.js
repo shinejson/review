@@ -14,11 +14,14 @@
  *     sidebar collapse, table filtering and column sorting work.
  *  3. check-other-pages.js — the tenant admin panel, panel
  *     isolation, both login forms and the public API endpoints.
- *  4. check-css.js — audits the rendered markup for CSS variables
+ *  4. check-whatsapp.js — the WhatsApp click-to-chat feature: the
+ *     number normalisation helpers, the workspace field and its
+ *     save handler, and the button on both public pages.
+ *  5. check-css.js — audits the rendered markup for CSS variables
  *     that are never defined and classes that are never styled.
- *  5. check-a11y.js — audits labels, landmarks, table semantics,
+ *  6. check-a11y.js — audits labels, landmarks, table semantics,
  *     ARIA values, heading order and duplicate ids.
- *  6. check-sql.js — captures every statement the pages issue and
+ *  7. check-sql.js — captures every statement the pages issue and
  *     verifies each table and column exists in database.sql.
  *
  *  Both need the WebAssembly PHP runtime (npm install php-cli);
@@ -34,6 +37,7 @@ const suites = [
     ['Super admin panel', 'render-php-preview.js'],
     ['Rendered pages under jsdom', 'check-browser.js'],
     ['Admin panel, logins and public APIs', 'check-other-pages.js'],
+    ['WhatsApp click-to-chat', 'check-whatsapp.js'],
     ['CSS audit of the rendered pages', 'check-css.js'],
     ['Accessibility audit of the rendered pages', 'check-a11y.js'],
     ['SQL schema check against database.sql', 'check-sql.js'],

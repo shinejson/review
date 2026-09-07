@@ -2,8 +2,11 @@
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/functions.php';
 
-// Company list joined with tenant branding (logo + banner)
-$customers = $conn->query("SELECT c.*, cat.name as category_name, t.company_name AS tenant_name, t.logo AS tenant_logo, t.banner AS tenant_banner
+// Company list joined with tenant branding (logo + banner) and its review
+// summary. c.* carries whatsapp_number, which drives the chat button below.
+$customers = $conn->query("SELECT c.*, cat.name as category_name, t.company_name AS tenant_name, t.logo AS tenant_logo, t.banner AS tenant_banner,
+                                  (SELECT COUNT(*) FROM ratings r WHERE r.company_id = c.id) AS rating_count,
+                                  (SELECT AVG(r.rating) FROM ratings r WHERE r.company_id = c.id) AS avg_rating
                            FROM customers c
                            LEFT JOIN categories cat ON c.category_id = cat.id
                            LEFT JOIN tenants t ON c.tenant_id = t.id
@@ -282,3 +285,246 @@ $customers = $conn->query("SELECT c.*, cat.name as category_name, t.company_name
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+
+        .cmp-info-item a.cmp-info-link {
+            color: inherit;
+            text-decoration: none;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .cmp-info-item a.cmp-info-link:hover { color: var(--primary-dark); text-decoration: underline; }
+
+        /* Rating summary above the action buttons */
+        .cmp-card-rating {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: var(--accent-green-bg);
+            color: var(--accent-green-text);
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+        .cmp-card-rating .cmp-stars { color: var(--star); letter-spacing: 1px; }
+        .cmp-card-rating .cmp-rating-count { font-weight: 500; color: var(--text-muted); margin-left: auto; }
+
+        /* ===== Action buttons (incl. WhatsApp click-to-chat) ===== */
+        .cmp-card-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: auto;
+            flex-wrap: wrap;
+        }
+        .cmp-btn {
+            flex: 1 1 auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 11px 16px;
+            border-radius: 12px;
+            font-size: 13.5px;
+            font-weight: 700;
+            text-decoration: none;
+            transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+            white-space: nowrap;
+        }
+        .cmp-btn:hover { transform: translateY(-2px); }
+        .cmp-btn-view {
+            background: var(--primary-dark);
+            color: #ffffff;
+        }
+        .cmp-btn-view:hover { box-shadow: 0 10px 24px rgba(15,36,56,.28); }
+        .cmp-btn-whatsapp {
+            background: #25D366;
+            color: #ffffff;
+        }
+        .cmp-btn-whatsapp:hover {
+            background: #1fb457;
+            box-shadow: 0 10px 24px rgba(37,211,102,.34);
+        }
+
+        /* ===== Page shell ===== */
+        .cmp-page {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 46px 5% 70px;
+        }
+        .cmp-page-head { margin-bottom: 34px; }
+        .cmp-page-head h1 {
+            font-size: 34px;
+            font-weight: 800;
+            color: var(--primary-dark);
+            letter-spacing: -.6px;
+            margin-bottom: 8px;
+        }
+        .cmp-page-head p {
+            color: var(--text-muted);
+            font-size: 15px;
+            max-width: 640px;
+            line-height: 1.6;
+        }
+        .cmp-empty {
+            background: #ffffff;
+            border: 1px dashed #cbd5e1;
+            border-radius: 18px;
+            padding: 60px 24px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+        .cmp-empty i { font-size: 34px; color: #cbd5e1; display: block; margin-bottom: 14px; }
+        .cmp-footer {
+            background: var(--primary-dark);
+            color: #cbd5e1;
+            text-align: center;
+            padding: 26px 5%;
+            font-size: 13.5px;
+        }
+
+        @media (max-width: 640px) {
+            .navbar { flex-wrap: wrap; gap: 14px; }
+            .nav-pill { gap: 18px; }
+            .cmp-page-head h1 { font-size: 27px; }
+            .cmp-card-actions .cmp-btn { flex: 1 1 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header & Navigation (matches index.php) -->
+    <div class="top-bar-wrap">
+        <header class="navbar">
+            <a href="index.php" class="logo">
+                <span class="logo-icon"><i class="fa-solid fa-shapes"></i></span>
+                Optibiz
+            </a>
+            <nav class="nav-pill">
+                <a href="index.php">Home</a>
+                <a href="companies.php" class="active">Companies</a>
+                <a href="index.php#about">About Us</a>
+                <a href="index.php#contact">Contact</a>
+            </nav>
+            <a href="index.php#get-started" class="btn-quote">
+                Get Started <i class="fa-solid fa-arrow-right"></i>
+            </a>
+        </header>
+    </div>
+
+    <main class="cmp-page">
+        <div class="cmp-page-head">
+            <h1>Companies on Optibiz</h1>
+            <p>Read verified customer reviews, then talk to the business directly — every listing with a
+               WhatsApp number carries a one-tap <strong>Chat on WhatsApp</strong> button.</p>
+        </div>
+
+        <?php if ($customers && $customers->num_rows > 0): ?>
+        <div class="cmp-companies-grid">
+            <?php while ($c = $customers->fetch_assoc()): ?>
+            <?php
+                $c_name      = (string)($c['company_name'] ?? '');
+                $c_logo      = (string)($c['tenant_logo'] ?? '');
+                $c_banner    = (string)($c['tenant_banner'] ?? '');
+                $c_initials  = getInitials($c_name);
+                // '' when this business has not published a WhatsApp number.
+                $c_whatsapp  = whatsappChatUrl($c['whatsapp_number'] ?? '', $c_name);
+                $c_reviews   = (int)($c['rating_count'] ?? 0);
+                $c_avg       = (float)($c['avg_rating'] ?? 0);
+            ?>
+            <article class="cmp-company-card">
+                <div class="cmp-card-banner">
+                    <?php if ($c_banner !== ''): ?>
+                        <img src="<?php echo htmlspecialchars($c_banner); ?>" alt="<?php echo htmlspecialchars($c_name); ?> cover image">
+                    <?php else: ?>
+                        <div class="cmp-banner-fallback"><i class="fa-solid fa-building"></i></div>
+                    <?php endif; ?>
+                    <?php if (!empty($c['category_name'])): ?>
+                        <span class="cmp-card-category"><i class="fa-solid fa-tag"></i> <?php echo htmlspecialchars($c['category_name']); ?></span>
+                    <?php endif; ?>
+                </div>
+
+                <div class="cmp-card-logo-wrap">
+                    <div class="cmp-card-logo">
+                        <?php if ($c_logo !== ''): ?>
+                            <img src="<?php echo htmlspecialchars($c_logo); ?>" alt="<?php echo htmlspecialchars($c_name); ?> logo">
+                        <?php else: ?>
+                            <span class="cmp-initials"><?php echo htmlspecialchars($c_initials); ?></span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="cmp-card-body">
+                    <h2 class="cmp-company-name">
+                        <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+                        <?php echo htmlspecialchars($c_name); ?>
+                    </h2>
+                    <?php if (!empty($c['tenant_name'])): ?>
+                        <div class="cmp-tenant-name">
+                            <i class="fa-solid fa-briefcase" aria-hidden="true"></i>
+                            <?php echo htmlspecialchars($c['tenant_name']); ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="cmp-company-info">
+                        <?php if (!empty($c['email'])): ?>
+                            <div class="cmp-info-item">
+                                <i class="fa-solid fa-envelope" aria-hidden="true"></i>
+                                <a class="cmp-info-link" href="mailto:<?php echo htmlspecialchars($c['email']); ?>"><?php echo htmlspecialchars($c['email']); ?></a>
+                            </div>
+                        <?php endif; ?>
+                        <?php if (!empty($c['phone'])): ?>
+                            <div class="cmp-info-item">
+                                <i class="fa-solid fa-phone" aria-hidden="true"></i>
+                                <a class="cmp-info-link" href="tel:<?php echo htmlspecialchars(preg_replace('/\s+/', '', $c['phone'])); ?>"><?php echo htmlspecialchars($c['phone']); ?></a>
+                            </div>
+                        <?php endif; ?>
+                        <?php if (!empty($c['website'])): ?>
+                            <div class="cmp-info-item">
+                                <i class="fa-solid fa-globe" aria-hidden="true"></i>
+                                <a class="cmp-info-link" href="<?php echo htmlspecialchars(preg_match('#^https?://#i', $c['website']) ? $c['website'] : 'https://' . $c['website']); ?>"
+                                   target="_blank" rel="noopener noreferrer"><?php echo htmlspecialchars($c['website']); ?></a>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if ($c_reviews > 0): ?>
+                        <div class="cmp-card-rating">
+                            <span class="cmp-stars" aria-hidden="true">★</span>
+                            <span><?php echo number_format($c_avg, 1); ?> average</span>
+                            <span class="cmp-rating-count"><?php echo number_format($c_reviews); ?> review<?php echo $c_reviews === 1 ? '' : 's'; ?></span>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="cmp-card-actions">
+                        <a class="cmp-btn cmp-btn-view" href="rate/index.php?company=<?php echo (int)$c['id']; ?>">
+                            <i class="fa-solid fa-star" aria-hidden="true"></i> View &amp; Rate
+                        </a>
+                        <?php if ($c_whatsapp !== ''): ?>
+                        <!-- WhatsApp click-to-chat -->
+                        <a class="cmp-btn cmp-btn-whatsapp" href="<?php echo htmlspecialchars($c_whatsapp); ?>"
+                           target="_blank" rel="noopener noreferrer">
+                            <i class="fa-brands fa-whatsapp" aria-hidden="true"></i> Chat on WhatsApp
+                        </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </article>
+            <?php endwhile; ?>
+        </div>
+        <?php else: ?>
+        <div class="cmp-empty">
+            <i class="fa-solid fa-store" aria-hidden="true"></i>
+            <strong>No companies listed yet.</strong>
+            <p style="margin-top:6px;">Businesses appear here as soon as they register their profile.</p>
+        </div>
+        <?php endif; ?>
+    </main>
+
+    <footer class="cmp-footer">
+        &copy; <?php echo date('Y'); ?> Optibiz Rating Platform &middot; Verified reviews &amp; direct WhatsApp contact
+    </footer>
+
+</body>
+</html>

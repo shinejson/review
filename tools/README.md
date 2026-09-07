@@ -72,6 +72,7 @@ the preview resolves.
 | `render-php-preview.js` | Renders + tests the real super admin pages, their POST handlers, a fresh-install (empty database) render, signed-out redirects and edge cases |
 | `check-browser.js` | Loads each rendered page in jsdom, runs the real `superadmin.js` and asserts theme, collapse, filtering and sorting behave |
 | `check-other-pages.js` | Tenant admin panel, panel isolation, login forms and `api/` endpoints |
+| `check-whatsapp.js` | WhatsApp click-to-chat: `whatsappDigits()`/`whatsappChatUrl()`, the `admin/company.php` field and save handler, and the button on `rate/index.php` + `companies.php` |
 | `check-css.js` | Audits the rendered pages for undefined `var(--…)` and unstyled classes; lists `.sa-*` selectors nothing uses |
 | `check-a11y.js` | Audits labels, landmarks, `scope`/`aria-sort`, dialog names, ARIA values, heading order and duplicate ids |
 | `check-sql.js` | Captures every statement the app issues and verifies each table and column exists in `database.sql` |
