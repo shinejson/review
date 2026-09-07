@@ -204,7 +204,7 @@ foreach ($sa_nav as $sa_item) {
                     <span><?php echo sa_is_owner($conn) ? 'Platform owner' : 'Administrator'; ?></span>
                 </span>
             </div>
-            <a class="sa-logout" href="logout.php" data-label="Sign out" data-sa-confirm="Sign out of the control center?">
+            <a class="sa-logout" href="<?php echo sa_e(auth_logout_url()); ?>" data-label="Sign out" data-sa-confirm="Sign out of the control center?">
                 <?php echo sa_icon('logout'); ?>
                 <span>Sign out</span>
             </a>
@@ -316,7 +316,7 @@ foreach ($sa_nav as $sa_item) {
                         <a href="analytics.php" role="menuitem"><?php echo sa_icon('chart'); ?> Analytics</a>
                         <?php endif; ?>
                         <a href="<?php echo $sa_base; ?>index.php" target="_blank" rel="noopener" role="menuitem"><?php echo sa_icon('globe'); ?> View public site</a>
-                        <a class="is-danger" href="logout.php" role="menuitem" data-sa-confirm="Sign out of the control center?"><?php echo sa_icon('logout'); ?> Sign out</a>
+                        <a class="is-danger" href="<?php echo sa_e(auth_logout_url()); ?>" role="menuitem" data-sa-confirm="Sign out of the control center?"><?php echo sa_icon('logout'); ?> Sign out</a>
                     </div>
                 </div>
             </div>

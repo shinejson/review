@@ -82,4 +82,17 @@ the preview resolves.
 | `php/mock-db.php` | mysqli stand-in: matches SQL, returns fixture rows |
 | `php/bootstrap.php` | Auto-prepended: session, `$_GET`/`$_POST`, and who is signed in (`SA_ANONYMOUS`, `SA_NO_SUPER`, `SA_ADMIN_ID`, `SA_POST`, `SA_EMPTY_DB`) |
 
+### Session controls
+
+`bootstrap.php` also seeds what `includes/session.php` expects from a session
+that `login.php` recorded, so the suites can exercise sign-out:
+
+| Variable | Effect |
+| --- | --- |
+| `SA_SESSION_TOKEN` | Token of the session the harness is signed in with (default `preview-session-token`, which has a live row in `dataset.php`) |
+| `SA_LOGOUT_TOKEN` | Token the logout endpoints accept (default `preview-logout-token`) |
+| `SA_SESSION_REVOKED=1` | The signed-in row comes back closed, as if another screen had signed it out |
+| `SA_SESSION_AGE` / `SA_SESSION_IDLE` | Age of the session and seconds since it was last used, for the idle/absolute timeout checks |
+| `SA_SESSION_DUMP=/path` | Writes what is left of `$_SESSION` when the script ends — how the suites prove a sign-out really cleared it |
+
 None of these files are loaded by the application at runtime.

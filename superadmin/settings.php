@@ -320,13 +320,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param("si", $new_hash, $id);
             $stmt->execute();
             $stmt->close();
-            sa_flash('success', 'Password changed. Use it the next time you sign in.');
+
+            /* A new password ends every other browser session: whoever
+               had the old one can no longer keep using it. */
+            $closed = auth_session_logout_others($conn, 'superadmin', $id, 'password');
+            sa_flash('success', 'Password changed. Use it the next time you sign in.'
+                . ($closed > 0 ? ' ' . $closed . ' other session' . ($closed === 1 ? '' : 's') . ' signed out.' : ''));
         }
+        redirect('settings.php');
+    }
+
+    if ($action === 'logout_other_sessions') {
+        $id     = (int) ($_SESSION['super_admin_id'] ?? 0);
+        $closed = auth_session_logout_others($conn, 'superadmin', $id, 'revoked');
+        sa_flash($closed > 0 ? 'success' : 'warning', $closed > 0
+            ? 'Signed out of ' . $closed . ' other session' . ($closed === 1 ? '' : 's') . '. This browser stays signed in.'
+            : 'No other session is live — this is the only one.');
         redirect('settings.php');
     }
 }
 
 /* ---------- data ---------- */
+$my_sessions = auth_sessions_for($conn, 'superadmin', (int) ($_SESSION['super_admin_id'] ?? 0), 6);
+$my_token    = auth_session_token(false);
+
 $settings = [];
 foreach (sa_query($conn, "SELECT setting_key, setting_value FROM settings", 'settings') as $row) {
     $settings[$row['setting_key']] = $row['setting_value'];
@@ -769,6 +786,65 @@ include __DIR__ . '/_shell.php';
         </section>
 
     </div>
+
+    <!-- Signed-in sessions -->
+    <section class="sa-card">
+        <div class="sa-card-head">
+            <div>
+                <h3>Signed-in sessions</h3>
+                <p><?php echo sa_num(count($my_sessions)); ?> live sign-in<?php echo count($my_sessions) === 1 ? '' : 's'; ?>
+                   for this account &middot; idle after <?php echo (int) round(AUTH_IDLE_TIMEOUT_SUPERADMIN / 60); ?> minutes,
+                   closed after <?php echo (int) round(AUTH_ABSOLUTE_TIMEOUT_SUPERADMIN / 3600); ?> hours</p>
+            </div>
+            <div class="sa-card-head-actions">
+                <form method="POST" action="settings.php">
+                    <?php echo sa_csrf_field(); ?>
+                    <input type="hidden" name="action" value="logout_other_sessions">
+                    <button type="submit" class="sa-btn sa-btn-ghost"
+                            data-sa-confirm="Sign out of every other browser? This one stays signed in.">
+                        <?php echo sa_icon('logout'); ?> Sign out everywhere else
+                    </button>
+                </form>
+            </div>
+        </div>
+<?php if ($my_sessions): ?>
+        <div class="sa-table-wrap">
+            <table class="sa-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Device</th>
+                        <th scope="col">IP address</th>
+                        <th scope="col">Signed in</th>
+                        <th scope="col">Last active</th>
+                        <th scope="col" data-no-export></th>
+                    </tr>
+                </thead>
+                <tbody>
+<?php foreach ($my_sessions as $sess): ?>
+                    <tr>
+                        <td><?php echo sa_e(auth_describe_agent($sess['user_agent'])); ?></td>
+                        <td><span class="sa-mono"><?php echo $sess['ip_address'] !== '' && $sess['ip_address'] !== null ? sa_e($sess['ip_address']) : '&mdash;'; ?></span></td>
+                        <td><?php echo sa_e(sa_date($sess['created_at'], 'M d, Y H:i')); ?></td>
+                        <td><?php echo sa_time_ago($sess['last_seen_at']); ?></td>
+                        <td data-no-export>
+<?php if ($sess['session_token'] === $my_token): ?>
+                            <span class="sa-badge sa-badge-lime">This browser</span>
+<?php else: ?>
+                            <span class="sa-muted" style="font-size:12.5px">Another device</span>
+<?php endif; ?>
+                        </td>
+                    </tr>
+<?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+<?php else: ?>
+        <div class="sa-card-pad">
+            <p class="sa-muted" style="margin:0">No session has been recorded for this account yet — sign-ins are
+               tracked from the next login, and this browser stays signed in.</p>
+        </div>
+<?php endif; ?>
+    </section>
 </div>
 
 <!-- ============ TAB: DATABASE ============ -->

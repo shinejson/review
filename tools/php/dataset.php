@@ -138,5 +138,37 @@ return [
         ['id' => 3, 'tenant_id' => 18, 'company_id' => 52, 'rating_id' => 900, 'platform' => 'twitter', 'content' => '★★★★☆ “Good service, but the invoice arrived two days late.” — Kojo A.', 'status' => 'failed', 'remote_id' => null, 'remote_url' => null, 'error' => 'Unauthorized: the access token expired.', 'created_at' => '2026-08-30 07:45:00', 'published_at' => null, 'company_name' => 'Volta Cold Storage'],
     ],
 
+    /* Live sign-ins (includes/session.php). 'preview-session-token' is the
+       row the harness is signed in with — it must stay live and recently
+       used, otherwise every rendered page would be bounced to the login
+       screen. The others are the "signed in somewhere else" devices. */
+    'user_sessions' => [
+        ['id' => 1, 'session_token' => 'preview-session-token', 'portal' => 'superadmin', 'user_id' => 1,
+         'user_label' => 'superadmin', 'user_kind' => 'super_admin', 'ip_address' => '197.251.200.9',
+         'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-2 hour')), 'last_seen_at' => date('Y-m-d H:i:s'),
+         'logged_out_at' => null, 'logout_reason' => null],
+        ['id' => 2, 'session_token' => 'owner-tablet-token', 'portal' => 'superadmin', 'user_id' => 1,
+         'user_label' => 'superadmin', 'user_kind' => 'super_admin', 'ip_address' => '41.66.202.14',
+         'user_agent' => 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-1 day')), 'last_seen_at' => date('Y-m-d H:i:s', strtotime('-3 hour')),
+         'logged_out_at' => null, 'logout_reason' => null],
+        ['id' => 3, 'session_token' => 'preview-session-token', 'portal' => 'admin', 'user_id' => 1,
+         'user_label' => 'volta_admin', 'user_kind' => 'admin', 'ip_address' => '197.251.200.9',
+         'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-40 minute')), 'last_seen_at' => date('Y-m-d H:i:s'),
+         'logged_out_at' => null, 'logout_reason' => null],
+        ['id' => 4, 'session_token' => 'volta-office-pc-token', 'portal' => 'admin', 'user_id' => 1,
+         'user_label' => 'volta_admin', 'user_kind' => 'admin', 'ip_address' => '154.160.11.72',
+         'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-3 day')), 'last_seen_at' => date('Y-m-d H:i:s', strtotime('-6 hour')),
+         'logged_out_at' => null, 'logout_reason' => null],
+        ['id' => 5, 'session_token' => 'closed-session-token', 'portal' => 'admin', 'user_id' => 1,
+         'user_label' => 'volta_admin', 'user_kind' => 'admin', 'ip_address' => '154.160.11.72',
+         'user_agent' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-5 day')), 'last_seen_at' => date('Y-m-d H:i:s', strtotime('-2 day')),
+         'logged_out_at' => date('Y-m-d H:i:s', strtotime('-2 day')), 'logout_reason' => 'user'],
+    ],
+
     'star_distribution' => [5 => 412, 4 => 168, 3 => 54, 2 => 17, 1 => 9],
 ];

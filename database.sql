@@ -72,6 +72,26 @@ CREATE TABLE IF NOT EXISTS admins (
 INSERT INTO admins (username, password, email) VALUES 
 ('admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin@example.com');
 
+-- User sessions: one row per browser sign-in, for both panels
+-- (portal = 'superadmin' for the control center, 'admin' for the tenant
+-- workspace). Closing a row signs that browser out on its next request.
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    session_token VARCHAR(64) NOT NULL,
+    portal VARCHAR(20) NOT NULL,
+    user_id INT NOT NULL,
+    user_label VARCHAR(120) NULL,
+    user_kind VARCHAR(20) NOT NULL DEFAULT 'admin',
+    ip_address VARCHAR(45) NULL,
+    user_agent VARCHAR(255) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TIMESTAMP NULL,
+    logged_out_at TIMESTAMP NULL,
+    logout_reason VARCHAR(20) NULL,
+    INDEX idx_user_sessions_token (session_token),
+    INDEX idx_user_sessions_user (portal, user_id, logged_out_at)
+);
+
 -- Categories table
 CREATE TABLE IF NOT EXISTS categories (
     id INT AUTO_INCREMENT PRIMARY KEY,

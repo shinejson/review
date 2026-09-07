@@ -1,18 +1,27 @@
 <?php
-/** Sign the super admin out and return to the login screen. */
+/**
+ * Sign the super admin out and return to the login screen.
+ *
+ * The request must carry the one-shot sign-out token that the shell
+ * puts in the link / form, so a third party cannot sign somebody
+ * out with a bare <img src="logout.php">.
+ */
 require_once dirname(__DIR__) . '/includes/auth.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+if (auth_logout_request_ok()) {
+    auth_session_logout($conn, 'user');
+    header('Location: login.php?signed_out=1');
+    exit();
 }
-$_SESSION = [];
-unset($_SESSION['super_admin_id']);
-if (ini_get('session.use_cookies')) {
-    $params = session_get_cookie_params();
-    setcookie(session_name(), '', time() - 42000,
-        $params['path'], $params['domain'], $params['secure'], $params['httponly']);
-}
-session_destroy();
 
-header('Location: login.php');
+/* Forged, stale or already-used link: leave the session alone and
+   send the visitor back to where they came from. */
+if (isSuperAdminLoggedIn()) {
+    require_once dirname(__DIR__) . '/includes/sa_helpers.php';
+    sa_flash('warning', 'That sign-out link is not valid, so you are still signed in.');
+    header('Location: index.php');
+} else {
+    header('Location: login.php?signed_out=invalid');
+}
 exit();
