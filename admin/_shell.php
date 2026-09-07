@@ -72,7 +72,7 @@ $activeNav = $activeNav ?? 'dashboard';
       <strong><?php echo htmlspecialchars($_SESSION['admin_username'] ?? 'Admin'); ?></strong>
       <small><?php echo $is_tenant ? 'Workspace admin' : 'Global administrator'; ?></small>
     </div>
-    <a href="logout.php" title="Log out">↪</a>
+    <a href="<?php echo htmlspecialchars(auth_logout_url()); ?>" title="Log out" data-admin-confirm="Sign out of the workspace?">↪</a>
   </div>
 </aside>
 
@@ -172,7 +172,7 @@ $activeNav = $activeNav ?? 'dashboard';
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             View public site
           </a>
-          <a class="is-danger" href="logout.php" role="menuitem">
+          <a class="is-danger" href="<?php echo htmlspecialchars(auth_logout_url()); ?>" role="menuitem" data-admin-confirm="Sign out of the workspace?">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             Sign out
           </a>
@@ -182,6 +182,11 @@ $activeNav = $activeNav ?? 'dashboard';
   </header>
 
   <main class="dashboard-content">
+<?php if (isset($_GET['logout']) && $_GET['logout'] === 'invalid'): ?>
+    <div class="alert alert-error" role="alert">
+      ⚠ That sign-out link is not valid, so you are still signed in.
+    </div>
+<?php endif; ?>
     <?php
     // Content of individual pages goes here
     // This is where _shell_content.php would be included

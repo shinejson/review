@@ -105,7 +105,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $up_stmt = $conn->prepare("UPDATE tenants SET password = ? WHERE id = ?");
                 $up_stmt->bind_param("si", $new_hash, $tenant_id);
                 if ($up_stmt->execute()) {
-                    $success = "Password changed successfully!";
+                    $closed  = auth_session_logout_others($conn, 'admin', $tenant_id, 'password');
+                    $success = "Password changed successfully!"
+                        . ($closed > 0 ? " $closed other session(s) were signed out." : "");
                 } else {
                     $error = "Failed to update password.";
                 }
@@ -124,13 +126,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $up_stmt = $conn->prepare("UPDATE admins SET password = ? WHERE id = ?");
                 $up_stmt->bind_param("si", $new_hash, $admin_id);
                 if ($up_stmt->execute()) {
-                    $success = "Password changed successfully!";
+                    $closed  = auth_session_logout_others($conn, 'admin', $admin_id, 'password');
+                    $success = "Password changed successfully!"
+                        . ($closed > 0 ? " $closed other session(s) were signed out." : "");
                 } else {
                     $error = "Failed to update password.";
                 }
             } else {
                 $error = "Incorrect current password.";
             }
+        }
+    }
+}
+
+// Sign out of every other browser (this one stays signed in)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'logout_other_sessions') {
+    if (!auth_logout_request_ok()) {
+        $error = "Your sign-out token did not match. Please try again.";
+    } else {
+        $closed = auth_session_logout_others($conn, 'admin');
+        if ($closed > 0) {
+            $success = "Signed out of $closed other session(s). This browser stays signed in.";
+        } else {
+            $success = "No other session is live — this is the only one.";
         }
     }
 }
@@ -242,6 +260,13 @@ include __DIR__ . '/_shell.php';
         </a>
     </div>
 </div>
+
+<?php
+/* Live sessions of the signed-in account, for the security tab. */
+$my_sessions = auth_sessions_for($conn, 'admin', auth_current_user_id('admin'), 6);
+$my_token    = auth_session_token(false);
+$session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['session_started_at'] : 0;
+?>
 
 <?php if ($success): ?>
     <div class="alert alert-success" role="alert">
@@ -680,11 +705,24 @@ include __DIR__ . '/_shell.php';
                     </div>
                     <div class="admin-kv-row">
                         <dt>Session State</dt>
-                        <dd><span style="color:#10b981;font-weight:700;">● Authenticated &amp; Valid</span></dd>
+                        <dd><span style="color:#10b981;font-weight:700;">● Authenticated &amp; Valid</span>
+                            <?php if ($session_started): ?>
+                                <span class="muted" style="font-weight:400;">&middot; since <?php echo htmlspecialchars(date('M d, H:i', $session_started)); ?></span>
+                            <?php endif; ?>
+                        </dd>
+                    </div>
+                    <div class="admin-kv-row">
+                        <dt>Automatic Sign-out</dt>
+                        <dd>After <?php echo (int) round(AUTH_IDLE_TIMEOUT_ADMIN / 60); ?> minutes idle,
+                            or <?php echo (int) round(AUTH_ABSOLUTE_TIMEOUT_ADMIN / 86400); ?> days</dd>
                     </div>
                     <div class="admin-kv-row">
                         <dt>Client IP Address</dt>
                         <dd><?php echo htmlspecialchars($_SERVER['REMOTE_ADDR'] ?? '127.0.0.1'); ?></dd>
+                    </div>
+                    <div class="admin-kv-row">
+                        <dt>This Device</dt>
+                        <dd><?php echo htmlspecialchars(auth_describe_agent($_SERVER['HTTP_USER_AGENT'] ?? '')); ?></dd>
                     </div>
                     <div class="admin-kv-row">
                         <dt>User Role</dt>
@@ -698,9 +736,42 @@ include __DIR__ . '/_shell.php';
             </div>
 
             <div style="margin-top:20px;padding:16px;border-radius:10px;background:var(--bg);border:1px solid var(--line);">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+                    <strong style="font-size:13px;color:var(--ink);">Signed-in sessions</strong>
+                    <form method="POST" action="settings.php" style="margin:0;">
+                        <input type="hidden" name="action" value="logout_other_sessions">
+                        <input type="hidden" name="logout_token" value="<?php echo htmlspecialchars(auth_logout_token()); ?>">
+                        <button type="submit" class="btn btn-secondary" style="padding:8px 16px;font-size:12.5px;"
+                                data-admin-confirm="Sign out of every other browser? This one stays signed in.">
+                            Sign out everywhere else
+                        </button>
+                    </form>
+                </div>
+                <?php if ($my_sessions): ?>
+                    <ul class="muted" style="margin:0;padding-left:18px;font-size:12px;line-height:1.8;">
+                        <?php foreach ($my_sessions as $sess): ?>
+                            <li>
+                                <?php echo htmlspecialchars(auth_describe_agent($sess['user_agent'])); ?>
+                                &middot; <?php echo htmlspecialchars($sess['ip_address'] ?: 'unknown IP'); ?>
+                                &middot; active <?php echo htmlspecialchars(timeAgo($sess['last_seen_at'] ?: $sess['created_at'])); ?>
+                                <?php if ($sess['session_token'] === $my_token): ?>
+                                    <strong style="color:var(--ink);">(this browser)</strong>
+                                <?php endif; ?>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php else: ?>
+                    <p class="muted" style="font-size:12px;line-height:1.5;margin:0;">
+                        No session has been recorded for this account yet — sign-ins are tracked from the next login.
+                    </p>
+                <?php endif; ?>
+            </div>
+
+            <div style="margin-top:20px;padding:16px;border-radius:10px;background:var(--bg);border:1px solid var(--line);">
                 <strong style="display:block;font-size:13px;color:var(--ink);margin-bottom:6px;">Security Tip</strong>
                 <p class="muted" style="font-size:12px;line-height:1.5;margin:0;">
-                    To protect your rating workspace, avoid using common phrases or reusing passwords from other online services. You will remain logged in on this browser until you manually sign out.
+                    To protect your rating workspace, avoid using common phrases or reusing passwords from other online services.
+                    Signing out closes this browser immediately; changing your password closes every other one.
                 </p>
             </div>
         </div>
