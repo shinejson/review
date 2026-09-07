@@ -287,7 +287,9 @@ $public_review_qs        = $public_review_tenant_id > 0 ? '?tenant=' . $public_r
 // Build an absolute URL for display/copy (works regardless of current subfolder)
 $__scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $__root   = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
-$public_review_url = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/rate/index.php' . $public_review_qs;
+$public_review_url  = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/rate/index.php' . $public_review_qs;
+$widget_base_url    = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/widget.php';
+$widget_default_url = $widget_base_url . $public_review_qs;
 
 $robots    = 'noindex, nofollow';
 $BASE      = '../';
@@ -918,6 +920,122 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
             <?php endif; ?>
         </div>
     </div>
+
+    <!-- ============================================================
+         Website Embed Widget Generator (widget.php)
+         ============================================================ -->
+    <style>
+        .w-btn-toggle {
+            transition: all .2s ease;
+        }
+        .w-btn-toggle.is-active {
+            border-color: var(--lime) !important;
+            background: rgba(194, 245, 66, 0.18) !important;
+            color: var(--ink) !important;
+            font-weight: 700;
+        }
+        @media (max-width: 900px) {
+            #widgetCustomizerGrid {
+                grid-template-columns: 1fr !important;
+            }
+        }
+    </style>
+
+    <div class="form-card" style="margin-top:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:10px;">
+            <div>
+                <h3 style="margin:0;display:flex;align-items:center;gap:8px;">
+                    <span>Website Embed Review Widget</span>
+                    <span style="font-size:11px;background:rgba(194,245,66,.2);color:var(--ink);padding:2px 8px;border-radius:6px;font-weight:700;">widget.php</span>
+                </h3>
+                <p class="muted" style="margin:4px 0 0;">Embed live customer ratings, verified purchase badges, and top testimonials directly on your official website, WordPress, or online store.</p>
+            </div>
+            <span class="status-dot">● Embed Ready</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:26px;align-items:start;" id="widgetCustomizerGrid">
+            <!-- Left: Customizer Controls & Snippet -->
+            <div>
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label style="font-size:13px;font-weight:700;color:var(--ink);">1. Select Widget Layout</label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;">
+                        <button type="button" class="btn btn-secondary w-btn-toggle is-active" id="wBtnLayoutCard" onclick="setWidgetLayout('card')" style="text-align:left;padding:12px 14px;border-radius:10px;display:flex;flex-direction:column;gap:4px;">
+                            <span style="font-size:13px;font-weight:700;color:var(--ink);">📇 Full Review Card</span>
+                            <small class="muted" style="font-weight:400;font-size:11px;">Score hero + verified reviews stream + CTA</small>
+                        </button>
+                        <button type="button" class="btn btn-secondary w-btn-toggle" id="wBtnLayoutBadge" onclick="setWidgetLayout('badge')" style="text-align:left;padding:12px 14px;border-radius:10px;display:flex;flex-direction:column;gap:4px;">
+                            <span style="font-size:13px;font-weight:700;color:var(--ink);">🏷️ Compact Badge</span>
+                            <small class="muted" style="font-weight:400;font-size:11px;">Minimal pill badge for header, footer &amp; checkout</small>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label style="font-size:13px;font-weight:700;color:var(--ink);">2. Choose Color Theme</label>
+                    <div style="display:flex;gap:10px;margin-top:6px;">
+                        <button type="button" class="btn btn-secondary w-btn-toggle is-active" id="wBtnThemeLight" onclick="setWidgetTheme('light')" style="flex:1;padding:10px;font-size:13px;">
+                            ☀️ Light Mode
+                        </button>
+                        <button type="button" class="btn btn-secondary w-btn-toggle" id="wBtnThemeDark" onclick="setWidgetTheme('dark')" style="flex:1;padding:10px;font-size:13px;">
+                            🌙 Dark Mode
+                        </button>
+                    </div>
+                </div>
+
+                <?php if (!empty($usage_stats['companies']) && count($usage_stats['companies']) > 1): ?>
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label for="wCompanySelect" style="font-size:13px;font-weight:700;color:var(--ink);">3. Target Listing</label>
+                    <select id="wCompanySelect" onchange="updateWidgetCode()" style="margin-top:6px;width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;">
+                        <option value="tenant" selected>All Workspace Listings (Tenant Default)</option>
+                        <?php foreach ($usage_stats['companies'] as $comp): ?>
+                            <option value="company-<?php echo (int)$comp['id']; ?>">
+                                <?php echo htmlspecialchars($comp['company_name']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+                        <label style="font-size:13px;font-weight:700;color:var(--ink);margin:0;">HTML Embed Snippet</label>
+                        <span class="muted" style="font-size:11.5px;">Iframe tag with zero script dependencies</span>
+                    </div>
+                    <textarea id="wEmbedCodeText" readonly rows="3" style="width:100%;font-family:monospace;font-size:12px;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:none;line-height:1.5;"></textarea>
+                </div>
+
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-primary" id="copyWidgetBtn" onclick="copyWidgetEmbedCode()" style="padding:10px 22px;">
+                        📋 Copy Embed Code
+                    </button>
+                    <a id="wOpenDirectLink" href="<?php echo htmlspecialchars($widget_default_url); ?>&theme=light&layout=card" target="_blank" rel="noopener" class="btn btn-secondary" style="padding:10px 16px;">
+                        ↗ Open in New Window
+                    </a>
+                </div>
+
+                <div style="margin-top:16px;padding:12px 14px;background:var(--bg);border-radius:8px;border:1px solid var(--line);font-size:12px;color:var(--muted);line-height:1.5;">
+                    💡 <strong>Quick Install Guide:</strong>
+                    <ul style="margin:6px 0 0;padding-left:16px;">
+                        <li><strong>WordPress:</strong> Add a <em>Custom HTML</em> block anywhere on a page or sidebar, and paste the code.</li>
+                        <li><strong>Shopify / Wix / Squarespace:</strong> Insert an <em>Embed / Custom Code</em> block into your theme.</li>
+                        <li><strong>Any Website:</strong> Paste the snippet inside your HTML where you want the reviews to appear.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Right: Live Interactive Preview -->
+            <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <label style="font-size:13px;font-weight:700;color:var(--ink);">Live Widget Preview</label>
+                    <span class="muted" style="font-size:11.5px;" id="wPreviewSizeNote">Card: 100% × 340px</span>
+                </div>
+
+                <div style="padding:20px;background:var(--bg);border-radius:12px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;min-height:360px;" id="wPreviewWrap">
+                    <iframe id="wPreviewIframe" src="<?php echo htmlspecialchars($widget_default_url); ?>&theme=light&layout=card" style="width:100%;height:340px;border:none;border-radius:14px;overflow:hidden;background:transparent;" frameborder="0"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -994,12 +1112,108 @@ function toggleThemeFallback() {
     try { localStorage.setItem('optibiz-sa-theme', curr); } catch (e) {}
 }
 
-// Initialize share link on load
+/* ============================================================
+   Website Review Widget (widget.php) Embed Logic
+   ============================================================ */
+var curWidgetLayout = 'card';
+var curWidgetTheme  = 'light';
+
+function setWidgetLayout(layout) {
+    curWidgetLayout = layout;
+    var btnCard  = document.getElementById('wBtnLayoutCard');
+    var btnBadge = document.getElementById('wBtnLayoutBadge');
+    if (btnCard) btnCard.classList.toggle('is-active', layout === 'card');
+    if (btnBadge) btnBadge.classList.toggle('is-active', layout === 'badge');
+    updateWidgetCode();
+}
+
+function setWidgetTheme(theme) {
+    curWidgetTheme = theme;
+    var btnLight = document.getElementById('wBtnThemeLight');
+    var btnDark  = document.getElementById('wBtnThemeDark');
+    if (btnLight) btnLight.classList.toggle('is-active', theme === 'light');
+    if (btnDark) btnDark.classList.toggle('is-active', theme === 'dark');
+    updateWidgetCode();
+}
+
+function updateWidgetCode() {
+    var baseUrl = <?php echo json_encode($widget_base_url); ?>;
+    var tenantId = <?php echo (int)$public_review_tenant_id; ?>;
+    var queryParts = [];
+
+    var compSelect = document.getElementById('wCompanySelect');
+    if (compSelect && compSelect.value && compSelect.value.indexOf('company-') === 0) {
+        var cId = compSelect.value.replace('company-', '');
+        queryParts.push('company=' + encodeURIComponent(cId));
+    } else if (tenantId > 0) {
+        queryParts.push('tenant=' + tenantId);
+    }
+
+    queryParts.push('theme=' + curWidgetTheme);
+    queryParts.push('layout=' + curWidgetLayout);
+
+    var fullUrl = baseUrl + '?' + queryParts.join('&');
+
+    // Layout dimension specs
+    var width = '100%';
+    var height = (curWidgetLayout === 'badge') ? '60px' : '340px';
+    var maxW = (curWidgetLayout === 'badge') ? 'max-width:380px;' : 'max-width:100%;';
+
+    var embedHtml = '<iframe src="' + fullUrl + '" width="' + width + '" height="' + height + '" frameborder="0" style="border:none;overflow:hidden;border-radius:14px;' + maxW + '"></iframe>';
+
+    var codeText = document.getElementById('wEmbedCodeText');
+    if (codeText) codeText.value = embedHtml;
+
+    var previewIframe = document.getElementById('wPreviewIframe');
+    if (previewIframe) {
+        previewIframe.style.height = (curWidgetLayout === 'badge') ? '70px' : '340px';
+        previewIframe.style.maxWidth = (curWidgetLayout === 'badge') ? '380px' : '100%';
+        previewIframe.src = fullUrl;
+    }
+
+    var sizeNote = document.getElementById('wPreviewSizeNote');
+    if (sizeNote) {
+        sizeNote.innerText = (curWidgetLayout === 'badge') ? 'Badge: auto × 60px' : 'Card: 100% × 340px';
+    }
+
+    var directLink = document.getElementById('wOpenDirectLink');
+    if (directLink) {
+        directLink.href = fullUrl;
+    }
+}
+
+function copyWidgetEmbedCode() {
+    var ta = document.getElementById('wEmbedCodeText');
+    if (!ta) return;
+    ta.select();
+
+    function onCopied() {
+        var btn = document.getElementById('copyWidgetBtn');
+        if (btn) {
+            var orig = btn.innerText;
+            btn.innerText = '✓ Copied to Clipboard!';
+            setTimeout(function() { btn.innerText = orig; }, 2500);
+        }
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(ta.value).then(onCopied).catch(function() {
+            document.execCommand('copy');
+            onCopied();
+        });
+    } else {
+        document.execCommand('copy');
+        onCopied();
+    }
+}
+
+// Initialize share link and widget on load
 document.addEventListener('DOMContentLoaded', function() {
     var select = document.getElementById('companySelect');
     if (select && select.value) {
         updateShareLink(select.value);
     }
+    updateWidgetCode();
 });
 </script>
 

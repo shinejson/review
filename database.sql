@@ -117,16 +117,21 @@ CREATE TABLE IF NOT EXISTS customers (
     phone VARCHAR(20),
     whatsapp_number VARCHAR(30) NULL COMMENT 'Click-to-chat number shown as a WhatsApp button on the public pages',
     website VARCHAR(255),
+    google_store_url VARCHAR(500) NULL COMMENT 'Google Business Profile review link',
+    booster_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1 = route 4-5 star reviews to Google Business Profile',
+    booster_min_stars TINYINT(1) NOT NULL DEFAULT 4 COMMENT 'Minimum rating threshold to trigger Google review prompt',
+    address VARCHAR(500) NULL,
+    description TEXT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (category_id) REFERENCES categories(id)
 );
 
 -- Insert sample customers (linked to tenants)
-INSERT INTO customers (tenant_id, company_name, category_id, email, phone, whatsapp_number, website) VALUES 
-(1, 'Tech Solutions Inc', 1, 'info@techsolutions.com', '030 245 0101', '+233 24 555 0101', 'www.techsolutions.com'),
-(1, 'Health Care Plus', 2, 'contact@healthcareplus.com', NULL, NULL, 'www.healthcareplus.com'),
-(2, 'Finance Pro', 3, 'support@financepro.com', NULL, NULL, 'www.financepro.com');
+INSERT INTO customers (tenant_id, company_name, category_id, email, phone, whatsapp_number, website, google_store_url) VALUES 
+(1, 'Tech Solutions Inc', 1, 'info@techsolutions.com', '030 245 0101', '+233 24 555 0101', 'www.techsolutions.com', 'https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4'),
+(1, 'Health Care Plus', 2, 'contact@healthcareplus.com', NULL, NULL, 'www.healthcareplus.com', NULL),
+(2, 'Finance Pro', 3, 'support@financepro.com', NULL, NULL, 'www.financepro.com', NULL);
 
 -- Rating questions created by tenant / admin
 CREATE TABLE IF NOT EXISTS rating_questions (
@@ -149,6 +154,12 @@ CREATE TABLE IF NOT EXISTS ratings (
     comment TEXT,
     admin_reply TEXT NULL,
     responded_at TIMESTAMP NULL,
+    is_verified TINYINT(1) NOT NULL DEFAULT 0,
+    verification_type VARCHAR(30) NULL,
+    momo_ref VARCHAR(100) NULL,
+    receipt_photo VARCHAR(255) NULL,
+    is_escalated TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = flagged for private resolution (1-3 stars)',
+    escalation_status VARCHAR(20) NOT NULL DEFAULT 'none' COMMENT 'none, pending, resolved',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (company_id) REFERENCES customers(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES rating_questions(id) ON DELETE SET NULL

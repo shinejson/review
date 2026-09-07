@@ -72,6 +72,9 @@ $activeNav = $activeNav ?? 'dashboard';
     <a <?php echo $activeNav === 'company' ? 'class="active"' : ''; ?> href="company.php" title="Company Profile">
       <span>⌂</span><span class="nav-label">Company Profile</span>
     </a>
+    <a <?php echo $activeNav === 'qr_stand' ? 'class="active"' : ''; ?> href="qr_stand.php" title="Counter QR Stand">
+      <span>◫</span><span class="nav-label">Counter QR Stand</span>
+    </a>
     <?php endif; ?>
     <a <?php echo $activeNav === 'analysis' ? 'class="active"' : ''; ?> href="analysis.php" title="Analysis">
       <span>◔</span><span class="nav-label">Analysis</span>

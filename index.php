@@ -1462,6 +1462,7 @@ if ($plan_result) {
             <nav class="nav-pill">
                 <a href="index.php" class="active">Home</a>
                 <a href="companies.php">Companies</a>
+                <a href="pricing.php">Pricing</a>
                 <a href="#about">About Us</a>
                 <a href="#services">Services</a>
                 <a href="#contact">Contact</a>

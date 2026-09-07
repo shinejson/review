@@ -79,11 +79,17 @@ if (!function_exists('admin_ensure_schema')) {
         );
         
         // Add metadata column if it doesn't exist (migration for existing installations)
-        @$conn->query(
-            "ALTER TABLE social_accounts 
-             ADD COLUMN metadata TEXT NULL COMMENT 'JSON data for custom platforms' 
-             AFTER last_used_at"
-        );
+        $check_metadata = @$conn->query("SHOW COLUMNS FROM social_accounts LIKE 'metadata'");
+        if ($check_metadata && $check_metadata->num_rows === 0) {
+            @$conn->query(
+                "ALTER TABLE social_accounts 
+                 ADD COLUMN metadata TEXT NULL COMMENT 'JSON data for custom platforms' 
+                 AFTER last_used_at"
+            );
+        }
+        if ($check_metadata) {
+            $check_metadata->close();
+        }
 
         @$conn->query(
             "CREATE TABLE IF NOT EXISTS social_posts (

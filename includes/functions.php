@@ -133,6 +133,50 @@ function ensureWhatsappColumn($conn) {
     @$conn->query("ALTER TABLE customers ADD COLUMN whatsapp_number VARCHAR(30) NULL AFTER phone");
 }
 
+/**
+ * Auto-ensure booster and sentiment routing columns exist in customers and ratings tables.
+ * Self-healing across environments.
+ */
+function ensureBoosterColumns($conn) {
+    static $done = false;
+    if ($done || !is_object($conn) || !method_exists($conn, 'query')) {
+        return;
+    }
+    $done = true;
+
+    // Check customers table
+    $chkCust = @$conn->query("SHOW COLUMNS FROM customers LIKE 'booster_enabled'");
+    if ($chkCust && (int)$chkCust->num_rows === 0) {
+        @$conn->query("ALTER TABLE customers ADD COLUMN booster_enabled TINYINT(1) NOT NULL DEFAULT 1, ADD COLUMN booster_min_stars TINYINT(1) NOT NULL DEFAULT 4");
+    }
+    if ($chkCust && method_exists($chkCust, 'free')) {
+        $chkCust->free();
+    }
+
+    // Check ratings table
+    $chkRatings = @$conn->query("SHOW COLUMNS FROM ratings LIKE 'is_escalated'");
+    if ($chkRatings && (int)$chkRatings->num_rows === 0) {
+        @$conn->query("ALTER TABLE ratings ADD COLUMN is_escalated TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN escalation_status VARCHAR(20) NOT NULL DEFAULT 'none'");
+    }
+    if ($chkRatings && method_exists($chkRatings, 'free')) {
+        $chkRatings->free();
+    }
+}
+
+/**
+ * Format and validate Google Review / Business URL.
+ */
+function cleanGoogleReviewUrl($url) {
+    $url = trim((string)$url);
+    if ($url === '') {
+        return '';
+    }
+    if (!preg_match('~^(?:f|ht)tps?://~i', $url)) {
+        $url = 'https://' . $url;
+    }
+    return filter_var($url, FILTER_VALIDATE_URL) ? $url : '';
+}
+
 function getInitials($name) {
     $words = explode(' ', trim($name));
     $initials = '';
@@ -261,6 +305,32 @@ function uploadReviewPhoto($file, $rating_id) {
     
     if (move_uploaded_file($file['tmp_name'], $filepath)) {
         return ['success' => true, 'path' => 'uploads/reviews/' . $filename];
+    }
+    
+    return ['success' => false, 'message' => 'Upload failed'];
+}
+
+function uploadReceiptPhoto($file, $rating_id) {
+    $upload_dir = __DIR__ . '/../uploads/receipts/';
+    if (!is_dir($upload_dir)) {
+        mkdir($upload_dir, 0755, true);
+    }
+    
+    $allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!in_array($file['type'], $allowed)) {
+        return ['success' => false, 'message' => 'Invalid file type'];
+    }
+    
+    if ($file['size'] > 5 * 1024 * 1024) {
+        return ['success' => false, 'message' => 'File too large (max 5MB)'];
+    }
+    
+    $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+    $filename = 'receipt_' . (int)$rating_id . '_' . time() . '.' . $ext;
+    $filepath = $upload_dir . $filename;
+    
+    if (move_uploaded_file($file['tmp_name'], $filepath)) {
+        return ['success' => true, 'path' => 'uploads/receipts/' . $filename];
     }
     
     return ['success' => false, 'message' => 'Upload failed'];

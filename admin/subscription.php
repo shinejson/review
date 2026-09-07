@@ -228,45 +228,126 @@ include __DIR__ . '/_shell.php';
         <?php
         // Check for subscription expiration or cancellation
         $status_param = isset($_GET['status']) ? $_GET['status'] : '';
-        $show_expiration_notice = false;
+        $show_expiration_overlay = false;
         $expiration_message = '';
-        $expiration_type = 'error';
+        $expiration_title = '';
 
         if ($status_param === 'subscription_expired' || ($tenant && !empty($tenant['subscription_end_date']) && $tenant['subscription_end_date'] < date('Y-m-d'))) {
-            $show_expiration_notice = true;
-            $expiration_type = 'error';
-            $status_text = $tenant['subscription_status'] === 'trial' ? 'trial' : 'subscription';
-            $expiration_message = '<strong>⚠ Your ' . $status_text . ' has expired</strong><br>'
-                . 'Your workspace access is restricted. Please upgrade to a paid plan to continue using the platform.';
+            $show_expiration_overlay = true;
+            $status_text = $tenant['subscription_status'] === 'trial' ? 'Trial' : 'Subscription';
+            $expiration_title = 'Your ' . $status_text . ' Has Expired';
+            $expiration_message = 'Your workspace access is restricted. Please upgrade to a paid plan to continue using the platform.';
         } elseif ($status_param === 'subscription_cancelled' || ($tenant && ($tenant['subscription_status'] === 'cancelled' || $tenant['subscription_status'] === 'inactive'))) {
-            $show_expiration_notice = true;
-            $expiration_type = 'error';
-            $expiration_message = '<strong>⚠ Subscription ' . ($tenant['subscription_status'] === 'cancelled' ? 'cancelled' : 'inactive') . '</strong><br>'
-                . 'Your workspace is currently ' . $tenant['subscription_status'] . '. Please contact support or choose a plan below to reactivate.';
+            $show_expiration_overlay = true;
+            $expiration_title = 'Subscription ' . ucfirst($tenant['subscription_status']);
+            $expiration_message = 'Your workspace is currently ' . $tenant['subscription_status'] . '. Please contact support or choose a plan below to reactivate your account.';
         }
         ?>
 
-        <?php if ($show_expiration_notice): ?>
-            <div class="alert alert-<?php echo $expiration_type; ?>" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.06)); border: 1px solid rgba(239, 68, 68, 0.3); padding: 20px 24px; margin-bottom: 24px; border-radius: 12px;">
-                <div style="display: flex; align-items: flex-start; gap: 14px;">
-                    <span style="font-size: 24px; line-height: 1;">🔒</span>
-                    <div style="flex: 1;">
-                        <div style="font-size: 15px; line-height: 1.6; color: var(--text-dark);">
-                            <?php echo $expiration_message; ?>
-                        </div>
-                        <div style="margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap;">
-                            <a href="#plans" class="btn" onclick="document.querySelector('.admin-plan-grid')?.scrollIntoView({behavior:'smooth'})" style="background: #ef4444; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">
-                                View Plans & Upgrade
-                            </a>
-                            <?php if ($tenant && !empty($tenant['email'])): ?>
-                            <a href="mailto:<?php echo sa_e(sa_setting($conn, 'support_email', 'support@optibiz.com')); ?>?subject=Subscription%20Renewal%20-%20<?php echo urlencode($tenant['company_name'] ?? ''); ?>" class="btn btn-ghost" style="padding: 10px 20px; border-radius: 8px; text-decoration: none;">
-                                Contact Support
-                            </a>
-                            <?php endif; ?>
+        <?php if ($show_expiration_overlay): ?>
+        <!-- Subscription Expired Overlay -->
+        <div class="subscription-expired-overlay" id="subscriptionExpiredOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;">
+            <!-- Background layer with blur effect -->
+            <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 36, 56, 0.98);"></div>
+            
+            <!-- Content layer (no blur) -->
+            <div style="position: relative; z-index: 10000; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px;">
+                <div style="max-width: 560px; width: 100%; background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05)); border: 2px solid rgba(239, 68, 68, 0.4); border-radius: 20px; padding: 48px 40px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+                    <!-- Lock Icon -->
+                    <div style="width: 80px; height: 80px; margin: 0 auto 24px; background: rgba(239, 68, 68, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid rgba(239, 68, 68, 0.4);">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                    </div>
+
+                    <!-- Title -->
+                    <h2 style="color: #ef4444; font-size: 28px; font-weight: 700; margin: 0 0 16px; line-height: 1.2;">
+                        <?php echo sa_e($expiration_title); ?>
+                    </h2>
+
+                    <!-- Message -->
+                    <p style="color: #cbd5e1; font-size: 16px; line-height: 1.6; margin: 0 0 32px;">
+                        <?php echo sa_e($expiration_message); ?>
+                    </p>
+
+                    <!-- End Date Info -->
+                    <?php if (!empty($tenant['subscription_end_date'])): ?>
+                    <div style="background: rgba(0,0,0,0.3); padding: 12px 20px; border-radius: 10px; margin-bottom: 32px; border: 1px solid rgba(255,255,255,0.1);">
+                        <div style="color: #94a3b8; font-size: 13px; margin-bottom: 4px;">Expired On</div>
+                        <div style="color: #e2e8f0; font-size: 16px; font-weight: 600;">
+                            <?php echo sa_e(date('F d, Y', strtotime($tenant['subscription_end_date']))); ?>
                         </div>
                     </div>
+                    <?php endif; ?>
+
+                    <!-- Action Buttons -->
+                    <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
+                        <a href="/rate/pricing.php" style="width: 100%; background: #ef4444; color: white; padding: 14px 24px; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); text-decoration: none; display: inline-block;" onmouseover="this.style.background='#dc2626'" onmouseout="this.style.background='#ef4444'">
+                            <span style="display: inline-block; margin-right: 8px;">📋</span>
+                            View Plans & Upgrade
+                        </a>
+
+                        <?php if ($tenant && !empty($tenant['email'])): ?>
+                        <a href="mailto:<?php echo sa_e(sa_setting($conn, 'support_email', 'support@optibiz.com')); ?>?subject=Subscription%20Renewal%20-%20<?php echo urlencode($tenant['company_name'] ?? ''); ?>" style="width: 100%; background: rgba(255,255,255,0.1); color: #cbd5e1; padding: 14px 24px; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; font-size: 16px; font-weight: 600; text-decoration: none; display: inline-block; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'">
+                            <span style="display: inline-block; margin-right: 8px;">💬</span>
+                            Contact Support
+                        </a>
+                        <?php endif; ?>
+
+                        <a href="logout.php?t=<?php echo rawurlencode(auth_logout_token()); ?>" style="width: 100%; background: transparent; color: #94a3b8; padding: 14px 24px; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 10px; font-size: 15px; font-weight: 500; text-decoration: none; display: inline-block; transition: all 0.2s;" onmouseover="this.style.borderColor='rgba(148, 163, 184, 0.5)'; this.style.color='#cbd5e1'" onmouseout="this.style.borderColor='rgba(148, 163, 184, 0.3)'; this.style.color='#94a3b8'">
+                            <span style="display: inline-block; margin-right: 8px;">←</span>
+                            Return to Login Page
+                        </a>
+                    </div>
+
+                    <!-- Help Text -->
+                    <p style="color: #64748b; font-size: 13px; line-height: 1.5; margin: 0;">
+                        Need help? Contact us at 
+                        <a href="mailto:<?php echo sa_e(sa_setting($conn, 'support_email', 'support@optibiz.com')); ?>" style="color: #c2f542; text-decoration: none;">
+                            <?php echo sa_e(sa_setting($conn, 'support_email', 'support@optibiz.com')); ?>
+                        </a>
+                    </p>
                 </div>
             </div>
+        </div>
+
+        <!-- Blur the main content when overlay is active -->
+        <style>
+            <?php if ($show_expiration_overlay): ?>
+            /* Blur only the page content, not the overlay */
+            .admin-sidebar,
+            .admin-topbar,
+            .dashboard-content > *:not(script):not(style),
+            .page-header,
+            .grid-2col,
+            .form-card,
+            .data-table-card,
+            .admin-pending-banner {
+                filter: blur(8px) !important;
+                pointer-events: none !important;
+                user-select: none !important;
+            }
+            
+            /* Ensure overlay and its contents are clickable and clear */
+            .subscription-expired-overlay,
+            .subscription-expired-overlay *,
+            #subscriptionExpiredOverlay,
+            #subscriptionExpiredOverlay * {
+                filter: none !important;
+                pointer-events: auto !important;
+            }
+            
+            /* Specifically make buttons and links clickable */
+            .subscription-expired-overlay a,
+            .subscription-expired-overlay button,
+            #subscriptionExpiredOverlay a,
+            #subscriptionExpiredOverlay button {
+                pointer-events: auto !important;
+                cursor: pointer !important;
+            }
+            <?php endif; ?>
+        </style>
         <?php endif; ?>
 
         <?php if ($flash): ?>

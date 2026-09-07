@@ -18,6 +18,9 @@ if ($resCol && $resCol->num_rows === 0) {
     @$conn->query("ALTER TABLE ratings ADD COLUMN admin_reply TEXT NULL, ADD COLUMN responded_at TIMESTAMP NULL");
 }
 
+// Auto-ensure Google review booster & sentiment routing columns exist
+ensureBoosterColumns($conn);
+
 // ============================================================
 // POST Request Handlers (CRUD Operations)
 // ============================================================
@@ -63,8 +66,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             if ($valid) {
-                $stmt = $conn->prepare("INSERT INTO ratings (company_id, question_id, rating, customer_name, customer_email, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-                $stmt->bind_param("iiisss", $company_id, $question_id, $rating_score, $customer_name, $customer_email, $comment);
+                $is_verified = !empty($_POST['is_verified']) ? 1 : 0;
+                $stmt = $conn->prepare("INSERT INTO ratings (company_id, question_id, rating, customer_name, customer_email, comment, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
+                $stmt->bind_param("iiisssi", $company_id, $question_id, $rating_score, $customer_name, $customer_email, $comment, $is_verified);
                 if ($stmt->execute()) {
                     $success = "New rating & review created successfully!";
                 } else {
@@ -83,6 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $customer_email = sanitize($_POST['customer_email'] ?? '');
         $comment        = sanitize($_POST['comment'] ?? '');
         $question_id    = !empty($_POST['question_id']) ? (int)$_POST['question_id'] : null;
+        $is_verified    = !empty($_POST['is_verified']) ? 1 : 0;
 
         if ($rating_id <= 0 || $company_id <= 0 || empty($customer_name)) {
             $error = "Invalid rating record or missing required fields.";
@@ -100,13 +105,105 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             if ($valid) {
-                $stmt = $conn->prepare("UPDATE ratings SET company_id = ?, question_id = ?, rating = ?, customer_name = ?, customer_email = ?, comment = ? WHERE id = ?");
-                $stmt->bind_param("iiisssi", $company_id, $question_id, $rating_score, $customer_name, $customer_email, $comment, $rating_id);
+                $stmt = $conn->prepare("UPDATE ratings SET company_id = ?, question_id = ?, rating = ?, customer_name = ?, customer_email = ?, comment = ?, is_verified = ? WHERE id = ?");
+                $stmt->bind_param("iiisssii", $company_id, $question_id, $rating_score, $customer_name, $customer_email, $comment, $is_verified, $rating_id);
                 if ($stmt->execute()) {
                     $success = "Rating #$rating_id updated successfully!";
                 } else {
                     $error = "Failed to update rating: " . $conn->error;
                 }
+            }
+        }
+    }
+
+    // TOGGLE VERIFICATION STATUS (Verified Customer Badge)
+    elseif ($action === 'toggle_verification') {
+        $rating_id = (int)($_POST['rating_id'] ?? 0);
+
+        if ($rating_id <= 0) {
+            $error = "Invalid rating identifier.";
+        } else {
+            $valid = true;
+            $current_val = 0;
+            if ($is_tenant) {
+                $chk = $conn->prepare("SELECT r.id, r.is_verified FROM ratings r JOIN customers c ON r.company_id = c.id WHERE r.id = ? AND c.tenant_id = ?");
+                $chk->bind_param("ii", $rating_id, $tenant_id);
+                $chk->execute();
+                $res = $chk->get_result();
+                if ($res->num_rows === 0) {
+                    $valid = false;
+                    $error = "Unauthorized: You cannot modify this rating.";
+                } else {
+                    $row = $res->fetch_assoc();
+                    $current_val = (int)$row['is_verified'];
+                }
+            } else {
+                $chk = $conn->query("SELECT is_verified FROM ratings WHERE id = $rating_id");
+                if ($row = $chk->fetch_assoc()) {
+                    $current_val = (int)$row['is_verified'];
+                } else {
+                    $valid = false;
+                    $error = "Rating record not found.";
+                }
+            }
+
+            if ($valid) {
+                $new_val = $current_val ? 0 : 1;
+                $stmt = $conn->prepare("UPDATE ratings SET is_verified = ? WHERE id = ?");
+                $stmt->bind_param("ii", $new_val, $rating_id);
+                if ($stmt->execute()) {
+                    $success = $new_val ? "Review #$rating_id marked as Verified Customer (Badge active)!" : "Review #$rating_id unmarked as verified.";
+                } else {
+                    $error = "Failed to update verification status: " . $conn->error;
+                }
+            }
+        }
+    }
+
+    // TOGGLE RESOLUTION STATUS FOR ESCALATED COMPLAINTS
+    elseif ($action === 'toggle_escalation') {
+        $rating_id = (int)($_POST['rating_id'] ?? 0);
+
+        if ($rating_id <= 0) {
+            $error = "Invalid rating identifier.";
+        } else {
+            $valid = true;
+            $current_status = 'pending';
+            if ($is_tenant) {
+                $chk = $conn->prepare("SELECT r.id, r.escalation_status FROM ratings r JOIN customers c ON r.company_id = c.id WHERE r.id = ? AND c.tenant_id = ?");
+                $chk->bind_param("ii", $rating_id, $tenant_id);
+                $chk->execute();
+                $res = $chk->get_result();
+                if ($res->num_rows === 0) {
+                    $valid = false;
+                    $error = "Unauthorized: You cannot modify this rating.";
+                } else {
+                    $row = $res->fetch_assoc();
+                    $current_status = $row['escalation_status'] ?? 'pending';
+                }
+                $chk->close();
+            } else {
+                $chk = $conn->query("SELECT escalation_status FROM ratings WHERE id = $rating_id");
+                if ($row = $chk->fetch_assoc()) {
+                    $current_status = $row['escalation_status'] ?? 'pending';
+                } else {
+                    $valid = false;
+                    $error = "Rating record not found.";
+                }
+            }
+
+            if ($valid) {
+                $new_status = ($current_status === 'resolved') ? 'pending' : 'resolved';
+                $stmt = $conn->prepare("UPDATE ratings SET escalation_status = ? WHERE id = ?");
+                $stmt->bind_param("si", $new_status, $rating_id);
+                if ($stmt->execute()) {
+                    $success = ($new_status === 'resolved')
+                        ? "Complaint on Review #$rating_id marked as Resolved!"
+                        : "Review #$rating_id reopened as Pending Resolution.";
+                } else {
+                    $error = "Failed to update resolution status: " . $conn->error;
+                }
+                $stmt->close();
             }
         }
     }
@@ -308,9 +405,10 @@ if ($rating_questions) {
 // ============================================================
 // Filtering parameters
 // ============================================================
-$company_filter = isset($_GET['company_id']) ? (int)$_GET['company_id'] : 0;
-$star_filter    = isset($_GET['star']) ? (int)$_GET['star'] : 0;
-$search_query   = isset($_GET['q']) ? trim($_GET['q']) : '';
+$company_filter    = isset($_GET['company_id']) ? (int)$_GET['company_id'] : 0;
+$star_filter       = isset($_GET['star']) ? (int)$_GET['star'] : 0;
+$escalation_filter = isset($_GET['escalation']) ? trim($_GET['escalation']) : '';
+$search_query      = isset($_GET['q']) ? trim($_GET['q']) : '';
 
 // Build Query
 $where_clauses = [];
@@ -333,6 +431,14 @@ if ($star_filter >= 1 && $star_filter <= 5) {
     $where_clauses[] = "r.rating = ?";
     $param_types    .= "i";
     $param_vals[]    = $star_filter;
+}
+
+if ($escalation_filter === 'needs_resolution') {
+    $where_clauses[] = "r.is_escalated = 1 AND r.escalation_status = 'pending'";
+} elseif ($escalation_filter === 'resolved') {
+    $where_clauses[] = "r.is_escalated = 1 AND r.escalation_status = 'resolved'";
+} elseif ($escalation_filter === 'escalated') {
+    $where_clauses[] = "r.is_escalated = 1";
 }
 
 if (!empty($search_query)) {
@@ -364,10 +470,12 @@ if (!empty($param_vals)) {
 }
 
 // Fetch all ratings into array for multiple uses (Table + Responses feed)
-$ratings_data = [];
-$total_score_sum = 0;
-$pos_count = 0;
-$star_counts = [1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0];
+$ratings_data         = [];
+$total_score_sum      = 0;
+$pos_count            = 0;
+$pending_escalations  = 0;
+$resolved_escalations = 0;
+$star_counts          = [1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0];
 
 if ($ratings && $ratings->num_rows > 0) {
     while ($row = $ratings->fetch_assoc()) {
@@ -376,7 +484,27 @@ if ($ratings && $ratings->num_rows > 0) {
         $total_score_sum += $score;
         if (isset($star_counts[$score])) $star_counts[$score]++;
         if ($score >= 4) $pos_count++;
+        if (!empty($row['is_escalated'])) {
+            if (($row['escalation_status'] ?? '') === 'resolved') {
+                $resolved_escalations++;
+            } else {
+                $pending_escalations++;
+            }
+        }
     }
+}
+
+// Total unresolved complaints for tenant (unaffected by filters)
+$unresolved_badge_count = 0;
+if ($is_tenant) {
+    $esc_stmt = $conn->prepare("SELECT COUNT(*) cnt FROM ratings r JOIN customers c ON r.company_id = c.id WHERE c.tenant_id = ? AND r.is_escalated = 1 AND r.escalation_status = 'pending'");
+    $esc_stmt->bind_param("i", $tenant_id);
+    $esc_stmt->execute();
+    $unresolved_badge_count = (int)($esc_stmt->get_result()->fetch_assoc()['cnt'] ?? 0);
+    $esc_stmt->close();
+} else {
+    $chk_esc = $conn->query("SELECT COUNT(*) cnt FROM ratings WHERE is_escalated = 1 AND escalation_status = 'pending'");
+    $unresolved_badge_count = (int)($chk_esc ? ($chk_esc->fetch_assoc()['cnt'] ?? 0) : 0);
 }
 
 $total_count = count($ratings_data);
@@ -416,6 +544,21 @@ include __DIR__ . '/_shell.php';
 <?php if ($error): ?>
     <div class="alert alert-error" role="alert">
         ⚠ <?php echo htmlspecialchars($error); ?>
+    </div>
+<?php endif; ?>
+
+<?php if ($unresolved_badge_count > 0): ?>
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:14px 18px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:22px;">⚠️</span>
+            <div>
+                <strong style="color:#92400e;font-size:13.5px;">Attention: You have <?php echo (int)$unresolved_badge_count; ?> unresolved customer complaint<?php echo $unresolved_badge_count > 1 ? 's' : ''; ?></strong>
+                <span style="color:#78350f;font-size:12px;display:block;">Negative ratings (1–3 stars) were intercepted and gated internally to safeguard your Google Business rating.</span>
+            </div>
+        </div>
+        <a href="ratings.php?escalation=needs_resolution" class="btn btn-secondary" style="padding:7px 14px;font-size:12px;background:#fef3c7;color:#92400e;border-color:#fde68a;font-weight:700;text-decoration:none;">
+            Filter Needs Resolution &rarr;
+        </a>
     </div>
 <?php endif; ?>
 
@@ -499,9 +642,18 @@ include __DIR__ . '/_shell.php';
                 </div>
             </div>
 
-            <div class="form-group" style="margin-bottom:20px;">
+            <div class="form-group" style="margin-bottom:16px;">
                 <label for="formComment">Review Feedback / Customer Testimonial</label>
                 <textarea id="formComment" name="comment" rows="3" placeholder="Provide customer comments, review notes, or client feedback..."></textarea>
+            </div>
+
+            <div class="form-group" style="margin-bottom:20px;background:var(--bg);padding:12px 14px;border-radius:8px;border:1px solid var(--line);">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0;">
+                    <input type="checkbox" name="is_verified" value="1" id="formIsVerified" style="width:16px;height:16px;accent-color:#16a34a;">
+                    <span style="font-weight:700;color:var(--ink);font-size:13.5px;">Mark as Verified Customer</span>
+                    <span style="font-size:11px;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:99px;font-weight:700;">✓ Verified Badge</span>
+                </label>
+                <small class="muted" style="display:block;margin-top:4px;">Displays a green verified badge on public pages, widgets, and embeds.</small>
             </div>
 
             <div style="display:flex;align-items:center;justify-content:space-between;padding-top:14px;border-top:1px solid var(--line);flex-wrap:wrap;gap:12px;">
@@ -535,12 +687,19 @@ include __DIR__ . '/_shell.php';
                 <?php endfor; ?>
             </select>
 
+            <select name="escalation" onchange="this.form.submit()" style="padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;">
+                <option value="">All Review Statuses</option>
+                <option value="needs_resolution" <?php echo $escalation_filter === 'needs_resolution' ? 'selected' : ''; ?>>⚠️ Needs Resolution <?php echo $unresolved_badge_count > 0 ? "($unresolved_badge_count)" : ''; ?></option>
+                <option value="resolved" <?php echo $escalation_filter === 'resolved' ? 'selected' : ''; ?>>✓ Resolved Complaints</option>
+                <option value="escalated" <?php echo $escalation_filter === 'escalated' ? 'selected' : ''; ?>>All Gated Reviews</option>
+            </select>
+
             <div style="position:relative;">
                 <input type="text" name="q" value="<?php echo htmlspecialchars($search_query); ?>" placeholder="Search customer or feedback..." style="padding:9px 14px 9px 32px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;width:220px;">
                 <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--muted);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </div>
 
-            <?php if ($company_filter || $star_filter || $search_query): ?>
+            <?php if ($company_filter || $star_filter || !empty($escalation_filter) || $search_query): ?>
                 <a href="ratings.php" class="btn btn-secondary" style="padding:9px 14px;font-size:12px;">Reset Filters</a>
             <?php endif; ?>
         </form>
@@ -587,13 +746,42 @@ include __DIR__ . '/_shell.php';
                                 </div>
                             </td>
                             <td>
-                                <div class="table-title"><?php echo htmlspecialchars($r['customer_name']); ?></div>
+                                <div class="table-title" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                    <?php echo htmlspecialchars($r['customer_name']); ?>
+                                    <?php if (!empty($r['is_verified'])): ?>
+                                        <span title="Verified Customer<?php echo !empty($r['verification_type']) ? ' via ' . htmlspecialchars($r['verification_type']) : ''; ?>" style="font-size:10.5px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.12);padding:1px 7px;border-radius:99px;display:inline-flex;align-items:center;gap:3px;">
+                                            ✓ Verified
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
                                 <div class="table-meta"><?php echo htmlspecialchars($r['customer_email'] ?: 'No email provided'); ?></div>
+                                <?php if (!empty($r['momo_ref'])): ?>
+                                    <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+                                        MoMo: <code style="background:var(--bg);color:var(--ink);padding:1px 4px;border-radius:4px;"><?php echo htmlspecialchars($r['momo_ref']); ?></code>
+                                    </div>
+                                <?php endif; ?>
+                                <?php if (!empty($r['receipt_photo'])): ?>
+                                    <div style="margin-top:3px;">
+                                        <a href="../<?php echo htmlspecialchars($r['receipt_photo']); ?>" target="_blank" rel="noopener" style="font-size:11px;color:#0284c7;text-decoration:underline;font-weight:600;">
+                                            📎 View Receipt
+                                        </a>
+                                    </div>
+                                <?php endif; ?>
                             </td>
                             <td class="table-text">
                                 <?php echo htmlspecialchars($r['comment'] ?: 'No written comment.'); ?>
                             </td>
                             <td>
+                                <?php if (!empty($r['is_escalated'])): ?>
+                                    <?php if (($r['escalation_status'] ?? 'pending') === 'resolved'): ?>
+                                        <div style="margin-bottom:4px;"><span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;display:inline-flex;align-items:center;gap:3px;">✓ Resolved</span></div>
+                                    <?php else: ?>
+                                        <div style="margin-bottom:4px;"><span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;display:inline-flex;align-items:center;gap:3px;" title="Gated from Google">⚠️ Needs Resolution</span></div>
+                                    <?php endif; ?>
+                                <?php elseif ((int)$r['rating'] >= 4): ?>
+                                    <div style="margin-bottom:4px;"><span style="background:#e8f0fe;color:#1a73e8;border:1px solid #bfdbfe;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;display:inline-flex;align-items:center;gap:3px;" title="Eligible for Google boost">🚀 Google Boosted</span></div>
+                                <?php endif; ?>
+
                                 <?php if (!empty($r['admin_reply'])): ?>
                                     <span class="status-badge-replied">
                                         ✓ Replied
@@ -609,6 +797,22 @@ include __DIR__ . '/_shell.php';
                             </td>
                             <td style="text-align:right;">
                                 <div class="admin-table-actions" style="justify-content:flex-end;">
+                                    <?php if (!empty($r['is_escalated'])): ?>
+                                        <form method="POST" action="ratings.php" style="display:inline;margin:0;">
+                                            <input type="hidden" name="action" value="toggle_escalation">
+                                            <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
+                                            <button type="submit" class="admin-sm-btn" title="<?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? 'Reopen as unresolved complaint' : 'Mark issue as resolved'; ?>" style="<?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? 'color:#15803d;border-color:rgba(21,128,61,0.4);' : 'color:#b45309;border-color:rgba(217,119,6,0.4);background:#fffbeb;'; ?>">
+                                                <?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? '↺ Reopen' : '✓ Resolve'; ?>
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+                                    <form method="POST" action="ratings.php" style="display:inline;margin:0;">
+                                        <input type="hidden" name="action" value="toggle_verification">
+                                        <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
+                                        <button type="submit" class="admin-sm-btn" title="<?php echo !empty($r['is_verified']) ? 'Remove Verified Badge' : 'Mark as Verified Customer'; ?>" style="<?php echo !empty($r['is_verified']) ? 'color:#16a34a;border-color:rgba(22,163,74,0.4);' : ''; ?>">
+                                            <?php echo !empty($r['is_verified']) ? '✓ Unverify' : '○ Verify'; ?>
+                                        </button>
+                                    </form>
                                     <button type="button" class="admin-sm-btn" title="Edit this review"
                                             onclick='populateEditRating(<?php echo json_encode([
                                                 "id" => (int)$r["id"],
@@ -618,6 +822,7 @@ include __DIR__ . '/_shell.php';
                                                 "customer_name" => $r["customer_name"],
                                                 "customer_email" => $r["customer_email"],
                                                 "comment" => $r["comment"],
+                                                "is_verified" => (int)($r["is_verified"] ?? 0),
                                             ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>)'>
                                         ✎ Edit
                                     </button>
@@ -716,12 +921,32 @@ include __DIR__ . '/_shell.php';
                                 <?php echo htmlspecialchars($initial); ?>
                             </div>
                             <div>
-                                <strong style="font-size:15px;display:block;color:var(--ink);"><?php echo htmlspecialchars($r['customer_name']); ?></strong>
+                                <strong style="font-size:15px;display:flex;align-items:center;gap:8px;color:var(--ink);flex-wrap:wrap;">
+                                    <?php echo htmlspecialchars($r['customer_name']); ?>
+                                    <?php if (!empty($r['is_verified'])): ?>
+                                        <span style="font-size:11px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.12);padding:1px 7px;border-radius:99px;">✓ Verified</span>
+                                    <?php endif; ?>
+                                </strong>
                                 <span class="muted" style="font-size:12px;"><?php echo htmlspecialchars($r['customer_email'] ?: 'Anonymous customer'); ?></span>
+                                <?php if (!empty($r['momo_ref'])): ?>
+                                    <span style="font-size:11.5px;color:var(--muted);margin-left:6px;">&middot; MoMo: <code style="background:var(--bg);color:var(--ink);padding:1px 5px;border-radius:4px;"><?php echo htmlspecialchars($r['momo_ref']); ?></code></span>
+                                <?php endif; ?>
+                                <?php if (!empty($r['receipt_photo'])): ?>
+                                    <span style="font-size:11.5px;margin-left:6px;"><a href="../<?php echo htmlspecialchars($r['receipt_photo']); ?>" target="_blank" rel="noopener" style="color:#0284c7;text-decoration:underline;font-weight:600;">📎 Receipt / Invoice</a></span>
+                                <?php endif; ?>
                             </div>
                         </div>
 
                         <div class="admin-response-meta">
+                            <?php if (!empty($r['is_escalated'])): ?>
+                                <?php if (($r['escalation_status'] ?? 'pending') === 'resolved'): ?>
+                                    <span style="font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:3px 8px;border-radius:99px;">✓ Resolved</span>
+                                <?php else: ?>
+                                    <span style="font-size:11px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fde68a;padding:3px 8px;border-radius:99px;" title="Gated negative review">⚠️ Needs Resolution</span>
+                                <?php endif; ?>
+                            <?php elseif ($score >= 4): ?>
+                                <span style="font-size:11px;font-weight:700;color:#1a73e8;background:#e8f0fe;border:1px solid #bfdbfe;padding:3px 8px;border-radius:99px;" title="Boosted to Google">🚀 Google Boosted</span>
+                            <?php endif; ?>
                             <span style="font-size:12px;padding:3px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--line);font-weight:600;color:var(--ink);">
                                 ⌂ <?php echo htmlspecialchars($r['company_name']); ?>
                             </span>
@@ -781,9 +1006,29 @@ include __DIR__ . '/_shell.php';
                     </div>
 
                     <footer style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);flex-wrap:wrap;gap:10px;">
-                        <button type="button" class="btn btn-secondary" onclick="toggleReplyForm(<?php echo (int)$r['id']; ?>)" style="padding:6px 14px;font-size:12px;">
-                            <?php echo $has_reply ? '✎ Edit Response' : '💬 Reply to Review'; ?>
-                        </button>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <button type="button" class="btn btn-secondary" onclick="toggleReplyForm(<?php echo (int)$r['id']; ?>)" style="padding:6px 14px;font-size:12px;">
+                                <?php echo $has_reply ? '✎ Edit Response' : '💬 Reply to Review'; ?>
+                            </button>
+
+                            <form method="POST" action="ratings.php" style="display:inline;margin:0;">
+                                <input type="hidden" name="action" value="toggle_verification">
+                                <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
+                                <button type="submit" class="btn btn-secondary" style="padding:6px 14px;font-size:12px;<?php echo !empty($r['is_verified']) ? 'color:#16a34a;' : ''; ?>" title="<?php echo !empty($r['is_verified']) ? 'Remove Verified Badge' : 'Mark as Verified Customer'; ?>">
+                                    <?php echo !empty($r['is_verified']) ? '✓ Verified (Unverify)' : '○ Verify Customer'; ?>
+                                </button>
+                            </form>
+
+                            <?php if (!empty($r['is_escalated'])): ?>
+                                <form method="POST" action="ratings.php" style="display:inline;margin:0;">
+                                    <input type="hidden" name="action" value="toggle_escalation">
+                                    <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
+                                    <button type="submit" class="btn btn-secondary" style="padding:6px 14px;font-size:12px;<?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? 'color:#15803d;border-color:rgba(21,128,61,0.4);' : 'color:#b45309;border-color:rgba(217,119,6,0.4);background:#fffbeb;'; ?>" title="<?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? 'Reopen as pending complaint' : 'Mark issue as resolved'; ?>">
+                                        <?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? '↺ Reopen Issue' : '✓ Mark Resolved'; ?>
+                                    </button>
+                                </form>
+                            <?php endif; ?>
+                        </div>
 
                         <div style="display:flex;gap:12px;align-items:center;">
                             <a href="<?php echo $BASE; ?>rate/index.php?company=<?php echo (int)$r['company_id']; ?>" target="_blank" rel="noopener" class="btn-link" style="font-size:12px;">
@@ -956,6 +1201,8 @@ function openCreateRatingModal() {
     document.getElementById('formCustomerName').value  = '';
     document.getElementById('formCustomerEmail').value = '';
     document.getElementById('formComment').value       = '';
+    var vChk = document.getElementById('formIsVerified');
+    if (vChk) vChk.checked = false;
     setRatingScore(5);
 
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -982,6 +1229,8 @@ function populateEditRating(data) {
     document.getElementById('formCustomerName').value  = data.customer_name;
     document.getElementById('formCustomerEmail').value = data.customer_email || '';
     document.getElementById('formComment').value       = data.comment || '';
+    var vChk = document.getElementById('formIsVerified');
+    if (vChk) vChk.checked = (parseInt(data.is_verified, 10) === 1);
     setRatingScore(data.rating);
 
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });

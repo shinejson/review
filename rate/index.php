@@ -27,7 +27,8 @@ if (isset($_GET['tenant']) && (int)$_GET['tenant'] > 0) {
     $t_info = $t_info_stmt->get_result()->fetch_assoc();
     $t_info_stmt->close();
     $tenant_name = htmlspecialchars($t_info['company_name'] ?? 'This workspace');
-    ?><!DOCTYPE html>
+    ?>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -143,6 +144,100 @@ $brand_initials = strtoupper(substr($brand_name, 0, 2));
 $whatsapp_url = whatsappChatUrl($company['whatsapp_number'] ?? '', $brand_name);
 
 $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
+
+// ============================================================
+// Google AggregateRating JSON-LD Structured Data for Organic Search Stars
+// ============================================================
+$__scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$__host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$app_web_root = '';
+if (!empty($_SERVER['DOCUMENT_ROOT'])) {
+    $doc_root = str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT']) ?: $_SERVER['DOCUMENT_ROOT']);
+    $app_dir  = str_replace('\\', '/', dirname(__DIR__));
+    if (strpos($app_dir, $doc_root) === 0) {
+        $app_web_root = substr($app_dir, strlen($doc_root));
+    }
+} elseif (!empty($_SERVER['SCRIPT_NAME'])) {
+    $app_web_root = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME']))), '/');
+}
+$app_web_root = '/' . trim($app_web_root, '/');
+if ($app_web_root === '/') $app_web_root = '';
+
+$canonical_url   = $__scheme . '://' . $__host . (!empty($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : ($app_web_root . '/rate/index.php?company=' . $company_id));
+$brand_logo_full = !empty($brand_logo) ? ($__scheme . '://' . $__host . $app_web_root . '/' . ltrim($brand_logo, '/')) : '';
+$meta_desc       = "Read verified customer reviews and ratings for " . $brand_name . ". Overall score of " . number_format($avg_rating, 1) . "/5.0 based on " . number_format($total_ratings) . " customer review(s).";
+
+$schema_json_ld = [
+    '@context'    => 'https://schema.org',
+    '@type'       => 'LocalBusiness',
+    'name'        => $brand_name,
+    'url'         => $canonical_url,
+    'description' => 'Customer reviews and verified rating profile for ' . $brand_name,
+];
+
+if (!empty($brand_logo_full)) {
+    $schema_json_ld['image'] = $brand_logo_full;
+}
+
+if (!empty($company['phone'])) {
+    $schema_json_ld['telephone'] = $company['phone'];
+}
+if (!empty($company['email'])) {
+    $schema_json_ld['email'] = $company['email'];
+}
+if (!empty($company['address'])) {
+    $schema_json_ld['address'] = [
+        '@type'         => 'PostalAddress',
+        'streetAddress' => $company['address']
+    ];
+}
+
+// Emit aggregateRating when ratings exist
+if ($total_ratings > 0) {
+    $schema_json_ld['aggregateRating'] = [
+        '@type'       => 'AggregateRating',
+        'ratingValue' => number_format($avg_rating, 1, '.', ''),
+        'bestRating'  => '5',
+        'worstRating' => '1',
+        'ratingCount' => (int)$total_ratings,
+        'reviewCount' => (int)$total_ratings
+    ];
+
+    // Include top reviews in JSON-LD for rich snippets
+    $schema_reviews = [];
+    $all_reviews = array_merge($general_reviews, $question_responses);
+    usort($all_reviews, function($a, $b) {
+        $vA = (int)($a['is_verified'] ?? 0);
+        $vB = (int)($b['is_verified'] ?? 0);
+        if ($vA !== $vB) return $vB - $vA;
+        return strtotime($b['created_at']) - strtotime($a['created_at']);
+    });
+
+    $count = 0;
+    foreach ($all_reviews as $rev) {
+        if (empty($rev['comment']) || $count >= 5) continue;
+        $schema_reviews[] = [
+            '@type'        => 'Review',
+            'author'       => [
+                '@type' => 'Person',
+                'name'  => !empty($rev['customer_name']) ? $rev['customer_name'] : 'Verified Customer'
+            ],
+            'datePublished' => date('Y-m-d', strtotime($rev['created_at'])),
+            'reviewBody'    => $rev['comment'],
+            'reviewRating'  => [
+                '@type'       => 'Rating',
+                'ratingValue' => (string)(int)$rev['rating'],
+                'bestRating'  => '5',
+                'worstRating' => '1'
+            ]
+        ];
+        $count++;
+    }
+
+    if (!empty($schema_reviews)) {
+        $schema_json_ld['review'] = $schema_reviews;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -150,6 +245,23 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $pageTitle; ?> - Verified Ratings &amp; Reviews</title>
+    <meta name="description" content="<?php echo htmlspecialchars($meta_desc); ?>">
+    <link rel="canonical" href="<?php echo htmlspecialchars($canonical_url); ?>">
+
+    <!-- Open Graph for Social Previews -->
+    <meta property="og:title" content="<?php echo $pageTitle; ?> - Verified Ratings &amp; Reviews">
+    <meta property="og:description" content="<?php echo htmlspecialchars($meta_desc); ?>">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="<?php echo htmlspecialchars($canonical_url); ?>">
+    <?php if (!empty($brand_logo_full)): ?>
+    <meta property="og:image" content="<?php echo htmlspecialchars($brand_logo_full); ?>">
+    <?php endif; ?>
+
+    <!-- Google AggregateRating JSON-LD for Organic Search Stars -->
+    <script type="application/ld+json">
+<?php echo json_encode($schema_json_ld, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -252,10 +364,237 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
             font-size: 12px;
             color: #64748b;
         }
+        /* Website / Google Store link buttons (configured by admin) */
+        .rt-link-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #0f172a;
+            color: #ffffff;
+            font-size: 13.5px;
+            font-weight: 700;
+            padding: 11px 20px;
+            border-radius: 99px;
+            text-decoration: none;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+            transition: transform .2s ease, background .2s ease, box-shadow .2s ease;
+            white-space: nowrap;
+        }
+        .rt-link-btn:hover {
+            background: #1e293b;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.26);
+        }
+        .rt-link-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+        .rt-link-btn.rt-gstore-btn {
+            background: linear-gradient(135deg, #4285F4, #34A853);
+            box-shadow: 0 6px 18px rgba(66, 133, 244, 0.28);
+        }
+        .rt-link-btn.rt-gstore-btn:hover {
+            background: linear-gradient(135deg, #3b78e7, #2f9a4b);
+            box-shadow: 0 10px 24px rgba(66, 133, 244, 0.36);
+        }
+        /* Public rating page footer */
+        .rt-footer {
+            margin-top: 56px;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 32px;
+            padding-bottom: 8px;
+        }
+        .rt-footer-grid {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 32px;
+            flex-wrap: wrap;
+        }
+        .rt-footer-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .rt-footer-brand img {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            object-fit: cover;
+            border: 1px solid #e2e8f0;
+        }
+        .rt-footer-brand .rt-footer-fallback {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #fff;
+            font-weight: 800;
+            font-size: 15px;
+        }
+        .rt-footer-brand strong {
+            font-size: 16px;
+            color: #0f172a;
+            display: block;
+        }
+        .rt-footer-brand small {
+            font-size: 12px;
+            color: #64748b;
+        }
+        .rt-footer-desc {
+            font-size: 13px;
+            color: #475569;
+            line-height: 1.65;
+            max-width: 460px;
+        }
+        .rt-footer-contact {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 13px;
+            color: #475569;
+        }
+        .rt-footer-contact li {
+            display: flex;
+            align-items: flex-start;
+            gap: 9px;
+        }
+        .rt-footer-contact svg {
+            width: 15px;
+            height: 15px;
+            flex-shrink: 0;
+            margin-top: 1px;
+            stroke: #10b981;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .rt-footer-contact a {
+            color: #0f172a;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .rt-footer-contact a:hover { color: #059669; }
+        .rt-footer-bottom {
+            margin-top: 26px;
+            padding-top: 18px;
+            border-top: 1px solid #f1f5f9;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+        .rt-footer-bottom a { color: #059669; font-weight: 700; text-decoration: none; }
+        /* Review-level WhatsApp inquiry button */
+        .rt-review-wa-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #15803d;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            padding: 5px 12px;
+            border-radius: 99px;
+            text-decoration: none;
+            margin-top: 10px;
+            transition: all .2s ease;
+        }
+        .rt-review-wa-btn:hover {
+            background: #25D366;
+            color: #ffffff;
+            border-color: #25D366;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.28);
+        }
+        .rt-review-wa-btn svg {
+            width: 13px;
+            height: 13px;
+            fill: currentColor;
+        }
+
+        /* Verified Customer Badge & Verification Form Box */
+        .rt-verified-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #dcfce7;
+            color: #15803d;
+            border: 1px solid #86efac;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 99px;
+            letter-spacing: 0.2px;
+        }
+        .rt-verified-badge svg {
+            width: 12px;
+            height: 12px;
+            fill: #16a34a;
+            flex-shrink: 0;
+        }
+        .rt-verification-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 16px;
+        }
+        .rt-sub-label {
+            font-size: 11.5px;
+            font-weight: 600;
+            color: #475569;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        /* Floating Sticky WhatsApp Button */
+        .rt-floating-wa {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9999;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: #25D366;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 700;
+            padding: 12px 20px;
+            border-radius: 99px;
+            text-decoration: none;
+            box-shadow: 0 10px 30px rgba(37, 211, 102, 0.45);
+            transition: transform .25s ease, box-shadow .25s ease, background .2s ease;
+        }
+        .rt-floating-wa:hover {
+            background: #1fb457;
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 15px 35px rgba(37, 211, 102, 0.55);
+        }
+        .rt-floating-wa svg {
+            width: 22px;
+            height: 22px;
+            fill: currentColor;
+            flex-shrink: 0;
+        }
         @media (max-width: 640px) {
             .rt-header-actions { align-items: stretch; }
             .rt-whatsapp-btn { justify-content: center; }
             .rt-whatsapp-note { text-align: center; }
+            .rt-floating-wa span { display: none; }
+            .rt-floating-wa {
+                padding: 14px;
+                border-radius: 50%;
+                bottom: 18px;
+                right: 18px;
+            }
         }
         .rt-rating-grid {
             display: grid;
@@ -683,6 +1022,22 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
         </div>
         <div class="rt-header-actions">
             <span class="rt-badge">✓ Verified Rating Channel</span>
+            <?php
+            $company_website = trim((string)($company['website'] ?? ''));
+            $company_gstore  = trim((string)($company['google_store_url'] ?? ''));
+            ?>
+            <?php if ($company_website !== ''): ?>
+            <a class="rt-link-btn" href="<?php echo htmlspecialchars($company_website); ?>" target="_blank" rel="noopener noreferrer" title="Visit <?php echo htmlspecialchars($brand_name); ?> website">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                Visit Website
+            </a>
+            <?php endif; ?>
+            <?php if ($company_gstore !== ''): ?>
+            <a class="rt-link-btn rt-gstore-btn" href="<?php echo htmlspecialchars($company_gstore); ?>" target="_blank" rel="noopener noreferrer" title="<?php echo htmlspecialchars($brand_name); ?> on Google Store">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 20.5V3.5c0-.6.34-1.1.84-1.35L13.7 12 3.84 21.85c-.5-.25-.84-.75-.84-1.35zm13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27zm3.35-4.31c.34.27.59.68.59 1.19s-.22.9-.57 1.18l-2.29 1.32-2.5-2.5 2.5-2.5 2.27 1.31zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/></svg>
+                Google Store
+            </a>
+            <?php endif; ?>
             <?php if ($whatsapp_url !== ''): ?>
             <!-- WhatsApp click-to-chat: shown only when the business published a number -->
             <a class="rt-whatsapp-btn" href="<?php echo htmlspecialchars($whatsapp_url); ?>"
@@ -737,7 +1092,7 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
             <h2>Submit Your Review</h2>
             <p class="rt-subtext">General customer rating for <?php echo htmlspecialchars($brand_name); ?></p>
 
-            <form id="generalRatingForm" action="../api/submit_rating.php" method="POST" onsubmit="return validateGeneralForm()">
+            <form id="generalRatingForm" action="../api/submit_rating.php" method="POST" enctype="multipart/form-data" onsubmit="return validateGeneralForm()">
                 <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
                 <input type="hidden" name="question_id" value="">
 
@@ -768,6 +1123,28 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
                 
                 <label class="rt-review-form-label">Write Your Review *</label>
                 <textarea name="comment" class="rt-form-textarea" placeholder="Share your experience working with <?php echo htmlspecialchars($brand_name); ?>..." required></textarea>
+
+                <!-- Optional Verification: MoMo Ref or Receipt Photo -->
+                <div class="rt-verification-box">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+                        <span class="rt-verified-badge">
+                            <svg viewBox="0 0 512 512"><path d="M504 256c0 137-111 248-248 248S8 393 8 256 119 8 256 8s248 111 248 248zM227.3 387.3l184-184c6.2-6.2 6.2-16.4 0-22.6l-22.6-22.6c-6.2-6.2-16.4-6.2-22.6 0L216 308.1l-70.1-70.1c-6.2-6.2-16.4-6.2-22.6 0l-22.6 22.6c-6.2 6.2-6.2 16.4 0 22.6l104 104c6.2 6.2 16.4 6.2 22.6 0z"/></svg>
+                            Get Verified Badge (Optional)
+                        </span>
+                        <span style="font-size:11.5px;color:#64748b;">Stand out with a green verified checkmark</span>
+                    </div>
+                    <p style="font-size:12px;color:#64748b;margin:0 0 10px;line-height:1.4;">Provide your Mobile Money (MoMo) transaction ID or upload a photo of your receipt/invoice to confirm your purchase or visit.</p>
+                    <div class="rt-input-row" style="margin-bottom:0;">
+                        <div>
+                            <label class="rt-sub-label">MoMo Transaction ID / Reference</label>
+                            <input type="text" name="momo_ref" class="rt-form-input" style="font-size:13px;padding:9px 12px;" placeholder="e.g. 24819284918">
+                        </div>
+                        <div>
+                            <label class="rt-sub-label">Receipt / Invoice Screenshot</label>
+                            <input type="file" name="receipt_photo" accept="image/jpeg,image/png,image/webp,image/jpg" class="rt-form-input" style="font-size:12px;padding:7px 10px;background:#fff;">
+                        </div>
+                    </div>
+                </div>
                 
                 <button type="submit" class="rt-submit-btn">
                     Submit Reviews
@@ -843,8 +1220,16 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
                                     </strong>
                                     <?php foreach ($q['answers'] as $ans): ?>
                                         <div class="rt-q-answer-item">
-                                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                                                <strong style="color:#0f172a;"><?php echo htmlspecialchars($ans['customer_name']); ?></strong>
+                                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:8px;flex-wrap:wrap;">
+                                                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                                    <strong style="color:#0f172a;"><?php echo htmlspecialchars($ans['customer_name']); ?></strong>
+                                                    <?php if (!empty($ans['is_verified'])): ?>
+                                                        <span class="rt-verified-badge" title="Verified Customer">
+                                                            <svg viewBox="0 0 512 512"><path d="M504 256c0 137-111 248-248 248S8 393 8 256 119 8 256 8s248 111 248 248zM227.3 387.3l184-184c6.2-6.2 6.2-16.4 0-22.6l-22.6-22.6c-6.2-6.2-16.4-6.2-22.6 0L216 308.1l-70.1-70.1c-6.2-6.2-16.4-6.2-22.6 0l-22.6 22.6c-6.2 6.2-6.2 16.4 0 22.6l104 104c6.2 6.2 16.4 6.2 22.6 0z"/></svg>
+                                                            Verified
+                                                        </span>
+                                                    <?php endif; ?>
+                                                </div>
                                                 <span style="color:#f59e0b;font-weight:700;">
                                                     <?php echo str_repeat('★', (int)$ans['rating']); ?>
                                                     <span style="color:#64748b;font-size:11px;font-weight:400;margin-left:4px;"><?php echo date('M d, Y', strtotime($ans['created_at'])); ?></span>
@@ -890,7 +1275,15 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
                                 <div class="rt-greview-avatar"><?php echo strtoupper(substr(trim($rv['customer_name'] ?: 'A'), 0, 1)); ?></div>
                                 <div style="flex:1;min-width:0;">
                                     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                                        <span class="rt-greview-name"><?php echo htmlspecialchars($rv['customer_name'] ?: 'Anonymous'); ?></span>
+                                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                            <span class="rt-greview-name"><?php echo htmlspecialchars($rv['customer_name'] ?: 'Anonymous'); ?></span>
+                                            <?php if (!empty($rv['is_verified'])): ?>
+                                                <span class="rt-verified-badge" title="Verified Customer<?php echo !empty($rv['verification_type']) ? ' via ' . htmlspecialchars($rv['verification_type']) : ''; ?>">
+                                                    <svg viewBox="0 0 512 512"><path d="M504 256c0 137-111 248-248 248S8 393 8 256 119 8 256 8s248 111 248 248zM227.3 387.3l184-184c6.2-6.2 6.2-16.4 0-22.6l-22.6-22.6c-6.2-6.2-16.4-6.2-22.6 0L216 308.1l-70.1-70.1c-6.2-6.2-16.4-6.2-22.6 0l-22.6 22.6c-6.2 6.2-6.2 16.4 0 22.6l104 104c6.2 6.2 16.4 6.2 22.6 0z"/></svg>
+                                                    Verified Customer
+                                                </span>
+                                            <?php endif; ?>
+                                        </div>
                                         <span class="rt-greview-time" title="<?php echo $rv_ts; ?>"><?php echo function_exists('timeAgo') ? timeAgo($rv['created_at']) : $rv_ts; ?> &middot; <?php echo $rv_ts; ?></span>
                                     </div>
                                     <div class="rt-greview-stars">
@@ -914,6 +1307,21 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
                                             <p style="margin:4px 0 0;"><?php echo htmlspecialchars($rv['admin_reply']); ?></p>
                                         </div>
                                     <?php endif; ?>
+
+                                    <?php if (!empty($company['whatsapp_number'])): 
+                                        $rv_author = trim($rv['customer_name'] ?: 'a customer');
+                                        $rv_snippet = !empty($rv['comment']) ? '"' . mb_substr(strip_tags($rv['comment']), 0, 70) . '..."' : ((int)$rv['rating'] . '-star rating');
+                                        $rv_wa_msg = 'Hello ' . $brand_name . ', I was reading the review by ' . $rv_author . ' on Optibiz (' . $rv_snippet . ') and would like to inquire.';
+                                        $rv_wa_url = whatsappChatUrl($company['whatsapp_number'], $brand_name, $rv_wa_msg);
+                                        if ($rv_wa_url !== ''):
+                                    ?>
+                                        <div>
+                                            <a href="<?php echo htmlspecialchars($rv_wa_url); ?>" target="_blank" rel="noopener noreferrer" class="rt-review-wa-btn" title="Chat with <?php echo htmlspecialchars($brand_name); ?> on WhatsApp">
+                                                <svg viewBox="0 0 448 512" aria-hidden="true"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7 .9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/></svg>
+                                                Inquire on WhatsApp
+                                            </a>
+                                        </div>
+                                    <?php endif; endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -941,7 +1349,15 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
                                 <div class="rt-greview-avatar"><?php echo strtoupper(substr(trim($rv['customer_name'] ?: 'A'), 0, 1)); ?></div>
                                 <div style="flex:1;min-width:0;">
                                     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                                        <span class="rt-greview-name"><?php echo htmlspecialchars($rv['customer_name'] ?: 'Anonymous'); ?></span>
+                                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                            <span class="rt-greview-name"><?php echo htmlspecialchars($rv['customer_name'] ?: 'Anonymous'); ?></span>
+                                            <?php if (!empty($rv['is_verified'])): ?>
+                                                <span class="rt-verified-badge" title="Verified Customer<?php echo !empty($rv['verification_type']) ? ' via ' . htmlspecialchars($rv['verification_type']) : ''; ?>">
+                                                    <svg viewBox="0 0 512 512"><path d="M504 256c0 137-111 248-248 248S8 393 8 256 119 8 256 8s248 111 248 248zM227.3 387.3l184-184c6.2-6.2 6.2-16.4 0-22.6l-22.6-22.6c-6.2-6.2-16.4-6.2-22.6 0L216 308.1l-70.1-70.1c-6.2-6.2-16.4-6.2-22.6 0l-22.6 22.6c-6.2 6.2-6.2 16.4 0 22.6l104 104c6.2 6.2 16.4 6.2 22.6 0z"/></svg>
+                                                    Verified Customer
+                                                </span>
+                                            <?php endif; ?>
+                                        </div>
                                         <span class="rt-greview-time" title="<?php echo $rv_ts; ?>"><?php echo function_exists('timeAgo') ? timeAgo($rv['created_at']) : $rv_ts; ?> &middot; <?php echo $rv_ts; ?></span>
                                     </div>
                                     <div class="rt-greview-stars">
@@ -963,6 +1379,21 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
                                             <p style="margin:4px 0 0;"><?php echo htmlspecialchars($rv['admin_reply']); ?></p>
                                         </div>
                                     <?php endif; ?>
+
+                                    <?php if (!empty($company['whatsapp_number'])): 
+                                        $rv_author = trim($rv['customer_name'] ?: 'a customer');
+                                        $rv_snippet = !empty($rv['comment']) ? '"' . mb_substr(strip_tags($rv['comment']), 0, 70) . '..."' : ((int)$rv['rating'] . '-star review');
+                                        $rv_wa_msg = 'Hello ' . $brand_name . ', I was reading the review by ' . $rv_author . ' on Optibiz (' . $rv_snippet . ') and would like to inquire.';
+                                        $rv_wa_url = whatsappChatUrl($company['whatsapp_number'], $brand_name, $rv_wa_msg);
+                                        if ($rv_wa_url !== ''):
+                                    ?>
+                                        <div>
+                                            <a href="<?php echo htmlspecialchars($rv_wa_url); ?>" target="_blank" rel="noopener noreferrer" class="rt-review-wa-btn" title="Chat with <?php echo htmlspecialchars($brand_name); ?> on WhatsApp">
+                                                <svg viewBox="0 0 448 512" aria-hidden="true"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7 .9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/></svg>
+                                                Inquire on WhatsApp
+                                            </a>
+                                        </div>
+                                    <?php endif; endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -977,37 +1408,97 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
 
     </div>
 
+    <!-- Company Info Footer (configured by admin in Company Profile) -->
+    <footer class="rt-footer">
+        <div class="rt-footer-grid">
+            <div>
+                <div class="rt-footer-brand">
+                    <?php if (!empty($brand_logo)): ?>
+                        <img src="../<?php echo htmlspecialchars($brand_logo); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> logo">
+                    <?php else: ?>
+                        <div class="rt-footer-fallback"><?php echo htmlspecialchars($brand_initials); ?></div>
+                    <?php endif; ?>
+                    <div>
+                        <strong><?php echo htmlspecialchars($brand_name); ?></strong>
+                        <small><?php echo htmlspecialchars($company['category_name'] ?? 'Verified Business'); ?></small>
+                    </div>
+                </div>
+                <?php $company_desc = trim((string)($company['description'] ?? '')); ?>
+                <?php if ($company_desc !== ''): ?>
+                    <p class="rt-footer-desc"><?php echo htmlspecialchars($company_desc); ?></p>
+                <?php else: ?>
+                    <p class="rt-footer-desc">Thank you for visiting our verified rating portal. Your honest feedback helps us serve you better every day.</p>
+                <?php endif; ?>
+            </div>
+            <div>
+                <ul class="rt-footer-contact">
+                    <?php if (trim((string)($company['address'] ?? '')) !== ''): ?>
+                    <li>
+                        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        <span><?php echo htmlspecialchars($company['address']); ?></span>
+                    </li>
+                    <?php endif; ?>
+                    <?php if (trim((string)($company['email'] ?? '')) !== ''): ?>
+                    <li>
+                        <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                        <a href="mailto:<?php echo htmlspecialchars($company['email']); ?>"><?php echo htmlspecialchars($company['email']); ?></a>
+                    </li>
+                    <?php endif; ?>
+                    <?php if (trim((string)($company['phone'] ?? '')) !== ''): ?>
+                    <li>
+                        <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                        <a href="tel:<?php echo htmlspecialchars(preg_replace('/[^0-9+]/', '', $company['phone'])); ?>"><?php echo htmlspecialchars($company['phone']); ?></a>
+                    </li>
+                    <?php endif; ?>
+                    <?php if ($company_website !== ''): ?>
+                    <li>
+                        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        <a href="<?php echo htmlspecialchars($company_website); ?>" target="_blank" rel="noopener noreferrer"><?php echo htmlspecialchars(preg_replace('~^https?://~i', '', $company_website)); ?></a>
+                    </li>
+                    <?php endif; ?>
+                </ul>
+            </div>
+        </div>
+        <div class="rt-footer-bottom">
+            <span>&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($brand_name); ?>. All rights reserved.</span>
+            <span>Powered by <a href="../index.php" target="_blank" rel="noopener">Optibiz Ratings</a></span>
+        </div>
+    </footer>
+
 </div>
 
 <script>
 /* Switch bottom sections between Specific Reviews / Review Responses / Reviews */
-function switchPublicSection(sectionId) {
-    var sections = ['questions', 'responses', 'feedbacks'];
-    var activated = false;
-
-    sections.forEach(function (s) {
-        var btn = document.getElementById('tabBtn-' + s);
-        var panel = document.getElementById('panel-' + s);
-        if (!btn || !panel) return;
-
-        var active = (s === sectionId);
-        if (active) activated = true;
-
-        btn.classList.toggle('is-active', active);
-        btn.setAttribute('aria-selected', active ? 'true' : 'false');
-        panel.classList.toggle('is-active', active);
-    });
-
-    if (!activated) return;
-
+function switchPublicSection(section) {
+    // Hide all panels
+    var panels = document.querySelectorAll('[id^="panel-"]');
+    for (var i = 0; i < panels.length; i++) {
+        panels[i].classList.remove('is-active');
+    }
+    // Deactivate all tab buttons
+    var buttons = document.querySelectorAll('[id^="tabBtn-"]');
+    for (var i = 0; i < buttons.length; i++) {
+        buttons[i].classList.remove('is-active');
+        buttons[i].setAttribute('aria-selected', 'false');
+    }
+    // Activate selected panel and button
+    var panel = document.getElementById('panel-' + section);
+    var btn = document.getElementById('tabBtn-' + section);
+    if (panel) panel.classList.add('is-active');
+    if (btn) {
+        btn.classList.add('is-active');
+        btn.setAttribute('aria-selected', 'true');
+    }
+    // Update URL hash
     try {
-        history.replaceState(null, null, '#tab=' + sectionId);
+        history.replaceState(null, null, '#tab=' + section);
     } catch(e) {}
 }
 
+// Restore tab from URL hash on page load
 (function() {
     var hash = location.hash.replace('#tab=', '').replace('#', '');
-    if (hash === 'feedbacks' || hash === 'responses') {
+    if (hash === 'feedbacks' || hash === 'responses' || hash === 'questions') {
         switchPublicSection(hash);
     }
 })();
@@ -1030,6 +1521,14 @@ function validateReviewsForm(form) {
     return true;
 }
 </script>
+
+<?php if ($whatsapp_url !== ''): ?>
+<!-- Sticky Floating WhatsApp Chat Button -->
+<a href="<?php echo htmlspecialchars($whatsapp_url); ?>" class="rt-floating-wa" target="_blank" rel="noopener noreferrer" title="Chat with <?php echo htmlspecialchars($brand_name); ?> on WhatsApp" aria-label="Chat with <?php echo htmlspecialchars($brand_name); ?> on WhatsApp">
+    <svg viewBox="0 0 448 512" aria-hidden="true"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7 .9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/></svg>
+    <span>Chat on WhatsApp</span>
+</a>
+<?php endif; ?>
 
 </body>
 </html>

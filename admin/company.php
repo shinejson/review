@@ -46,6 +46,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     $email         = trim($_POST['email'] ?? '');
     $phone         = trim($_POST['phone'] ?? '');
     $website       = trim($_POST['website'] ?? '');
+    $google_url    = cleanGoogleReviewUrl($_POST['google_store_url'] ?? '');
+    $booster_enabled = isset($_POST['booster_enabled']) ? 1 : 0;
+    $booster_min_stars = max(1, min(5, (int)($_POST['booster_min_stars'] ?? 4)));
+    $address       = trim($_POST['address'] ?? '');
+    $description   = trim($_POST['description'] ?? '');
     $category_id   = (int)($_POST['category_id'] ?? 0);
     $whatsapp_raw  = trim($_POST['whatsapp_number'] ?? '');
     $whatsapp_num  = whatsappDigits($whatsapp_raw);
@@ -59,17 +64,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     } else {
         $cat_val = $category_id > 0 ? $category_id : null;
 
-        // Installs created before the WhatsApp feature may not have the column yet.
+        // Installs created before the WhatsApp and Booster features may not have the columns yet.
         ensureWhatsappColumn($conn);
+        ensureBoosterColumns($conn);
 
         if ($company_profile) {
-            $upd = $conn->prepare("UPDATE customers SET company_name=?,email=?,phone=?,whatsapp_number=?,website=?,category_id=? WHERE id=? AND tenant_id=?");
-            $upd->bind_param("sssssiii", $company_name, $email, $phone, $whatsapp_num, $website, $cat_val, $company_profile['id'], $tenant_id);
+            $upd = $conn->prepare("UPDATE customers SET company_name=?,email=?,phone=?,whatsapp_number=?,website=?,google_store_url=?,booster_enabled=?,booster_min_stars=?,address=?,description=?,category_id=? WHERE id=? AND tenant_id=?");
+            $upd->bind_param("ssssssiissiii", $company_name, $email, $phone, $whatsapp_num, $website, $google_url, $booster_enabled, $booster_min_stars, $address, $description, $cat_val, $company_profile['id'], $tenant_id);
             $upd->execute();
             $upd->close();
         } else {
-            $ins = $conn->prepare("INSERT INTO customers (tenant_id,company_name,email,phone,whatsapp_number,website,category_id,created_at) VALUES (?,?,?,?,?,?,?,NOW())");
-            $ins->bind_param("isssssi", $tenant_id, $company_name, $email, $phone, $whatsapp_num, $website, $cat_val);
+            $ins = $conn->prepare("INSERT INTO customers (tenant_id,company_name,email,phone,whatsapp_number,website,google_store_url,booster_enabled,booster_min_stars,address,description,category_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NOW())");
+            $ins->bind_param("issssssiissi", $tenant_id, $company_name, $email, $phone, $whatsapp_num, $website, $google_url, $booster_enabled, $booster_min_stars, $address, $description, $cat_val);
             $ins->execute();
             $ins->close();
         }
@@ -124,6 +130,12 @@ $public_url = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__ro
 $wa_number  = $company_profile['whatsapp_number'] ?? '';
 $wa_url     = whatsappChatUrl($wa_number, $company_profile['company_name'] ?? $tenant['company_name'] ?? '');
 $wa_display = whatsappDisplay($wa_number);
+
+// Google Review Booster & Sentiment Gating
+$booster_enabled   = isset($company_profile['booster_enabled']) ? (int)$company_profile['booster_enabled'] : 1;
+$booster_min_stars = isset($company_profile['booster_min_stars']) ? (int)$company_profile['booster_min_stars'] : 4;
+$google_store_url  = $company_profile['google_store_url'] ?? '';
+$booster_active    = !empty($google_store_url) && $booster_enabled;
 
 $BASE      = '../';
 $pageTitle = 'Company Profile';
@@ -257,6 +269,87 @@ include __DIR__ . '/_shell.php';
                            placeholder="https://yourcompany.com"
                            value="<?php echo htmlspecialchars($company_profile['website'] ?? ''); ?>">
                 </div>
+
+                <!-- Google Review Booster & Sentiment Gating -->
+                <div style="grid-column:1/-1;background:var(--bg, #f8fafc);border:1px solid var(--line, #e2e8f0);border-radius:12px;padding:20px;margin:6px 0 10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div style="width:36px;height:36px;border-radius:8px;background:#e8f0fe;display:flex;align-items:center;justify-content:center;font-size:18px;color:#1a73e8;font-weight:bold;">
+                                G
+                            </div>
+                            <div>
+                                <h4 style="margin:0;font-size:14.5px;color:var(--ink);font-weight:700;">Google Review Booster &amp; Sentiment Routing</h4>
+                                <p class="muted" style="margin:2px 0 0;font-size:12px;">Boost Google stars from happy customers while gating complaints away from public search.</p>
+                            </div>
+                        </div>
+                        <?php if ($booster_active): ?>
+                            <span class="status-badge-replied" style="font-size:11px;">● Booster Active</span>
+                        <?php else: ?>
+                            <span class="status-badge-pending" style="font-size:11px;">● Needs Review Link</span>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label for="google_store_url" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                            <span>Google Business Profile Review Link</span>
+                            <?php if (!empty($google_store_url)): ?>
+                                <a href="<?php echo htmlspecialchars($google_store_url); ?>" id="testGoogleLink" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;color:#1a73e8;text-decoration:none;font-weight:600;">Test Link ↗</a>
+                            <?php endif; ?>
+                        </label>
+                        <input type="text" id="google_store_url" name="google_store_url" maxlength="500"
+                               placeholder="e.g. https://g.page/r/.../review or https://search.google.com/local/writereview?placeid=..."
+                               value="<?php echo htmlspecialchars($google_store_url); ?>">
+                        <small class="muted" style="display:block;margin-top:5px;line-height:1.5;">
+                            💡 <strong>How to find your link:</strong> Go to your <a href="https://business.google.com" target="_blank" rel="noopener" style="color:#1a73e8;font-weight:600;">Google Business Profile</a> &rarr; click <strong>"Ask for reviews"</strong> &rarr; copy the short review URL.
+                        </small>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;padding-top:12px;border-top:1px solid var(--line, #e2e8f0);">
+                        <div style="display:flex;align-items:flex-start;gap:10px;">
+                            <input type="checkbox" id="booster_enabled" name="booster_enabled" value="1" <?php echo $booster_enabled ? 'checked' : ''; ?> style="margin-top:3px;cursor:pointer;width:18px;height:18px;accent-color:#1a73e8;">
+                            <label for="booster_enabled" style="font-size:13px;cursor:pointer;font-weight:600;color:var(--ink);line-height:1.4;">
+                                Enable Review Booster
+                                <span class="muted" style="display:block;font-size:11.5px;font-weight:normal;margin-top:2px;">Prompt positive reviews to be shared to Google with 1 click.</span>
+                            </label>
+                        </div>
+
+                        <div>
+                            <label for="booster_min_stars" style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px;color:var(--ink);">Routing Threshold</label>
+                            <select id="booster_min_stars" name="booster_min_stars" style="padding:7px 10px;font-size:13px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;width:100%;color:var(--ink);">
+                                <option value="4" <?php echo $booster_min_stars == 4 ? 'selected' : ''; ?>>4 Stars &amp; Above (Recommended)</option>
+                                <option value="5" <?php echo $booster_min_stars == 5 ? 'selected' : ''; ?>>5 Stars Only (Strict)</option>
+                            </select>
+                            <small class="muted" style="display:block;font-size:11px;margin-top:3px;">Reviews below this score are gated for private resolution.</small>
+                        </div>
+                    </div>
+
+                    <!-- Workflow explainer -->
+                    <div style="margin-top:14px;background:#ffffff;border:1px dashed #cbd5e1;border-radius:8px;padding:10px 14px;display:flex;gap:14px;font-size:11.5px;color:#475569;flex-wrap:wrap;">
+                        <div style="flex:1;min-width:160px;display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:14px;">⭐⭐⭐⭐⭐</span>
+                            <span><strong>Positive (4–5★):</strong> 1-Click "Copy &amp; Post to Google"</span>
+                        </div>
+                        <div style="flex:1;min-width:160px;display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:14px;">🛡️</span>
+                            <span><strong>Negative (1–3★):</strong> Privately Gated &amp; Escalated (No Google link)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label for="address">Business Address</label>
+                    <input type="text" id="address" name="address" maxlength="500"
+                           placeholder="123 Main Street, Accra, Ghana"
+                           value="<?php echo htmlspecialchars($company_profile['address'] ?? ''); ?>">
+                    <small class="muted" style="display:block;margin-top:4px;">Shown in the footer of your public rating page.</small>
+                </div>
+
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label for="description">Company Description</label>
+                    <textarea id="description" name="description" rows="3" maxlength="1000"
+                              placeholder="A short description of your business shown in the footer of your public rating page."
+                              style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;"><?php echo htmlspecialchars($company_profile['description'] ?? ''); ?></textarea>
+                </div>
             </div>
 
             <div style="display:flex;gap:10px;margin-top:8px;">
@@ -282,6 +375,40 @@ include __DIR__ . '/_shell.php';
                 <button type="button" class="btn btn-secondary" onclick="copyPublicUrl()" style="padding:8px 12px;font-size:12px;white-space:nowrap;">Copy</button>
                 <a href="<?php echo htmlspecialchars($public_url); ?>" target="_blank" class="btn btn-primary" style="padding:8px 12px;font-size:12px;text-decoration:none;white-space:nowrap;">Open ↗</a>
             </div>
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <span class="muted" style="font-size:12px;">Marketing &amp; Embeds:</span>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <a href="qr_stand.php" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+                        ◫ Counter QR Stand
+                    </a>
+                    <a href="settings.php#tab=preferences" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+                        📇 Website Widget
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Google Review Booster status card -->
+        <div class="form-card" style="padding:22px;<?php echo $booster_active ? 'border-left:3px solid #4285F4;' : ''; ?>">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
+                <h3 style="margin:0;font-size:15px;">⭐ Google Review Booster</h3>
+                <?php echo $booster_active
+                    ? '<span class="status-badge-replied" style="font-size:11px;">● Active</span>'
+                    : '<span class="status-badge-pending" style="font-size:11px;">● Off / Missing Link</span>'; ?>
+            </div>
+            <?php if ($booster_active): ?>
+                <p class="muted" style="margin:0 0 14px;font-size:12.5px;line-height:1.5;">
+                    Happy customers rating <strong><?php echo $booster_min_stars; ?>★ or higher</strong> are prompted with a 1-click button to copy their review directly to your Google Business Profile.
+                </p>
+                <a href="<?php echo htmlspecialchars($google_store_url); ?>" target="_blank" rel="noopener noreferrer"
+                   style="display:inline-flex;align-items:center;gap:8px;background:#4285F4;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:10px 16px;border-radius:99px;">
+                    Test Google Link ↗
+                </a>
+            <?php else: ?>
+                <p class="muted" style="margin:0;font-size:12.5px;line-height:1.6;">
+                    Paste your Google Business review link to enable review boosting. 4–5 star reviews get sent to Google, while 1–3 star complaints are gated internally.
+                </p>
+            <?php endif; ?>
         </div>
 
         <!-- WhatsApp click-to-chat -->
