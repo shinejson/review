@@ -124,6 +124,25 @@ if (!function_exists('admin_ensure_schema')) {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         );
 
+        @$conn->query(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_configs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                tenant_id INT NOT NULL,
+                company_id INT NOT NULL DEFAULT 0,
+                meta_pixel_id VARCHAR(50) NULL,
+                meta_capi_token TEXT NULL,
+                meta_test_event_code VARCHAR(50) NULL,
+                google_ads_conversion_id VARCHAR(50) NULL,
+                google_ads_conversion_label VARCHAR(60) NULL,
+                tiktok_pixel_id VARCHAR(50) NULL,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NULL,
+                UNIQUE KEY uniq_tenant_comp (tenant_id, company_id),
+                INDEX idx_tenant (tenant_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+
         if (session_status() === PHP_SESSION_ACTIVE) {
             $_SESSION['admin_schema_ok'] = 1;
         }

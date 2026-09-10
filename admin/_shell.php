@@ -97,6 +97,9 @@ $activeNav = $activeNav ?? 'dashboard';
     <a <?php echo $activeNav === 'social' ? 'class="active"' : ''; ?> href="social.php" title="Social">
       <span>❋</span><span class="nav-label">Social</span>
     </a>
+    <a <?php echo $activeNav === 'ads' ? 'class="active"' : ''; ?> href="ads.php" title="Ads &amp; Funnels">
+      <span>🎯</span><span class="nav-label">Ads &amp; Funnel</span>
+    </a>
   </nav>
   
   <div class="nav-caption">Manage</div>

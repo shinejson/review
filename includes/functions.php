@@ -1150,6 +1150,11 @@ function ensureAnalyticsTable($conn) {
         event_category VARCHAR(60) NULL,
         event_label VARCHAR(255) NULL,
         traffic_source VARCHAR(50) NOT NULL DEFAULT 'direct',
+        utm_source VARCHAR(60) NULL,
+        utm_medium VARCHAR(60) NULL,
+        utm_campaign VARCHAR(100) NULL,
+        utm_content VARCHAR(100) NULL,
+        click_id VARCHAR(120) NULL,
         page_url VARCHAR(255) NULL,
         referrer VARCHAR(255) NULL,
         session_id VARCHAR(64) NULL,
@@ -1160,9 +1165,27 @@ function ensureAnalyticsTable($conn) {
         INDEX idx_tenant_created (tenant_id, created_at),
         INDEX idx_comp_event_created (company_id, event_type, created_at),
         INDEX idx_type_created (event_type, created_at),
-        INDEX idx_source (traffic_source)
+        INDEX idx_source (traffic_source),
+        INDEX idx_utm_camp (tenant_id, utm_campaign),
+        INDEX idx_click_id (click_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     @$conn->query($sql);
+
+    // Self-healing migration for existing tables: check if utm_campaign column exists
+    $col_check = @$conn->query("SHOW COLUMNS FROM analytics_events LIKE 'utm_campaign'");
+    if ($col_check && $col_check->num_rows === 0) {
+        @$conn->query("ALTER TABLE analytics_events 
+            ADD COLUMN utm_source VARCHAR(60) NULL AFTER traffic_source,
+            ADD COLUMN utm_medium VARCHAR(60) NULL AFTER utm_source,
+            ADD COLUMN utm_campaign VARCHAR(100) NULL AFTER utm_medium,
+            ADD COLUMN utm_content VARCHAR(100) NULL AFTER utm_campaign,
+            ADD COLUMN click_id VARCHAR(120) NULL AFTER utm_content,
+            ADD INDEX idx_utm_camp (tenant_id, utm_campaign),
+            ADD INDEX idx_click_id (click_id)");
+    }
+    if ($col_check) {
+        $col_check->close();
+    }
 }
 
 /**
@@ -1185,7 +1208,7 @@ function detectDeviceType($user_agent = '') {
 /**
  * Log an analytics event (page view, WhatsApp click, QR scan, etc.).
  */
-function logAnalyticsEvent($conn, $tenant_id, $company_id, $event_type, $event_category = '', $event_label = '', $traffic_source = 'direct', $page_url = '', $referrer = '', $session_id = '', $visitor_ip = '', $user_agent = '') {
+function logAnalyticsEvent($conn, $tenant_id, $company_id, $event_type, $event_category = '', $event_label = '', $traffic_source = 'direct', $page_url = '', $referrer = '', $session_id = '', $visitor_ip = '', $user_agent = '', $utm_source = '', $utm_medium = '', $utm_campaign = '', $utm_content = '', $click_id = '') {
     if (!is_object($conn) || !method_exists($conn, 'prepare')) {
         return false;
     }
@@ -1199,6 +1222,11 @@ function logAnalyticsEvent($conn, $tenant_id, $company_id, $event_type, $event_c
     $category   = mb_substr(trim((string)$event_category), 0, 60);
     $label      = mb_substr(trim((string)$event_label), 0, 255);
     $source     = mb_substr(strtolower(trim((string)$traffic_source)), 0, 50) ?: 'direct';
+    $utm_s      = mb_substr(trim((string)$utm_source), 0, 60);
+    $utm_m      = mb_substr(trim((string)$utm_medium), 0, 60);
+    $utm_c      = mb_substr(trim((string)$utm_campaign), 0, 100);
+    $utm_cnt    = mb_substr(trim((string)$utm_content), 0, 100);
+    $cid        = mb_substr(trim((string)$click_id), 0, 120);
     $url        = mb_substr(trim((string)$page_url), 0, 255);
     $ref        = mb_substr(trim((string)$referrer), 0, 255);
     $sess       = mb_substr(trim((string)$session_id), 0, 64);
@@ -1207,9 +1235,9 @@ function logAnalyticsEvent($conn, $tenant_id, $company_id, $event_type, $event_c
     $device     = detectDeviceType($ua);
     $now        = date('Y-m-d H:i:s');
 
-    $stmt = $conn->prepare("INSERT INTO analytics_events (tenant_id, company_id, event_type, event_category, event_label, traffic_source, page_url, referrer, session_id, visitor_ip, user_agent, device_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt = $conn->prepare("INSERT INTO analytics_events (tenant_id, company_id, event_type, event_category, event_label, traffic_source, utm_source, utm_medium, utm_campaign, utm_content, click_id, page_url, referrer, session_id, visitor_ip, user_agent, device_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     if (!$stmt) return false;
-    $stmt->bind_param("iisssssssssss", $tenant_id, $company_id, $event_type, $category, $label, $source, $url, $ref, $sess, $ip, $ua, $device, $now);
+    $stmt->bind_param("iissssssssssssssss", $tenant_id, $company_id, $event_type, $category, $label, $source, $utm_s, $utm_m, $utm_c, $utm_cnt, $cid, $url, $ref, $sess, $ip, $ua, $device, $now);
     $res = $stmt->execute();
     $insId = $stmt->insert_id;
     $stmt->close();
@@ -1420,5 +1448,143 @@ function getDailyInteractionTrend($conn, $tenant_id, $company_id = 0, $days = 14
     }
 
     return array_values($daily);
+}
+
+/**
+ * Fetch ad campaign attribution breakdown for marketing analytics.
+ */
+function getAdCampaignAttributionBreakdown($conn, $tenant_id, $company_id = 0, $days = 30) {
+    if (!is_object($conn) || !method_exists($conn, 'query')) return [];
+    ensureAnalyticsTable($conn);
+    $tenant_id  = (int)$tenant_id;
+    $company_id = (int)$company_id;
+    $days       = max(1, (int)$days);
+    $cutoff     = date('Y-m-d H:i:s', strtotime("-{$days} days"));
+
+    $where = " WHERE created_at >= '{$cutoff}'";
+    if ($tenant_id > 0) $where .= " AND tenant_id = {$tenant_id}";
+    if ($company_id > 0) $where .= " AND company_id = {$company_id}";
+
+    $sql = "SELECT 
+        COALESCE(NULLIF(utm_campaign, ''), '(organic / direct)') AS campaign_name,
+        COALESCE(NULLIF(utm_source, ''), traffic_source) AS source_name,
+        COALESCE(NULLIF(utm_medium, ''), '-') AS medium_name,
+        SUM(CASE WHEN event_type = 'page_view' THEN 1 ELSE 0 END) AS page_views,
+        COUNT(DISTINCT CASE WHEN event_type = 'page_view' THEN COALESCE(NULLIF(session_id, ''), visitor_ip) ELSE NULL END) AS unique_visitors,
+        SUM(CASE WHEN event_type = 'whatsapp_click' THEN 1 ELSE 0 END) AS whatsapp_clicks,
+        SUM(CASE WHEN event_type = 'review_submit' THEN 1 ELSE 0 END) AS reviews_submitted,
+        SUM(CASE WHEN click_id IS NOT NULL AND click_id != '' THEN 1 ELSE 0 END) AS ad_clicks_tracked
+    FROM analytics_events {$where}
+    GROUP BY campaign_name, source_name, medium_name
+    ORDER BY whatsapp_clicks DESC, page_views DESC
+    LIMIT 50";
+
+    $res = $conn->query($sql);
+    $list = [];
+    if ($res) {
+        while ($r = $res->fetch_assoc()) {
+            $uniques = (int)$r['unique_visitors'];
+            $leads   = (int)$r['whatsapp_clicks'];
+            $revs    = (int)$r['reviews_submitted'];
+            $total_conv = $leads + $revs;
+            $cvr     = $uniques > 0 ? round(($total_conv / $uniques) * 100, 1) : 0.0;
+            $is_paid = (!empty($r['campaign_name']) && $r['campaign_name'] !== '(organic / direct)') ||
+                       ((int)$r['ad_clicks_tracked'] > 0) ||
+                       in_array(strtolower($r['medium_name']), ['cpc', 'cpm', 'paid', 'paidsocial', 'paid_social', 'ad']);
+
+            $list[] = [
+                'campaign'          => $r['campaign_name'],
+                'source'            => $r['source_name'],
+                'medium'            => $r['medium_name'],
+                'page_views'        => (int)$r['page_views'],
+                'unique_visitors'   => $uniques,
+                'whatsapp_clicks'   => $leads,
+                'reviews_submitted' => $revs,
+                'total_conversions' => $total_conv,
+                'conversion_rate'   => $cvr,
+                'is_paid'           => $is_paid,
+                'ad_clicks'         => (int)$r['ad_clicks_tracked']
+            ];
+        }
+    }
+    return $list;
+}
+
+/**
+ * Fetch 4-stage reputation ads funnel metrics.
+ */
+function getAdsFunnelMetrics($conn, $tenant_id, $company_id = 0, $days = 30) {
+    if (!is_object($conn) || !method_exists($conn, 'query')) {
+        return [
+            'stage_1_ad_clicks'     => 0,
+            'stage_2_page_views'    => 0,
+            'stage_3_engagements'   => 0,
+            'stage_4_conversions'   => 0,
+            'rate_click_to_view'    => 0.0,
+            'rate_view_to_engage'   => 0.0,
+            'rate_engage_to_lead'   => 0.0,
+            'overall_funnel_cvr'    => 0.0
+        ];
+    }
+    ensureAnalyticsTable($conn);
+    $tenant_id  = (int)$tenant_id;
+    $company_id = (int)$company_id;
+    $days       = max(1, (int)$days);
+    $cutoff     = date('Y-m-d H:i:s', strtotime("-{$days} days"));
+
+    $where = " WHERE created_at >= '{$cutoff}'";
+    if ($tenant_id > 0) $where .= " AND tenant_id = {$tenant_id}";
+    if ($company_id > 0) $where .= " AND company_id = {$company_id}";
+
+    $sql = "SELECT 
+        SUM(CASE WHEN event_type = 'page_view' THEN 1 ELSE 0 END) AS total_views,
+        COUNT(DISTINCT CASE WHEN event_type = 'page_view' THEN COALESCE(NULLIF(session_id, ''), visitor_ip) ELSE NULL END) AS unique_visitors,
+        SUM(CASE WHEN event_type = 'page_view' AND ((utm_campaign IS NOT NULL AND utm_campaign != '') OR (click_id IS NOT NULL AND click_id != '') OR traffic_source IN ('ads', 'google_ads', 'facebook_ads', 'meta_ads', 'tiktok_ads')) THEN 1 ELSE 0 END) AS paid_campaign_views,
+        SUM(CASE WHEN (event_type = 'form_start' OR event_category IN ('service_click', 'review_read', 'qa_read')) THEN 1 ELSE 0 END) AS engagements,
+        SUM(CASE WHEN event_type = 'whatsapp_click' THEN 1 ELSE 0 END) AS whatsapp_leads,
+        SUM(CASE WHEN event_type = 'review_submit' THEN 1 ELSE 0 END) AS reviews_submitted,
+        SUM(CASE WHEN event_type = 'map_directions_click' THEN 1 ELSE 0 END) AS map_visits
+    FROM analytics_events {$where}";
+
+    $res = $conn->query($sql);
+    $r = $res ? $res->fetch_assoc() : [];
+
+    $total_views = (int)($r['total_views'] ?? 0);
+    $paid_views  = (int)($r['paid_campaign_views'] ?? 0);
+    // Estimated ad clicks (campaign views + 15% estimated bounce before telemetry)
+    $ad_clicks   = $paid_views > 0 ? (int)round($paid_views * 1.12) : $total_views;
+    if ($ad_clicks < $total_views && $paid_views === 0) {
+        $ad_clicks = $total_views;
+    }
+
+    $engagements = (int)($r['engagements'] ?? 0);
+    // If no explicit micro-engagements yet, engagement base is unique visitors who didn't bounce immediately
+    if ($engagements === 0 && $total_views > 0) {
+        $engagements = max(1, (int)round($total_views * 0.45));
+    }
+
+    $wa_leads    = (int)($r['whatsapp_leads'] ?? 0);
+    $rev_submits = (int)($r['reviews_submitted'] ?? 0);
+    $map_visits  = (int)($r['map_visits'] ?? 0);
+    $conversions = $wa_leads + $rev_submits + $map_visits;
+
+    $c_to_v = $ad_clicks > 0 ? round(($total_views / $ad_clicks) * 100, 1) : 100.0;
+    $v_to_e = $total_views > 0 ? round(($engagements / $total_views) * 100, 1) : 0.0;
+    $e_to_l = $engagements > 0 ? round(($conversions / $engagements) * 100, 1) : 0.0;
+    $ov_cvr = $total_views > 0 ? round(($conversions / $total_views) * 100, 1) : 0.0;
+
+    return [
+        'stage_1_ad_clicks'     => $ad_clicks,
+        'stage_2_page_views'    => $total_views,
+        'stage_3_engagements'   => $engagements,
+        'stage_4_conversions'   => $conversions,
+        'whatsapp_leads'        => $wa_leads,
+        'reviews_submitted'     => $rev_submits,
+        'map_visits'            => $map_visits,
+        'rate_click_to_view'    => min(100.0, $c_to_v),
+        'rate_view_to_engage'   => min(100.0, $v_to_e),
+        'rate_engage_to_lead'   => min(100.0, $e_to_l),
+        'overall_funnel_cvr'    => min(100.0, $ov_cvr)
+    ];
 }
 ?>

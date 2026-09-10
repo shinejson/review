@@ -191,6 +191,13 @@ $map_embed_src        = !empty($company['map_embed_code']) ? extractMapEmbedSrc(
 $location_description = trim((string)($company['location_description'] ?? ''));
 $social_links         = function_exists('getCompanySocialLinks') ? getCompanySocialLinks($company) : [];
 
+// Ad Funnel Tracking & Pixels Configuration
+require_once dirname(__DIR__) . '/includes/ad_conversions.php';
+$ad_config = function_exists('getTenantAdConfig') ? getTenantAdConfig($conn, $tenant_id, $company_id) : null;
+$meta_pixel_id        = !empty($ad_config['meta_pixel_id']) ? htmlspecialchars($ad_config['meta_pixel_id']) : '';
+$google_conversion_id = !empty($ad_config['google_ads_conversion_id']) ? htmlspecialchars($ad_config['google_ads_conversion_id']) : '';
+$tiktok_pixel_id      = !empty($ad_config['tiktok_pixel_id']) ? htmlspecialchars($ad_config['tiktok_pixel_id']) : '';
+
 $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
 
 // ============================================================
@@ -324,6 +331,50 @@ if ($total_ratings > 0) {
     <script type="application/ld+json">
 <?php echo json_encode($schema_json_ld, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>
     </script>
+
+    <?php if (!empty($meta_pixel_id)): ?>
+    <!-- Meta Pixel Code -->
+    <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '<?php echo $meta_pixel_id; ?>');
+    fbq('track', 'PageView');
+    </script>
+    <noscript><img height="1" width="1" style="display:none"
+    src="https://www.facebook.com/tr?id=<?php echo $meta_pixel_id; ?>&ev=PageView&noscript=1"
+    /></noscript>
+    <!-- End Meta Pixel Code -->
+    <?php endif; ?>
+
+    <?php if (!empty($google_conversion_id)): ?>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo $google_conversion_id; ?>"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', '<?php echo $google_conversion_id; ?>');
+    </script>
+    <!-- End Google tag -->
+    <?php endif; ?>
+
+    <?php if (!empty($tiktok_pixel_id)): ?>
+    <!-- TikTok Pixel Code -->
+    <script>
+    !function (w, d, t) {
+      w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],ttq.setAndVerify=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndVerify(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndVerify(e,ttq.methods[n]);return e};ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=i,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};
+      ttq.load('<?php echo $tiktok_pixel_id; ?>');
+      ttq.page();
+    }(window, document, 'ttq');
+    </script>
+    <!-- End TikTok Pixel Code -->
+    <?php endif; ?>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2834,13 +2885,41 @@ function filterReviews(filter, btn) {
         sessId = 'v_' + Math.random().toString(36).substring(2, 15);
     }
 
-    // Determine traffic source
-    var urlParams = new URLSearchParams(window.location.search);
-    var srcParam = urlParams.get('src') || urlParams.get('ref') || '';
+    // Determine traffic source, UTM parameters, and Ad Click IDs
+    var urlParams   = new URLSearchParams(window.location.search);
+    var srcParam    = urlParams.get('src') || urlParams.get('ref') || '';
+    var utmSource   = urlParams.get('utm_source') || '';
+    var utmMedium   = urlParams.get('utm_medium') || '';
+    var utmCampaign = urlParams.get('utm_campaign') || '';
+    var utmContent  = urlParams.get('utm_content') || '';
+    var clickId     = urlParams.get('gclid') || urlParams.get('fbclid') || urlParams.get('ttclid') || '';
+
+    // Cache attribution parameters across sessions/tabs
+    try {
+        if (utmSource) sessionStorage.setItem('optibiz_utm_source', utmSource);
+        else utmSource = sessionStorage.getItem('optibiz_utm_source') || '';
+
+        if (utmMedium) sessionStorage.setItem('optibiz_utm_medium', utmMedium);
+        else utmMedium = sessionStorage.getItem('optibiz_utm_medium') || '';
+
+        if (utmCampaign) sessionStorage.setItem('optibiz_utm_campaign', utmCampaign);
+        else utmCampaign = sessionStorage.getItem('optibiz_utm_campaign') || '';
+
+        if (utmContent) sessionStorage.setItem('optibiz_utm_content', utmContent);
+        else utmContent = sessionStorage.getItem('optibiz_utm_content') || '';
+
+        if (clickId) sessionStorage.setItem('optibiz_click_id', clickId);
+        else clickId = sessionStorage.getItem('optibiz_click_id') || '';
+    } catch(e) {}
+
     var trafficSource = 'direct';
     if (srcParam === 'qr') trafficSource = 'qr';
     else if (srcParam === 'wa' || urlParams.get('invite')) trafficSource = 'whatsapp_invite';
     else if (srcParam === 'widget') trafficSource = 'widget';
+    else if (utmSource) trafficSource = utmSource.toLowerCase();
+    else if (urlParams.get('gclid')) trafficSource = 'google_ads';
+    else if (urlParams.get('fbclid')) trafficSource = 'meta_ads';
+    else if (urlParams.get('ttclid')) trafficSource = 'tiktok_ads';
     else if (referrer && referrer.indexOf(location.hostname) === -1) trafficSource = 'external';
 
     window.trackOptibizEvent = function(eventType, category, label) {
@@ -2851,10 +2930,40 @@ function filterReviews(filter, btn) {
             event_category: category || '',
             event_label: label || '',
             traffic_source: trafficSource,
+            utm_source: utmSource,
+            utm_medium: utmMedium,
+            utm_campaign: utmCampaign,
+            utm_content: utmContent,
+            click_id: clickId,
             page_url: pageUrl,
             referrer: referrer,
             session_id: sessId
         };
+
+        // Fire client-side pixel conversion events
+        if (eventType === 'whatsapp_click') {
+            if (typeof fbq === 'function') {
+                try { fbq('track', 'Contact', { content_name: 'WhatsApp Inquiry', company_id: companyId }); } catch(e) {}
+            }
+            if (typeof gtag === 'function') {
+                try { gtag('event', 'conversion', { 'event_category': 'WhatsApp', 'event_label': label || 'Inquiry' }); } catch(e) {}
+            }
+            if (typeof ttq === 'object' && typeof ttq.track === 'function') {
+                try { ttq.track('Contact'); } catch(e) {}
+            }
+        } else if (eventType === 'review_submit') {
+            if (typeof fbq === 'function') {
+                try { fbq('track', 'CompleteRegistration', { content_name: 'Customer Review' }); } catch(e) {}
+            }
+            if (typeof gtag === 'function') {
+                try { gtag('event', 'conversion', { 'event_category': 'Review', 'event_label': 'Submitted' }); } catch(e) {}
+            }
+        } else if (eventType === 'map_directions_click') {
+            if (typeof fbq === 'function') {
+                try { fbq('track', 'FindLocation'); } catch(e) {}
+            }
+        }
+
         var endpoint = '../api/submit_event.php';
         if (navigator.sendBeacon) {
             var blob = new Blob([JSON.stringify(data)], { type: 'application/json' });

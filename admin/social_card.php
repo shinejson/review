@@ -61,7 +61,7 @@ if ($company_id > 0) {
 }
 
 // Selected review from query param or first available
-$selected_id = isset($_GET['rating_id']) ? (int)$_GET['rating_id'] : 0;
+$selected_id = isset($_GET['rating_id']) ? (int)$_GET['rating_id'] : (isset($_GET['review_id']) ? (int)$_GET['review_id'] : 0);
 $initial_review = null;
 if ($selected_id > 0) {
     foreach ($reviews as $rev) {

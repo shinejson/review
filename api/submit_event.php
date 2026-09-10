@@ -83,6 +83,18 @@ $session_id     = sanitize($payload['session_id'] ?? '');
 $visitor_ip     = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
 $user_agent     = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
+// UTM parameters & Ad Click IDs (Google Ads gclid, Meta fbclid, TikTok ttclid)
+$utm_source   = sanitize($payload['utm_source'] ?? ($_GET['utm_source'] ?? ''));
+$utm_medium   = sanitize($payload['utm_medium'] ?? ($_GET['utm_medium'] ?? ''));
+$utm_campaign = sanitize($payload['utm_campaign'] ?? ($_GET['utm_campaign'] ?? ''));
+$utm_content  = sanitize($payload['utm_content'] ?? ($_GET['utm_content'] ?? ''));
+$click_id     = sanitize($payload['click_id'] ?? ($payload['gclid'] ?? ($payload['fbclid'] ?? '')));
+
+// Auto-align traffic source if UTM source is specified but traffic_source was default
+if ($utm_source !== '' && ($traffic_source === 'direct' || $traffic_source === '')) {
+    $traffic_source = strtolower($utm_source);
+}
+
 // Prevent crawler spam / bot hits
 if (preg_match('/(bot|crawl|spider|slurp|facebookexternalhit|whatsapp|preview)/i', $user_agent)) {
     echo json_encode(['success' => true, 'ignored' => 'crawler']);
@@ -101,11 +113,43 @@ $event_id = logAnalyticsEvent(
     $referrer,
     $session_id,
     $visitor_ip,
-    $user_agent
+    $user_agent,
+    $utm_source,
+    $utm_medium,
+    $utm_campaign,
+    $utm_content,
+    $click_id
 );
 
+// High-Intent Server-Side Conversions API (CAPI) Dispatcher
+$capi_dispatched = false;
+$conversion_events = ['whatsapp_click', 'review_submit', 'map_directions_click', 'phone_click'];
+if (in_array($event_type, $conversion_events)) {
+    require_once dirname(__DIR__) . '/includes/ad_conversions.php';
+    $ad_config = getTenantAdConfig($conn, $tenant_id, $company_id);
+    if ($ad_config && !empty($ad_config['meta_pixel_id']) && !empty($ad_config['meta_capi_token'])) {
+        $userData = [
+            'client_ip_address' => $visitor_ip,
+            'client_user_agent' => $user_agent,
+            'click_id'          => $click_id,
+            'event_source_url'  => $page_url,
+            'email'             => sanitize($payload['email'] ?? ''),
+            'phone'             => sanitize($payload['phone'] ?? '')
+        ];
+        $customData = [
+            'content_name'   => $event_category ?: $event_type,
+            'event_label'    => $event_label,
+            'traffic_source' => $traffic_source,
+            'campaign'       => $utm_campaign
+        ];
+        $capi_res = dispatchMetaCapiEvent($ad_config, $event_type, $customData, $userData);
+        $capi_dispatched = (bool)($capi_res['ok'] ?? false);
+    }
+}
+
 echo json_encode([
-    'success'  => (bool)$event_id,
-    'event_id' => $event_id
+    'success'         => (bool)$event_id,
+    'event_id'        => $event_id,
+    'capi_dispatched' => $capi_dispatched
 ]);
 exit;
