@@ -1391,3 +1391,71 @@ if (!function_exists('sa_tenant_counts')) {
         return $counts;
     }
 }
+
+if (!function_exists('sa_macro_telemetry')) {
+    /**
+     * Platform-wide telemetry rollups for Super Admin analytics:
+     * - Total WhatsApp leads delivered across all tenants
+     * - Total QR counter scans across all tenants
+     * - Total public profile impressions / page views
+     * - Paid ads pixel adoption count
+     */
+    function sa_macro_telemetry($conn)
+    {
+        $data = [
+            'whatsapp_leads'       => 0,
+            'qr_scans'             => 0,
+            'page_views'           => 0,
+            'total_events'         => 0,
+            'ad_pixel_tenants'     => 0,
+            'lead_conversion_rate' => 0.0,
+        ];
+        if (sa_table_exists($conn, 'analytics_events')) {
+            $data['whatsapp_leads'] = (int) sa_scalar($conn, "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'whatsapp_click'", 0);
+            $data['qr_scans']       = (int) sa_scalar($conn, "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'qr_scan'", 0);
+            $data['page_views']     = (int) sa_scalar($conn, "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'page_view'", 0);
+            $data['total_events']   = (int) sa_scalar($conn, "SELECT COUNT(*) FROM analytics_events", 0);
+            if ($data['page_views'] > 0) {
+                $data['lead_conversion_rate'] = round(($data['whatsapp_leads'] / $data['page_views']) * 100, 1);
+            }
+        }
+        if (sa_table_exists($conn, 'company_ad_settings')) {
+            $data['ad_pixel_tenants'] = (int) sa_scalar(
+                $conn,
+                "SELECT COUNT(DISTINCT tenant_id) FROM company_ad_settings
+                  WHERE (meta_pixel_id IS NOT NULL AND meta_pixel_id != '')
+                     OR (google_tag_id IS NOT NULL AND google_tag_id != '')
+                     OR (tiktok_pixel_id IS NOT NULL AND tiktok_pixel_id != '')",
+                0
+            );
+        }
+        return $data;
+    }
+}
+
+if (!function_exists('sa_ensure_payments_schema')) {
+    /** Auto-ensure the subscription_payments table exists for offline & recorded payments. */
+    function sa_ensure_payments_schema($conn)
+    {
+        static $done = false;
+        if ($done || !$conn) return;
+        $conn->query(
+            "CREATE TABLE IF NOT EXISTS subscription_payments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                tenant_id INT NOT NULL,
+                receipt_number VARCHAR(32) NOT NULL,
+                amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                payment_method VARCHAR(50) NOT NULL DEFAULT 'Bank Wire',
+                transaction_ref VARCHAR(100) NULL,
+                months_extended INT NOT NULL DEFAULT 0,
+                notes TEXT NULL,
+                recorded_by VARCHAR(100) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_tenant_pmt (tenant_id),
+                INDEX idx_receipt_num (receipt_number)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"
+        );
+        $done = true;
+    }
+}
+

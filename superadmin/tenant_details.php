@@ -21,7 +21,7 @@ if ($tenant_id <= 0) {
 }
 
 /* ---------- POST handlers ---------- */
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!sa_csrf_ok()) {
         sa_flash('error', 'Your session expired. Please try again.');
         redirect('tenant_details.php?id=' . $tenant_id);
@@ -213,6 +213,14 @@ include __DIR__ . '/_shell.php';
     </div>
     <div class="sa-head-actions">
         <a class="sa-btn sa-btn-ghost" href="tenants.php"><?php echo sa_icon('arrow-left'); ?> All tenants</a>
+        <form method="POST" action="tenants.php" style="display:inline">
+            <?php echo sa_csrf_field(); ?>
+            <input type="hidden" name="action" value="impersonate">
+            <input type="hidden" name="tenant_id" value="<?php echo (int) $tenant_id; ?>">
+            <button type="submit" class="sa-btn sa-btn-ghost" style="color:var(--sa-primary, #6366f1);border:1px solid currentColor;" title="Impersonate tenant in support session">
+                <?php echo sa_icon('external'); ?> Log in as Tenant
+            </button>
+        </form>
         <form method="POST" action="tenant_details.php?id=<?php echo (int) $tenant_id; ?>" style="display:inline">
             <?php echo sa_csrf_field(); ?>
             <input type="hidden" name="action" value="extend">

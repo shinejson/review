@@ -100,6 +100,11 @@ function checkTenantSubscription($conn = null) {
     $_SESSION['tenant_status'] = $status;
     $_SESSION['tenant_subscription_end'] = $end_date;
 
+    // Super admin support impersonation mode allows troubleshooting even if subscription is expired/cancelled
+    if (!empty($_SESSION['impersonator_super_admin_id'])) {
+        return;
+    }
+
     // Check if subscription is cancelled or inactive
     if ($status === 'cancelled' || $status === 'inactive') {
         redirectToUpgrade('subscription_cancelled');
@@ -168,6 +173,7 @@ function sa_permission_list() {
         'subscriptions' => 'Subscriptions',
         'plans'         => 'Plans',
         'quotes'        => 'Quote requests',
+        'reviews'       => 'Reviews moderation',
         'customers'     => 'Customers',
         'categories'    => 'Categories',
         'users'         => 'Users & roles',

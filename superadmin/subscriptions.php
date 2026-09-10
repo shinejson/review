@@ -19,7 +19,7 @@ require_sa_permission('subscriptions');
 admin_ensure_schema($conn);
 
 /* ---------- POST handlers ---------- */
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!sa_csrf_ok()) {
         sa_flash('error', 'Your session expired. Please try again.');
         redirect('subscriptions.php');
@@ -113,6 +113,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         sa_flash('success', 'Subscription extended by ' . $months . ' month' . ($months === 1 ? '' : 's') . '.');
         redirect('subscriptions.php');
     }
+
+    if ($action === 'record_payment') {
+        $tenant_id = (int) ($_POST['tenant_id'] ?? 0);
+        $amount = (float) ($_POST['amount'] ?? 0);
+        $payment_method = sanitize($_POST['payment_method'] ?? 'Bank Wire');
+        $transaction_ref = sanitize($_POST['transaction_ref'] ?? '');
+        $months_extended = max(0, min(60, (int) ($_POST['months_extended'] ?? 0)));
+        $notes = sanitize($_POST['notes'] ?? '');
+        $recorded_by = $_SESSION['super_admin_username'] ?? 'Super Admin';
+
+        if (!$tenant_id || $amount <= 0) {
+            sa_flash('error', 'Please select a tenant and enter a valid payment amount.');
+        } else {
+            sa_ensure_payments_schema($conn);
+            $seq = (int) sa_scalar($conn, "SELECT COUNT(*) FROM subscription_payments", 0) + 1;
+            $receipt_number = 'INV-' . date('Y') . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
+
+            $stmt = $conn->prepare(
+                "INSERT INTO subscription_payments 
+                    (tenant_id, receipt_number, amount, payment_method, transaction_ref, months_extended, notes, recorded_by, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())"
+            );
+            $stmt->bind_param("isdssiss", $tenant_id, $receipt_number, $amount, $payment_method, $transaction_ref, $months_extended, $notes, $recorded_by);
+            $stmt->execute();
+            $payment_id = $conn->insert_id;
+            $stmt->close();
+
+            if ($months_extended > 0) {
+                $conn->query(
+                    "UPDATE tenants
+                        SET subscription_end_date = DATE_ADD(COALESCE(subscription_end_date, CURDATE()), INTERVAL " . $months_extended . " MONTH),
+                            subscription_status = 'active'
+                      WHERE id = " . $tenant_id
+                );
+            }
+
+            sa_flash('success', 'Payment of ' . sa_money($amount) . ' recorded successfully. Receipt #' . $receipt_number . ' generated.');
+        }
+        redirect('subscriptions.php');
+    }
+}
+
+/* ---------- 1-Click Server CSV Export ---------- */
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=subscriptions-' . date('Y-m-d') . '.csv');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['ID', 'Company Name', 'Plan', 'Monthly Price', 'Status', 'Auto Renew', 'Profiles Used', 'Renews On', 'Joined On']);
+    $sub_rows = sa_query(
+        $conn,
+        "SELECT t.*, p.plan_name,
+                (SELECT COUNT(*) FROM customers c WHERE c.tenant_id = t.id) AS customer_count
+           FROM tenants t
+           LEFT JOIN subscription_plans p ON p.id = t.plan_id
+          ORDER BY t.created_at DESC",
+        ['tenants', 'subscription_plans', 'customers']
+    );
+    foreach ($sub_rows as $sr) {
+        fputcsv($out, [
+            $sr['id'],
+            $sr['company_name'],
+            $sr['plan_name'] ?: 'No plan',
+            $sr['subscription_price'],
+            $sr['subscription_status'],
+            !empty($sr['auto_renew']) ? 'Yes' : 'No',
+            $sr['customer_count'],
+            $sr['subscription_end_date'] ?: 'N/A',
+            $sr['created_at'],
+        ]);
+    }
+    fclose($out);
+    exit();
 }
 
 /* ---------- filters ---------- */
@@ -168,6 +241,19 @@ $plan_requests = admin_rows(
       WHERE sr.status = 'pending'
       ORDER BY sr.created_at ASC"
 );
+
+/* Offline & Recorded Payment Ledger */
+sa_ensure_payments_schema($conn);
+$recent_payments = sa_query(
+    $conn,
+    "SELECT sp.*, t.company_name, t.email AS tenant_email
+       FROM subscription_payments sp
+       JOIN tenants t ON sp.tenant_id = t.id
+      ORDER BY sp.created_at DESC LIMIT 15",
+    ['subscription_payments', 'tenants']
+);
+$tenants_dropdown = sa_query($conn, "SELECT id, company_name, subscription_price FROM tenants ORDER BY company_name ASC", 'tenants');
+
 $mrr_visible = 0.0;
 foreach ($rows as $r) {
     if ($r['subscription_status'] === 'active') {
@@ -203,10 +289,15 @@ include __DIR__ . '/_shell.php';
            <?php echo sa_e(sa_num($m['paying'])); ?> paying tenants.</p>
     </div>
     <div class="sa-head-actions">
-        <button type="button" class="sa-btn sa-btn-ghost" data-sa-export="#subsTable" data-sa-export-name="optibiz-subscriptions">
-            <?php echo sa_icon('download'); ?> Export CSV
+        <button type="button" class="sa-btn sa-btn-ghost" data-sa-export="#subsTable" data-sa-export-name="optibiz-subscriptions" title="Export visible table">
+            <?php echo sa_icon('download'); ?> View CSV
         </button>
-        <a class="sa-btn sa-btn-primary" href="tenants.php"><?php echo sa_icon('plus'); ?> New tenant</a>
+        <a class="sa-btn sa-btn-ghost" href="subscriptions.php?export=csv" title="Export entire subscriptions database">
+            <?php echo sa_icon('file-text'); ?> Full DB CSV
+        </a>
+        <button type="button" class="sa-btn sa-btn-primary" data-sa-open-dialog="#recordPaymentDialog">
+            <?php echo sa_icon('card'); ?> Record Offline Payment
+        </button>
     </div>
 </div>
 
@@ -452,5 +543,183 @@ foreach ($chips as $key => $chip): ?>
         <span>Toggles and status selects save immediately</span>
     </div>
 </section>
+
+<!-- ============ OFFLINE PAYMENTS & INVOICES ============ -->
+<section class="sa-card sa-mt">
+    <div class="sa-card-head">
+        <div>
+            <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:2px">
+                <span class="sa-badge" style="background:rgba(34,197,94,0.1);color:#15803d;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.5px">Receipt Ledger</span>
+            </div>
+            <h3>Recent Recorded Payments &amp; Invoices</h3>
+            <p>Manual bank wires, mobile money payments, and printable receipts issued by administrators.</p>
+        </div>
+        <div class="sa-card-head-actions">
+            <button type="button" class="sa-btn sa-btn-sm sa-btn-primary" data-sa-open-dialog="#recordPaymentDialog">
+                <?php echo sa_icon('plus'); ?> Record Payment
+            </button>
+        </div>
+    </div>
+
+    <div class="sa-table-wrap">
+        <table class="sa-table" id="paymentsTable">
+            <thead scope="col">
+                <tr>
+                    <th scope="col">Receipt #</th>
+                    <th scope="col">Tenant</th>
+                    <th scope="col" class="num">Amount</th>
+                    <th scope="col">Method</th>
+                    <th scope="col">Reference / Memo</th>
+                    <th scope="col">Extension</th>
+                    <th scope="col">Recorded On</th>
+                    <th scope="col"><span class="sa-sr-only">Receipt Action</span></th>
+                </tr>
+            </thead>
+            <tbody>
+<?php if (!$recent_payments): ?>
+                <tr>
+                    <td colspan="8">
+                        <div class="sa-empty">
+                            <?php echo sa_icon('card'); ?>
+                            <strong>No recorded payments yet</strong>
+                            <p>Use the "Record Offline Payment" button to log manual wire transfers or mobile money payments and print receipts.</p>
+                        </div>
+                    </td>
+                </tr>
+<?php else: ?>
+<?php foreach ($recent_payments as $pmt): ?>
+                <tr>
+                    <td>
+                        <strong class="sa-mono" style="color:var(--sa-primary,#6366f1);font-weight:600">
+                            <?php echo sa_e($pmt['receipt_number']); ?>
+                        </strong>
+                    </td>
+                    <td>
+                        <div class="sa-cell-main">
+                            <span class="sa-cell-avatar"><?php echo sa_e(sa_initials($pmt['company_name'])); ?></span>
+                            <span class="sa-cell-text">
+                                <strong><?php echo sa_e($pmt['company_name']); ?></strong>
+                                <span><?php echo sa_e($pmt['tenant_email']); ?></span>
+                            </span>
+                        </div>
+                    </td>
+                    <td class="num">
+                        <strong><?php echo sa_e(sa_money($pmt['amount'])); ?></strong>
+                    </td>
+                    <td>
+                        <span class="sa-badge" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1">
+                            <?php echo sa_e($pmt['payment_method']); ?>
+                        </span>
+                    </td>
+                    <td>
+                        <span class="sa-cell-text">
+                            <strong><?php echo sa_e($pmt['transaction_ref'] ?: '—'); ?></strong>
+                            <span><?php echo sa_e($pmt['notes'] ?: ''); ?></span>
+                        </span>
+                    </td>
+                    <td>
+                        <?php if ((int)$pmt['months_extended'] > 0): ?>
+                            <span class="sa-pill" style="color:var(--sa-success);background:rgba(34,197,94,0.1)">
+                                +<?php echo (int)$pmt['months_extended']; ?> month<?php echo (int)$pmt['months_extended'] === 1 ? '' : 's'; ?>
+                            </span>
+                        <?php else: ?>
+                            <span class="sa-faint" style="font-size:11.5px">No term extension</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <span style="font-size:11.5px;color:var(--sa-muted)">
+                            <?php echo sa_e(sa_date($pmt['created_at'])); ?>
+                            <span style="display:block;font-size:10.5px">by <?php echo sa_e($pmt['recorded_by'] ?: 'Admin'); ?></span>
+                        </span>
+                    </td>
+                    <td>
+                        <a class="sa-btn sa-btn-sm sa-btn-ghost" href="invoice_receipt.php?id=<?php echo (int)$pmt['id']; ?>" target="_blank" title="View &amp; Print Receipt / Invoice">
+                            <?php echo sa_icon('file-text'); ?> Receipt
+                        </a>
+                    </td>
+                </tr>
+<?php endforeach; ?>
+<?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ============ RECORD PAYMENT DIALOG ============ -->
+<dialog class="sa-dialog" id="recordPaymentDialog" aria-labelledby="recordPaymentDialogTitle">
+    <form method="POST" action="subscriptions.php" class="sa-form">
+        <?php echo sa_csrf_field(); ?>
+        <input type="hidden" name="action" value="record_payment">
+        <div class="sa-dialog-head">
+            <div>
+                <h3 id="recordPaymentDialogTitle">Record Offline Payment</h3>
+                <p>Log a bank wire, mobile money transfer, or cash receipt and issue a printable invoice/receipt.</p>
+            </div>
+            <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>
+        </div>
+
+        <div class="sa-dialog-body">
+            <div class="sa-form-grid">
+                <div class="sa-field" style="grid-column:1/-1">
+                    <label for="p_tenant">Tenant / Company *</label>
+                    <select id="p_tenant" name="tenant_id" required>
+                        <option value="">Select a tenant…</option>
+                        <?php foreach ($tenants_dropdown as $td): ?>
+                            <option value="<?php echo (int) $td['id']; ?>" data-price="<?php echo (float) $td['subscription_price']; ?>">
+                                <?php echo sa_e($td['company_name']); ?> (Plan: <?php echo sa_e(sa_money($td['subscription_price'])); ?>/mo)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="sa-field">
+                    <label for="p_amount">Payment Amount *</label>
+                    <input id="p_amount" type="number" step="0.01" min="0.01" name="amount" placeholder="e.g. 150.00" required>
+                </div>
+
+                <div class="sa-field">
+                    <label for="p_method">Payment Method *</label>
+                    <select id="p_method" name="payment_method" required>
+                        <option value="Bank Wire / Transfer">Bank Wire / Transfer</option>
+                        <option value="Mobile Money (MTN / M-Pesa / Airtel)">Mobile Money (MTN / M-Pesa / Airtel)</option>
+                        <option value="Cash">Cash</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="Credit Card (Manual POS)">Credit Card (Manual POS)</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <div class="sa-field">
+                    <label for="p_ref">Transaction Ref / Slip #</label>
+                    <input id="p_ref" type="text" name="transaction_ref" placeholder="e.g. MTN-981240, WIRE-4819">
+                </div>
+
+                <div class="sa-field">
+                    <label for="p_ext">Extend Subscription By</label>
+                    <select id="p_ext" name="months_extended">
+                        <option value="0">Do not extend (record payment only)</option>
+                        <option value="1">1 Month</option>
+                        <option value="3">3 Months (Quarterly)</option>
+                        <option value="6">6 Months (Half-year)</option>
+                        <option value="12" selected>12 Months (1 Year)</option>
+                        <option value="24">24 Months (2 Years)</option>
+                    </select>
+                </div>
+
+                <div class="sa-field" style="grid-column:1/-1">
+                    <label for="p_notes">Internal Notes / Payment Memo</label>
+                    <textarea id="p_notes" name="notes" rows="2" placeholder="Optional notes for the invoice receipt (e.g. paid via Stanbic bank transfer, confirmed by finance)"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="sa-dialog-foot">
+            <button type="button" class="sa-btn sa-btn-ghost" data-sa-close-dialog>Cancel</button>
+            <button type="submit" class="sa-btn sa-btn-primary">
+                <?php echo sa_icon('check'); ?> Record Payment &amp; Issue Receipt
+            </button>
+        </div>
+    </form>
+</dialog>
 
 <?php include __DIR__ . '/_shell_footer.php'; ?>

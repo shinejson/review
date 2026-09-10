@@ -16,7 +16,7 @@ requireSuperAdminLogin();
 require_sa_permission('tenants');
 
 /* ---------- POST handlers (PRG: redirect after every write) ---------- */
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!sa_csrf_ok()) {
         sa_flash('error', 'Your session expired. Please try again.');
         redirect('tenants.php');
@@ -172,17 +172,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         redirect('tenants.php');
     }
+
+    if ($action === 'impersonate') {
+        $id = (int) ($_POST['tenant_id'] ?? 0);
+        $tenant = sa_one($conn, "SELECT * FROM tenants WHERE id = " . $id, 'tenants');
+        if (!$tenant) {
+            sa_flash('error', 'Tenant not found.');
+            redirect('tenants.php');
+        }
+
+        // Store super admin identity for clean exit
+        $_SESSION['impersonator_super_admin_id'] = (int) $_SESSION['super_admin_id'];
+        $_SESSION['impersonator_super_admin_name'] = $_SESSION['super_admin_username'] ?? 'Super Admin';
+
+        // Set tenant session context
+        $_SESSION['tenant_id'] = (int) $tenant['id'];
+        $_SESSION['tenant_name'] = $tenant['company_name'];
+        $_SESSION['tenant_logo'] = $tenant['logo'] ?? '';
+        $_SESSION['tenant_username'] = $tenant['username'];
+        $_SESSION['tenant_email'] = $tenant['email'];
+        $_SESSION['tenant_plan_id'] = $tenant['plan_id'];
+        $_SESSION['tenant_status'] = $tenant['subscription_status'];
+        $_SESSION['tenant_subscription_end'] = $tenant['subscription_end_date'] ?? null;
+        $_SESSION['user_type'] = 'tenant';
+        $_SESSION['admin_username'] = $tenant['username'];
+
+        redirect('../admin/index.php');
+    }
+}
+
+/* ---------- 1-click server CSV export ---------- */
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=tenants-' . date('Y-m-d') . '.csv');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['ID', 'Company Name', 'Email', 'Phone', 'Username', 'Plan', 'Price/mo', 'Status', 'Profiles Used', 'Profiles Limit', 'Reviews Used', 'Reviews Limit', 'Renews On', 'Created At']);
+    $export_rows = sa_query(
+        $conn,
+        "SELECT t.*, p.plan_name, p.max_customers, p.max_ratings,
+                (SELECT COUNT(*) FROM customers c WHERE c.tenant_id = t.id) AS customer_count,
+                (SELECT COUNT(*) FROM ratings r JOIN customers c ON r.company_id = c.id WHERE c.tenant_id = t.id) AS rating_count
+           FROM tenants t
+           LEFT JOIN subscription_plans p ON p.id = t.plan_id
+          ORDER BY t.created_at DESC",
+        ['tenants', 'subscription_plans', 'customers']
+    );
+    foreach ($export_rows as $er) {
+        fputcsv($out, [
+            $er['id'],
+            $er['company_name'],
+            $er['email'],
+            $er['phone'],
+            $er['username'],
+            $er['plan_name'] ?: 'No plan',
+            $er['subscription_price'],
+            $er['subscription_status'],
+            $er['customer_count'],
+            (int)($er['max_customers'] ?? 0) >= 999 ? 'Unlimited' : (int)($er['max_customers'] ?? 0),
+            $er['rating_count'],
+            (int)($er['max_ratings'] ?? 0) >= 9999 ? 'Unlimited' : (int)($er['max_ratings'] ?? 0),
+            $er['subscription_end_date'] ?: 'N/A',
+            $er['created_at'],
+        ]);
+    }
+    fclose($out);
+    exit();
 }
 
 /* ---------- read data ---------- */
-$filter = isset($_GET['status']) ? preg_replace('/[^a-z]/', '', strtolower($_GET['status'])) : 'all';
-$allowed = ['all', 'active', 'trial', 'inactive', 'cancelled'];
+$filter = isset($_GET['status']) ? preg_replace('/[^a-z_]/', '', strtolower($_GET['status'])) : 'all';
+$allowed = ['all', 'active', 'trial', 'inactive', 'cancelled', 'near_limit'];
 if (!in_array($filter, $allowed, true)) {
     $filter = 'all';
 }
 $q = isset($_GET['q']) ? trim($_GET['q']) : '';
 
-$where = $filter === 'all' ? '' : " WHERE t.subscription_status = '" . $filter . "'";
+$where = ($filter === 'all' || $filter === 'near_limit') ? '' : " WHERE t.subscription_status = '" . $filter . "'";
 if ($q !== '') {
     $like = '%' . $q . '%';
     $escaped = $conn->real_escape_string($like);
@@ -191,17 +257,43 @@ if ($q !== '') {
         . "' OR t.username LIKE '" . $escaped . "')";
 }
 
-$tenants = sa_query(
+$raw_tenants = sa_query(
     $conn,
-    "SELECT t.*, p.plan_name, p.price AS plan_price,
-            (SELECT COUNT(*) FROM customers c WHERE c.tenant_id = t.id) AS customer_count
+    "SELECT t.*, p.plan_name, p.price AS plan_price, p.max_customers, p.max_ratings,
+            (SELECT COUNT(*) FROM customers c WHERE c.tenant_id = t.id) AS customer_count,
+            (SELECT COUNT(*) FROM ratings r JOIN customers c ON r.company_id = c.id WHERE c.tenant_id = t.id) AS rating_count
        FROM tenants t
        LEFT JOIN subscription_plans p ON p.id = t.plan_id"
     . $where . " ORDER BY t.created_at DESC",
     ['tenants', 'subscription_plans', 'customers']
 );
+
+$near_limit_total = 0;
+$tenants = [];
+foreach ($raw_tenants as $t) {
+    $mc = (int) ($t['max_customers'] ?? 0);
+    $mr = (int) ($t['max_ratings'] ?? 0);
+    $cc = (int) ($t['customer_count'] ?? 0);
+    $rc = (int) ($t['rating_count'] ?? 0);
+    $cpct = $mc > 0 ? round(($cc / $mc) * 100) : 0;
+    $rpct = $mr > 0 ? round(($rc / $mr) * 100) : 0;
+    $is_near = ($mc > 0 && $mc < 999 && $cpct >= 80) || ($mr > 0 && $mr < 9999 && $rpct >= 80);
+    if ($is_near) {
+        $near_limit_total++;
+    }
+    $t['cust_pct'] = $cpct;
+    $t['rat_pct'] = $rpct;
+    $t['is_near_limit'] = $is_near;
+
+    if ($filter === 'near_limit' && !$is_near) {
+        continue;
+    }
+    $tenants[] = $t;
+}
+
 $plans = sa_query($conn, "SELECT id, plan_name, price FROM subscription_plans WHERE status = 'active' ORDER BY price ASC", 'subscription_plans');
 $counts = sa_tenant_counts($conn);
+$counts['near_limit'] = $near_limit_total;
 $m = sa_metrics($conn);
 
 /* ---------- page meta ---------- */
@@ -234,9 +326,12 @@ include __DIR__ . '/_shell.php';
            <?php echo sa_e(sa_money($m['mrr'])); ?> MRR</p>
     </div>
     <div class="sa-head-actions">
-        <button type="button" class="sa-btn sa-btn-ghost" data-sa-export="#tenantsTable" data-sa-export-name="optibiz-tenants">
-            <?php echo sa_icon('download'); ?> Export CSV
+        <button type="button" class="sa-btn sa-btn-ghost" data-sa-export="#tenantsTable" data-sa-export-name="optibiz-tenants" title="Export visible table to CSV">
+            <?php echo sa_icon('download'); ?> View CSV
         </button>
+        <a class="sa-btn sa-btn-ghost" href="tenants.php?export=csv" title="Download entire database records">
+            <?php echo sa_icon('file-text'); ?> Full DB CSV
+        </a>
         <button type="button" class="sa-btn sa-btn-primary" data-sa-open-dialog="#tenantCreateDialog">
             <?php echo sa_icon('plus'); ?> New tenant
         </button>
@@ -252,11 +347,12 @@ include __DIR__ . '/_shell.php';
 <?php foreach ([
     'all' => 'All tenants', 'active' => 'Active', 'trial' => 'Trial',
     'inactive' => 'Inactive', 'cancelled' => 'Cancelled',
+    'near_limit' => 'Near Limit / Upsell',
 ] as $key => $label): ?>
-            <a class="sa-chip<?php echo $filter === $key ? ' active' : ''; ?>"
+            <a class="sa-chip<?php echo $filter === $key ? ' active' : ''; ?><?php echo $key === 'near_limit' && !empty($counts['near_limit']) ? ' is-alert' : ''; ?>"
                href="tenants.php?status=<?php echo $key; ?><?php echo $q !== '' ? '&q=' . urlencode($q) : ''; ?>"
                aria-pressed="<?php echo $filter === $key ? 'true' : 'false'; ?>">
-                <?php echo sa_e($label); ?><span class="count"><?php echo (int) $counts[$key]; ?></span>
+                <?php echo sa_e($label); ?><span class="count"><?php echo (int) ($counts[$key] ?? 0); ?></span>
             </a>
 <?php endforeach; ?>
         </div>
@@ -279,7 +375,7 @@ include __DIR__ . '/_shell.php';
 <section class="sa-card">
     <div class="sa-card-head">
         <div>
-            <h3><?php echo sa_e(ucfirst($filter)); ?> tenants</h3>
+            <h3><?php echo sa_e(ucfirst(str_replace('_', ' ', $filter))); ?> tenants</h3>
             <p><?php echo sa_e(sa_num(count($tenants))); ?> result<?php echo count($tenants) === 1 ? '' : 's'; ?><?php echo $q !== '' ? ' for “' . sa_e($q) . '”' : ''; ?></p>
         </div>
         <div class="sa-card-head-actions">
@@ -297,7 +393,7 @@ include __DIR__ . '/_shell.php';
                     <th data-sa-sort="3" scope="col" aria-sort="none">Plan</th>
                     <th data-sa-sort="4" data-type="num" scope="col" aria-sort="none">Price / mo</th>
                     <th data-sa-sort="5" scope="col" aria-sort="none">Status</th>
-                    <th data-sa-sort="6" data-type="num" scope="col" aria-sort="none">Companies</th>
+                    <th data-sa-sort="6" data-type="num" scope="col" aria-sort="none">Quota usage</th>
                     <th data-sa-sort="7" data-type="date" scope="col" aria-sort="none">Renews</th>
                     <th data-sa-sort="8" data-type="date" scope="col" aria-sort="none">Joined</th>
                     <th data-no-export scope="col"><span class="sa-sr-only">Actions</span></th>
@@ -356,7 +452,35 @@ include __DIR__ . '/_shell.php';
                             </select>
                         </form>
                     </td>
-                    <td class="num" data-sort-value="<?php echo (int) $t['customer_count']; ?>"><?php echo sa_e(sa_num($t['customer_count'])); ?></td>
+                    <td data-sort-value="<?php echo (int) $t['customer_count']; ?>">
+                        <div style="font-size:11px;display:flex;flex-direction:column;gap:3px;min-width:120px">
+                            <div>
+                                <div style="display:flex;justify-content:space-between;color:var(--sa-muted);font-size:10.5px">
+                                    <span>Profiles</span>
+                                    <span><strong><?php echo (int)$t['customer_count']; ?></strong>/<?php echo (int)($t['max_customers'] ?? 0) >= 999 ? '∞' : (int)($t['max_customers'] ?? 0); ?></span>
+                                </div>
+                                <?php if ((int)($t['max_customers'] ?? 0) > 0 && (int)($t['max_customers'] ?? 0) < 999): ?>
+                                <div style="height:4px;background:rgba(0,0,0,0.08);border-radius:2px;overflow:hidden;margin-top:2px">
+                                    <div style="height:100%;width:<?php echo min(100, $t['cust_pct']); ?>%;background:<?php echo $t['cust_pct'] >= 90 ? '#ef4444' : ($t['cust_pct'] >= 75 ? '#f59e0b' : '#6366f1'); ?>;border-radius:2px"></div>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                            <div>
+                                <div style="display:flex;justify-content:space-between;color:var(--sa-muted);font-size:10.5px">
+                                    <span>Reviews</span>
+                                    <span><strong><?php echo (int)$t['rating_count']; ?></strong>/<?php echo (int)($t['max_ratings'] ?? 0) >= 9999 ? '∞' : (int)($t['max_ratings'] ?? 0); ?></span>
+                                </div>
+                                <?php if ((int)($t['max_ratings'] ?? 0) > 0 && (int)($t['max_ratings'] ?? 0) < 9999): ?>
+                                <div style="height:4px;background:rgba(0,0,0,0.08);border-radius:2px;overflow:hidden;margin-top:2px">
+                                    <div style="height:100%;width:<?php echo min(100, $t['rat_pct']); ?>%;background:<?php echo $t['rat_pct'] >= 90 ? '#ef4444' : ($t['rat_pct'] >= 75 ? '#f59e0b' : '#0284c7'); ?>;border-radius:2px"></div>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                            <?php if (!empty($t['is_near_limit'])): ?>
+                                <span class="sa-badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-size:10px;padding:1px 5px;margin-top:2px;align-self:flex-start">Upsell Alert</span>
+                            <?php endif; ?>
+                        </div>
+                    </td>
                     <td data-sort-value="<?php echo sa_e($t['subscription_end_date'] ?: ''); ?>"><?php echo $renew_badge; ?></td>
                     <td data-sort-value="<?php echo sa_e($t['created_at']); ?>"><?php echo sa_e(sa_date($t['created_at'])); ?></td>
                     <td data-no-export>
@@ -364,6 +488,14 @@ include __DIR__ . '/_shell.php';
                             <a class="sa-btn sa-btn-sm sa-btn-ghost" href="tenant_details.php?id=<?php echo (int) $t['id']; ?>" title="Open <?php echo sa_e($t['company_name']); ?>">
                                 <?php echo sa_icon('eye'); ?>
                             </a>
+                            <form method="POST" action="tenants.php" style="display:inline">
+                                <?php echo sa_csrf_field(); ?>
+                                <input type="hidden" name="action" value="impersonate">
+                                <input type="hidden" name="tenant_id" value="<?php echo (int) $t['id']; ?>">
+                                <button type="submit" class="sa-btn sa-btn-sm sa-btn-ghost" style="color:var(--sa-primary, #6366f1)" title="Log in as <?php echo sa_e($t['company_name']); ?> (Support Mode)">
+                                    <?php echo sa_icon('external'); ?>
+                                </button>
+                            </form>
                             <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" title="Edit tenant"
                                     data-sa-edit-tenant
                                     data-id="<?php echo (int) $t['id']; ?>"

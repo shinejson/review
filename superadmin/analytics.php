@@ -27,6 +27,7 @@ $ratings = sa_ratings_trend($conn, min($months * 30, 180));
 $plans   = sa_plan_distribution($conn);
 $stars   = sa_star_distribution($conn);
 $top     = sa_top_companies($conn, 8);
+$telemetry = sa_macro_telemetry($conn);
 
 /* Monthly engagement: ratings per month */
 $rating_months = [];
@@ -224,6 +225,69 @@ include __DIR__ . '/_shell.php';
             <span class="sa-kpi-note">New MRR signed in the window</span>
         </div>
     </article>
+</div>
+
+<!-- ============ MACRO PLATFORM TELEMETRY & LEADS ============ -->
+<div class="sa-card sa-mb sa-anim">
+    <div class="sa-card-head">
+        <div>
+            <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:2px">
+                <span class="sa-badge" style="background:rgba(99,102,241,0.1);color:var(--sa-primary,#6366f1);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.5px">Platform Value Delivery</span>
+            </div>
+            <h3>Macro Lead &amp; Traffic Telemetry</h3>
+            <p>Real-world customer interactions and leads generated across all tenant review funnels.</p>
+        </div>
+        <div class="sa-card-head-actions">
+            <span class="sa-pill" style="color:var(--sa-success);"><?php echo sa_icon('activity'); ?> <?php echo sa_e(sa_num($telemetry['total_events'])); ?> interactions logged</span>
+        </div>
+    </div>
+    <div class="sa-card-pad" style="padding-top:0">
+        <div class="sa-grid sa-kpis" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-bottom: 0;">
+            <article class="sa-card sa-kpi" style="--kpi-accent:#22c55e;--kpi-soft:rgba(34,197,94,0.1);--kpi-line:rgba(34,197,94,0.25);box-shadow:none;border:1px solid rgba(0,0,0,0.06)">
+                <div class="sa-kpi-top">
+                    <span class="sa-kpi-label">WhatsApp Leads Delivered</span>
+                    <span class="sa-kpi-icon"><?php echo sa_icon('send'); ?></span>
+                </div>
+                <div class="sa-kpi-value"><?php echo sa_e(sa_num($telemetry['whatsapp_leads'])); ?></div>
+                <div class="sa-kpi-foot">
+                    <span class="sa-kpi-note"><?php echo $telemetry['lead_conversion_rate']; ?>% lead conversion from page visits</span>
+                </div>
+            </article>
+
+            <article class="sa-card sa-kpi" style="--kpi-accent:#06b6d4;--kpi-soft:rgba(6,182,212,0.1);--kpi-line:rgba(6,182,212,0.25);box-shadow:none;border:1px solid rgba(0,0,0,0.06)">
+                <div class="sa-kpi-top">
+                    <span class="sa-kpi-label">Physical QR Stand Scans</span>
+                    <span class="sa-kpi-icon"><?php echo sa_icon('grid'); ?></span>
+                </div>
+                <div class="sa-kpi-value"><?php echo sa_e(sa_num($telemetry['qr_scans'])); ?></div>
+                <div class="sa-kpi-foot">
+                    <span class="sa-kpi-note">In-store &amp; counter QR traffic</span>
+                </div>
+            </article>
+
+            <article class="sa-card sa-kpi" style="--kpi-accent:#8b5cf6;--kpi-soft:rgba(139,92,246,0.1);--kpi-line:rgba(139,92,246,0.25);box-shadow:none;border:1px solid rgba(0,0,0,0.06)">
+                <div class="sa-kpi-top">
+                    <span class="sa-kpi-label">Total Profile Impressions</span>
+                    <span class="sa-kpi-icon"><?php echo sa_icon('eye'); ?></span>
+                </div>
+                <div class="sa-kpi-value"><?php echo sa_e(sa_num($telemetry['page_views'])); ?></div>
+                <div class="sa-kpi-foot">
+                    <span class="sa-kpi-note">Public company landing views</span>
+                </div>
+            </article>
+
+            <article class="sa-card sa-kpi" style="--kpi-accent:#f59e0b;--kpi-soft:rgba(245,158,11,0.1);--kpi-line:rgba(245,158,11,0.25);box-shadow:none;border:1px solid rgba(0,0,0,0.06)">
+                <div class="sa-kpi-top">
+                    <span class="sa-kpi-label">Paid Ads Pixel Adoption</span>
+                    <span class="sa-kpi-icon"><?php echo sa_icon('zap'); ?></span>
+                </div>
+                <div class="sa-kpi-value"><?php echo sa_e(sa_num($telemetry['ad_pixel_tenants'])); ?> <span style="font-size:14px;font-weight:500;color:var(--sa-muted)">workspaces</span></div>
+                <div class="sa-kpi-foot">
+                    <span class="sa-kpi-note">Meta / Google / TikTok active pixels</span>
+                </div>
+            </article>
+        </div>
+    </div>
 </div>
 
 <!-- ============ MAIN CHARTS ============ -->

@@ -112,6 +112,7 @@ if (isset($_SESSION['super_admin_id'])) {
 $sa_badges = [
     'tenants' => (int) sa_scalar($conn, "SELECT COUNT(*) FROM tenants", 0, 'tenants'),
     'quotes'  => (int) sa_scalar($conn, "SELECT COUNT(*) FROM quote_requests WHERE status = 'pending'", 0, 'quote_requests'),
+    'reviews' => (int) sa_scalar($conn, "SELECT COUNT(*) FROM ratings WHERE reported = 1", 0, 'ratings'),
     'subs'    => (int) sa_scalar(
         $conn,
         "SELECT COUNT(*) FROM tenants
@@ -133,6 +134,7 @@ $sa_nav = [
     ['key' => 'plans',         'label' => 'Plans',          'href' => 'plans.php',            'icon' => 'layers'],
     ['key' => 'quotes',        'label' => 'Quote Requests', 'href' => 'quote_requests.php',   'icon' => 'inbox',    'badge' => 'quotes', 'alert' => true],
     ['section' => 'Directory'],
+    ['key' => 'reviews',       'label' => 'Reviews',        'href' => 'reviews.php',          'icon' => 'message',  'badge' => 'reviews', 'alert' => true],
     ['key' => 'customers',     'label' => 'Customers',      'href' => 'customers.php',        'icon' => 'star'],
     ['key' => 'categories',    'label' => 'Categories',     'href' => 'categories.php',       'icon' => 'list'],
     ['section' => 'System'],
