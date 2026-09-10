@@ -370,14 +370,22 @@ function getReviews($company_id, $conn, $sort = 'newest', $filter = 0, $limit = 
 }
 
 function markHelpful($rating_id, $conn) {
-    $ip = $_SERVER['REMOTE_ADDR'];
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+    $rating_id = (int)$rating_id;
     
     $check = $conn->prepare("SELECT id FROM helpful_votes WHERE rating_id = ? AND voter_ip = ?");
     $check->bind_param("is", $rating_id, $ip);
     $check->execute();
     
     if ($check->get_result()->num_rows > 0) {
-        return ['success' => false, 'message' => 'Already voted'];
+        // Already voted -> Toggle unlike
+        $del = $conn->prepare("DELETE FROM helpful_votes WHERE rating_id = ? AND voter_ip = ?");
+        $del->bind_param("is", $rating_id, $ip);
+        $del->execute();
+        $conn->query("UPDATE ratings SET helpful_count = GREATEST(0, helpful_count - 1) WHERE id = $rating_id");
+        $cnt_res = $conn->query("SELECT helpful_count FROM ratings WHERE id = $rating_id")->fetch_assoc();
+        $count = (int)($cnt_res['helpful_count'] ?? 0);
+        return ['success' => true, 'liked' => false, 'count' => $count, 'message' => 'Like removed'];
     }
     
     $stmt = $conn->prepare("INSERT INTO helpful_votes (rating_id, voter_ip) VALUES (?, ?)");
@@ -385,7 +393,9 @@ function markHelpful($rating_id, $conn) {
     
     if ($stmt->execute()) {
         $conn->query("UPDATE ratings SET helpful_count = helpful_count + 1 WHERE id = $rating_id");
-        return ['success' => true, 'message' => 'Vote recorded'];
+        $cnt_res = $conn->query("SELECT helpful_count FROM ratings WHERE id = $rating_id")->fetch_assoc();
+        $count = (int)($cnt_res['helpful_count'] ?? 0);
+        return ['success' => true, 'liked' => true, 'count' => $count, 'message' => 'Review liked!'];
     }
     
     return ['success' => false, 'message' => 'Error recording vote'];
@@ -860,6 +870,59 @@ function ensureQaTable($conn) {
         UNIQUE KEY uniq_qa_vote (question_id, voter_ip)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     @$conn->query($sql2);
+}
+
+/**
+ * Auto-ensure rating_replies table exists in database.
+ */
+function ensureRatingRepliesTable($conn) {
+    static $done = false;
+    if ($done || !is_object($conn) || !method_exists($conn, 'query')) {
+        return;
+    }
+    $done = true;
+
+    $sql = "CREATE TABLE IF NOT EXISTS rating_replies (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        rating_id INT NOT NULL,
+        company_id INT NOT NULL,
+        user_name VARCHAR(100) NOT NULL DEFAULT 'Guest',
+        user_email VARCHAR(100) NULL,
+        reply_text TEXT NOT NULL,
+        is_official TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_rating (rating_id),
+        INDEX idx_company (company_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+    @$conn->query($sql);
+}
+
+/**
+ * Fetch all replies for a company's ratings, grouped by rating_id.
+ */
+function getRatingRepliesMap($conn, $company_id) {
+    if (!is_object($conn) || !method_exists($conn, 'prepare')) {
+        return [];
+    }
+    ensureRatingRepliesTable($conn);
+    $company_id = (int)$company_id;
+    $map = [];
+
+    $stmt = $conn->prepare("SELECT rr.* FROM rating_replies rr INNER JOIN ratings r ON rr.rating_id = r.id WHERE r.company_id = ? ORDER BY rr.created_at ASC");
+    if ($stmt) {
+        $stmt->bind_param("i", $company_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while ($row = $res->fetch_assoc()) {
+            $rid = (int)$row['rating_id'];
+            if (!isset($map[$rid])) {
+                $map[$rid] = [];
+            }
+            $map[$rid][] = $row;
+        }
+        $stmt->close();
+    }
+    return $map;
 }
 
 /**

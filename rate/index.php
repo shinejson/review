@@ -63,7 +63,8 @@ if (isset($_GET['tenant']) && (int)$_GET['tenant'] > 0) {
 $company_id = isset($_GET['company']) ? (int)$_GET['company'] : 0;
 
 if ($company_id <= 0) {
-    die('Please provide a valid company or tenant ID.');
+    header('Location: ../companies.php', true, 302);
+    exit;
 }
 
 // Ensure location and social columns exist in customers table
@@ -71,13 +72,49 @@ if (function_exists('ensureLocationAndSocialColumns')) {
     ensureLocationAndSocialColumns($conn);
 }
 
-$stmt = $conn->prepare("SELECT * FROM customers WHERE id = ?");
+$stmt = $conn->prepare("SELECT c.*, cat.name AS category_name FROM customers c LEFT JOIN categories cat ON c.category_id = cat.id WHERE c.id = ?");
 $stmt->bind_param("i", $company_id);
 $stmt->execute();
 $company = $stmt->get_result()->fetch_assoc();
 
 if (!$company) {
-    die('Company not found.');
+    http_response_code(404);
+    ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Company Not Found — Optibiz</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;display:grid;place-items:center;background:#0a1926;color:#e2e8f0;padding:20px;}
+  .card{background:#0f2438;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:48px 36px;text-align:center;max-width:480px;width:100%;box-shadow:0 25px 50px rgba(0,0,0,.4);}
+  .icon{font-size:44px;margin-bottom:16px;color:#f59e0b;}
+  h1{font-size:22px;font-weight:800;color:#f1f5f9;margin-bottom:10px;}
+  p{font-size:14px;color:#94a3b8;line-height:1.6;margin-bottom:28px;}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:30px;font-size:14px;font-weight:700;text-decoration:none;transition:all .2s;}
+  .btn-lime{background:#c2f542;color:#0f2438;}
+  .btn-lime:hover{background:#a8e030;transform:translateY(-2px);}
+  .btn-ghost{background:rgba(255,255,255,.08);color:#cbd5e1;margin-top:4px;}
+  .btn-ghost:hover{background:rgba(255,255,255,.14);color:#fff;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon"><i class="fa-solid fa-store-slash"></i></div>
+  <h1>Company Profile Not Found</h1>
+  <p>The business profile you are looking for does not exist or may have been moved. You can browse all verified businesses in our directory.</p>
+  <div style="display:flex;flex-direction:column;gap:10px;align-items:center;">
+    <a href="../companies.php" class="btn btn-lime"><i class="fa-solid fa-compass"></i> Browse Business Directory</a>
+    <a href="../index.php" class="btn btn-ghost"><i class="fa-solid fa-house"></i> Return to Homepage</a>
+  </div>
+</div>
+</body>
+</html>
+    <?php
+    exit;
 }
 
 // Pre-filled customer parameters (from WhatsApp / email invites)
@@ -162,17 +199,50 @@ $question_responses = $qr_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 // Fetch PUBLIC Community Q&A (customer questions & official management answers)
 $community_qa = getCommunityQuestions($company_id, $conn, true);
 
-// Fetch tenant (workspace owner) branding - logo & name shown to customers
+// Fetch all public replies to ratings for this company
+ensureRatingRepliesTable($conn);
+$rating_replies_map = getRatingRepliesMap($conn, $company_id);
+
+// Fetch IDs of reviews this visitor has already liked
+$user_ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+$user_voted_ratings = [];
+$v_stmt = $conn->prepare("SELECT rating_id FROM helpful_votes WHERE voter_ip = ?");
+if ($v_stmt) {
+    $v_stmt->bind_param("s", $user_ip);
+    $v_stmt->execute();
+    $v_res = $v_stmt->get_result();
+    while ($vr = $v_res->fetch_assoc()) {
+        $user_voted_ratings[(int)$vr['rating_id']] = true;
+    }
+    $v_stmt->close();
+}
+
+// Fetch tenant (workspace owner) branding - logo, banner & name shown to customers
 $tenant_info = null;
 if ($tenant_id > 0) {
-    $t_stmt = $conn->prepare("SELECT company_name, logo FROM tenants WHERE id = ? LIMIT 1");
+    $t_stmt = $conn->prepare("SELECT company_name, logo, banner FROM tenants WHERE id = ? LIMIT 1");
     $t_stmt->bind_param("i", $tenant_id);
     $t_stmt->execute();
     $tenant_info = $t_stmt->get_result()->fetch_assoc();
 }
 $brand_name   = !empty($tenant_info['company_name']) ? $tenant_info['company_name'] : $company['company_name'];
 $brand_logo   = $tenant_info['logo'] ?? '';
+$brand_banner = $tenant_info['banner'] ?? ($company['banner'] ?? '');
 $brand_initials = strtoupper(substr($brand_name, 0, 2));
+
+// Active tab calculation: support URL ?tab= parameter or smartly select default tab
+$requested_tab = trim((string)($_GET['tab'] ?? ''));
+if (in_array($requested_tab, ['questions', 'responses', 'feedbacks', 'qa'], true)) {
+    $active_tab = $requested_tab;
+} elseif (!empty($questions)) {
+    $active_tab = 'questions';
+} elseif (!empty($general_reviews)) {
+    $active_tab = 'feedbacks';
+} elseif (!empty($question_responses)) {
+    $active_tab = 'responses';
+} else {
+    $active_tab = 'feedbacks';
+}
 
 // WhatsApp click-to-chat: fallback to company phone or tenant phone if whatsapp_number is not explicitly specified
 $wa_target_number = !empty($company['whatsapp_number']) ? $company['whatsapp_number'] : (!empty($company['phone']) ? $company['phone'] : ($tenant_info['phone'] ?? ''));
@@ -396,6 +466,75 @@ if ($total_ratings > 0) {
             padding: 44px;
             box-shadow: 0 10px 40px rgba(15,23,42,0.06);
             border: 1px solid #e2e8f0;
+        }
+        /* Breadcrumb Navigation */
+        .rt-breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #64748b;
+            margin-bottom: 22px;
+            flex-wrap: wrap;
+        }
+        .rt-breadcrumb a {
+            color: #64748b;
+            text-decoration: none;
+            transition: color 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .rt-breadcrumb a:hover {
+            color: #059669;
+        }
+        .rt-breadcrumb-sep {
+            color: #cbd5e1;
+            font-size: 12px;
+        }
+        .rt-breadcrumb-current {
+            color: #0f172a;
+            font-weight: 700;
+        }
+
+        /* Tenant Cover Banner */
+        .rt-cover-banner-wrap {
+            width: 100%;
+            max-height: 220px;
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 26px;
+            border: 1px solid #e2e8f0;
+            background: #f1f5f9;
+        }
+        .rt-cover-banner {
+            width: 100%;
+            height: 100%;
+            max-height: 220px;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* Quick-Jump Leave Review Button */
+        .rt-jump-review-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #ffffff !important;
+            font-size: 12.5px;
+            font-weight: 700;
+            padding: 8px 16px;
+            border-radius: 99px;
+            text-decoration: none;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.28);
+            transition: all 0.2s ease;
+        }
+        .rt-jump-review-btn:hover {
+            background: linear-gradient(135deg, #059669, #047857);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(16, 185, 129, 0.36);
+            color: #ffffff !important;
         }
         .rt-company-header {
             display: flex;
@@ -868,6 +1007,228 @@ if ($total_ratings > 0) {
             border-color: #4f46e5;
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+        }
+        /* Like / Helpful Button */
+        .rt-review-like-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #475569;
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            padding: 5px 12px;
+            border-radius: 99px;
+            cursor: pointer;
+            transition: all .2s ease;
+            font-family: inherit;
+        }
+        .rt-review-like-btn:hover {
+            background: #eff6ff;
+            color: #2563eb;
+            border-color: #93c5fd;
+            transform: translateY(-1px);
+        }
+        .rt-review-like-btn.is-liked {
+            background: #dbeafe;
+            color: #1d4ed8;
+            border-color: #3b82f6;
+        }
+        .rt-review-like-btn.is-liked .rt-like-icon {
+            transform: scale(1.18);
+            display: inline-block;
+        }
+        /* Reply Button */
+        .rt-review-reply-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #475569;
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            padding: 5px 12px;
+            border-radius: 99px;
+            cursor: pointer;
+            transition: all .2s ease;
+            font-family: inherit;
+        }
+        .rt-review-reply-btn:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+            border-color: #94a3b8;
+            transform: translateY(-1px);
+        }
+        /* Report Button */
+        .rt-review-report-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11.5px;
+            font-weight: 600;
+            color: #94a3b8;
+            background: transparent;
+            border: none;
+            padding: 5px 8px;
+            border-radius: 99px;
+            cursor: pointer;
+            transition: all .15s ease;
+            font-family: inherit;
+        }
+        .rt-review-report-btn:hover {
+            color: #ef4444;
+            background: #fef2f2;
+        }
+        /* Replies Thread & Inline Form Container */
+        .rt-replies-container {
+            margin-top: 14px;
+            padding: 14px 16px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-left: 3px solid #059669;
+            border-radius: 12px;
+            animation: rtFadeIn .2s ease;
+        }
+        .rt-replies-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .rt-reply-item {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            padding: 10px 12px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+        }
+        .rt-reply-item.is-official {
+            background: #f0fdf4;
+            border-color: #86efac;
+        }
+        .rt-reply-avatar {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: #e2e8f0;
+            color: #334155;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+        .rt-reply-item.is-official .rt-reply-avatar {
+            background: #059669;
+            color: #ffffff;
+        }
+        .rt-reply-body {
+            flex: 1;
+            min-width: 0;
+        }
+        .rt-reply-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 3px;
+        }
+        .rt-reply-author {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        .rt-official-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 99px;
+            background: #dcfce7;
+            color: #15803d;
+            border: 1px solid #86efac;
+        }
+        .rt-reply-time {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-left: auto;
+        }
+        .rt-reply-content {
+            font-size: 12.5px;
+            color: #334155;
+            line-height: 1.5;
+        }
+        .rt-reply-form {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 12px;
+        }
+        .rt-reply-form-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .rt-reply-input {
+            padding: 7px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 12px;
+            background: #ffffff;
+            font-family: inherit;
+        }
+        .rt-reply-input:focus, .rt-reply-textarea:focus {
+            outline: none;
+            border-color: #059669;
+            box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.15);
+        }
+        .rt-reply-textarea {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 12.5px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 48px;
+            box-sizing: border-box;
+            background: #ffffff;
+        }
+        .rt-reply-submit-btn {
+            background: #059669;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 7px 14px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all .2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .rt-reply-submit-btn:hover {
+            background: #047857;
+        }
+        .rt-reply-cancel-btn {
+            background: #f1f5f9;
+            color: #64748b;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 7px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .rt-reply-cancel-btn:hover {
+            background: #e2e8f0;
+            color: #334155;
         }
         .rt-chip-filter {
             background: #f1f5f9;
@@ -1742,6 +2103,26 @@ if ($total_ratings > 0) {
 
 <div class="rt-container">
 
+    <!-- Breadcrumb Navigation -->
+    <nav class="rt-breadcrumb" aria-label="Breadcrumb">
+        <a href="../index.php"><i class="fa-solid fa-house"></i> Home</a>
+        <span class="rt-breadcrumb-sep">›</span>
+        <a href="../companies.php">Directory</a>
+        <?php if (!empty($company['category_name'])): ?>
+            <span class="rt-breadcrumb-sep">›</span>
+            <a href="../companies.php?category=<?php echo urlencode($company['category_name']); ?>"><?php echo htmlspecialchars($company['category_name']); ?></a>
+        <?php endif; ?>
+        <span class="rt-breadcrumb-sep">›</span>
+        <span class="rt-breadcrumb-current"><?php echo htmlspecialchars($brand_name); ?></span>
+    </nav>
+
+    <?php if (!empty($brand_banner)): ?>
+    <!-- Tenant Brand Cover Banner -->
+    <div class="rt-cover-banner-wrap">
+        <img src="../<?php echo htmlspecialchars($brand_banner); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> Banner" class="rt-cover-banner">
+    </div>
+    <?php endif; ?>
+
     <!-- Top Branding Header -->
     <header class="rt-company-header">
         <div class="rt-brand-wrap">
@@ -1760,6 +2141,9 @@ if ($total_ratings > 0) {
             </div>
         </div>
         <div class="rt-header-actions">
+            <a href="#generalRatingForm" class="rt-jump-review-btn">
+                <i class="fa-solid fa-pen-to-square"></i> Leave a Review
+            </a>
             <span class="rt-badge">✓ Verified Rating Channel</span>
             <?php
             $company_website = trim((string)($company['website'] ?? ''));
@@ -1904,7 +2288,7 @@ if ($total_ratings > 0) {
                 </div>
                 
                 <button type="submit" class="rt-submit-btn">
-                    Submit Reviews
+                    Submit Your Review <i class="fa-solid fa-paper-plane" style="margin-left:6px;"></i>
                 </button>
             </form>
         </div>
@@ -1988,22 +2372,22 @@ if ($total_ratings > 0) {
 
         <!-- Navigation Tabs to Switch Between Questions and Customer Feedback -->
         <div class="rt-tab-nav" role="tablist">
-            <button type="button" class="rt-tab-btn is-active" id="tabBtn-questions" role="tab" aria-selected="true" onclick="switchPublicSection('questions')">
+            <button type="button" class="rt-tab-btn <?php echo $active_tab === 'questions' ? 'is-active' : ''; ?>" id="tabBtn-questions" role="tab" aria-selected="<?php echo $active_tab === 'questions' ? 'true' : 'false'; ?>" onclick="switchPublicSection('questions')">
                 <span>❓</span> Specific Reviews (<?php echo count($questions); ?>)
             </button>
-            <button type="button" class="rt-tab-btn" id="tabBtn-responses" role="tab" aria-selected="false" onclick="switchPublicSection('responses')">
+            <button type="button" class="rt-tab-btn <?php echo $active_tab === 'responses' ? 'is-active' : ''; ?>" id="tabBtn-responses" role="tab" aria-selected="<?php echo $active_tab === 'responses' ? 'true' : 'false'; ?>" onclick="switchPublicSection('responses')">
                 <span>📝</span> Review Responses (<?php echo count($question_responses); ?>)
             </button>
-            <button type="button" class="rt-tab-btn" id="tabBtn-feedbacks" role="tab" aria-selected="false" onclick="switchPublicSection('feedbacks')">
+            <button type="button" class="rt-tab-btn <?php echo $active_tab === 'feedbacks' ? 'is-active' : ''; ?>" id="tabBtn-feedbacks" role="tab" aria-selected="<?php echo $active_tab === 'feedbacks' ? 'true' : 'false'; ?>" onclick="switchPublicSection('feedbacks')">
                 <span>💬</span> Reviews (<?php echo count($general_reviews); ?>)
             </button>
-            <button type="button" class="rt-tab-btn" id="tabBtn-qa" role="tab" aria-selected="false" onclick="switchPublicSection('qa')">
+            <button type="button" class="rt-tab-btn <?php echo $active_tab === 'qa' ? 'is-active' : ''; ?>" id="tabBtn-qa" role="tab" aria-selected="<?php echo $active_tab === 'qa' ? 'true' : 'false'; ?>" onclick="switchPublicSection('qa')">
                 <span>💡</span> Community Q&amp;A (<?php echo count($community_qa); ?>)
             </button>
         </div>
 
         <!-- PANEL 1: Questions Created by Admin -->
-        <div class="rt-tab-panel is-active" id="panel-questions" role="tabpanel">
+        <div class="rt-tab-panel <?php echo $active_tab === 'questions' ? 'is-active' : ''; ?>" id="panel-questions" role="tabpanel">
             <div style="margin-bottom:20px;">
                 <h3 style="font-size:20px;font-weight:800;color:#0f172a;">Specific Reviews from Administrator</h3>
                 <p class="rt-subtext" style="margin-top:4px;">Share your star rating and review for each item configured by <?php echo htmlspecialchars($brand_name); ?>. No name or email needed.</p>
@@ -2090,7 +2474,7 @@ if ($total_ratings > 0) {
         </div>
 
         <!-- PANEL 2: Responses to the Specific Review Items -->
-        <div class="rt-tab-panel" id="panel-responses" role="tabpanel">
+        <div class="rt-tab-panel <?php echo $active_tab === 'responses' ? 'is-active' : ''; ?>" id="panel-responses" role="tabpanel">
             <div style="margin-bottom:20px;">
                 <h3 style="font-size:20px;font-weight:800;color:#0f172a;">Review Responses</h3>
                 <p class="rt-subtext" style="margin-top:4px;">Customer responses to the specific review items configured by <?php echo htmlspecialchars($brand_name); ?>.</p>
@@ -2137,6 +2521,24 @@ if ($total_ratings > 0) {
                                         </div>
                                     <?php endif; ?>
                                     <div class="rt-review-actions">
+                                        <!-- Like / Helpful Button -->
+                                        <button type="button" class="rt-review-like-btn <?php echo !empty($user_voted_ratings[$rv['id']]) ? 'is-liked' : ''; ?>" id="likeBtn-<?php echo (int)$rv['id']; ?>" onclick="toggleReviewLike(<?php echo (int)$rv['id']; ?>, this)" title="Helpful response">
+                                            <span class="rt-like-icon">👍</span>
+                                            <span class="rt-like-label"><?php echo !empty($user_voted_ratings[$rv['id']]) ? 'Liked' : 'Like'; ?></span>
+                                            <span class="rt-like-count">(<span class="count-num"><?php echo (int)($rv['helpful_count'] ?? 0); ?></span>)</span>
+                                        </button>
+
+                                        <!-- Reply Button with Count -->
+                                        <?php 
+                                        $rv_replies = $rating_replies_map[$rv['id']] ?? []; 
+                                        $reply_count = count($rv_replies);
+                                        ?>
+                                        <button type="button" class="rt-review-reply-btn" id="replyToggleBtn-<?php echo (int)$rv['id']; ?>" onclick="toggleReplySection(<?php echo (int)$rv['id']; ?>)" title="Reply to this response">
+                                            <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                            Reply
+                                            <span class="rt-reply-count-badge" id="replyCountBadge-<?php echo (int)$rv['id']; ?>"><?php echo $reply_count > 0 ? "($reply_count)" : ''; ?></span>
+                                        </button>
+
                                         <?php if (!empty($company['whatsapp_number'])): 
                                             $rv_author = trim($rv['customer_name'] ?: 'a customer');
                                             $rv_snippet = !empty($rv['comment']) ? '"' . mb_substr(strip_tags($rv['comment']), 0, 70) . '..."' : ((int)$rv['rating'] . '-star rating');
@@ -2151,7 +2553,7 @@ if ($total_ratings > 0) {
                                         <?php endif; endif; ?>
 
                                         <?php 
-                                        $share_quote = !empty($rv['comment']) ? '"' . mb_substr(strip_tags($rv['comment']), 0, 90) . '..."' : ((int)$rv['rating'] . '-star review');
+                                        $share_quote = !empty($rv['comment']) ? '"' . mb_substr(strip_tags($rv['comment']), 0, 90) . '..."' : ((int)$rv['rating'] . '-star rating');
                                         $wa_share_msg = rawurlencode('Check out this ' . (int)$rv['rating'] . '★ review for ' . $brand_name . ': ' . $share_quote . ' ' . $canonical_url);
                                         ?>
                                         <button type="button" class="rt-review-share-btn" onclick="shareCustomerReview(<?php echo htmlspecialchars(json_encode([
@@ -2169,6 +2571,51 @@ if ($total_ratings > 0) {
                                                 <span>🎨</span> Story Graphic ↗
                                             </a>
                                         <?php endif; ?>
+
+                                        <button type="button" class="rt-review-report-btn" onclick="reportReviewModal(<?php echo (int)$rv['id']; ?>)" title="Report inappropriate response">
+                                            <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                                            Report
+                                        </button>
+                                    </div>
+
+                                    <!-- Collapsible Replies Thread Container -->
+                                    <div class="rt-replies-container" id="replyContainer-<?php echo (int)$rv['id']; ?>" style="display:none;">
+                                        <div class="rt-replies-list" id="replyList-<?php echo (int)$rv['id']; ?>">
+                                            <?php foreach ($rv_replies as $rp): ?>
+                                                <div class="rt-reply-item <?php echo !empty($rp['is_official']) ? 'is-official' : ''; ?>">
+                                                    <div class="rt-reply-avatar"><?php echo strtoupper(substr(trim($rp['user_name'] ?: 'G'), 0, 1)); ?></div>
+                                                    <div class="rt-reply-body">
+                                                        <div class="rt-reply-meta">
+                                                            <span class="rt-reply-author"><?php echo htmlspecialchars($rp['user_name']); ?></span>
+                                                            <?php if (!empty($rp['is_official'])): ?>
+                                                                <span class="rt-official-badge">🛡️ Official Response</span>
+                                                            <?php endif; ?>
+                                                            <span class="rt-reply-time"><?php echo function_exists('timeAgo') ? timeAgo($rp['created_at']) : date('M j, Y', strtotime($rp['created_at'])); ?></span>
+                                                        </div>
+                                                        <div class="rt-reply-content"><?php echo nl2br(htmlspecialchars($rp['reply_text'])); ?></div>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+
+                                        <!-- Inline Add Reply Form -->
+                                        <form class="rt-reply-form" onsubmit="return submitReviewReply(event, <?php echo (int)$rv['id']; ?>, this)">
+                                            <input type="hidden" name="rating_id" value="<?php echo (int)$rv['id']; ?>">
+                                            <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
+                                            <div class="rt-reply-form-row">
+                                                <input type="text" name="user_name" class="rt-reply-input" placeholder="Your name (optional)" style="flex:1;">
+                                                <input type="email" name="user_email" class="rt-reply-input" placeholder="Your email (optional)" style="flex:1;">
+                                            </div>
+                                            <div class="rt-reply-form-row" style="margin-top:8px;">
+                                                <textarea name="reply_text" class="rt-reply-textarea" rows="2" required placeholder="Write a reply or follow-up response…"></textarea>
+                                            </div>
+                                            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+                                                <button type="button" class="rt-reply-cancel-btn" onclick="toggleReplySection(<?php echo (int)$rv['id']; ?>)">Cancel</button>
+                                                <button type="submit" class="rt-reply-submit-btn">
+                                                    <i class="fa-solid fa-paper-plane"></i> Post Reply
+                                                </button>
+                                            </div>
+                                        </form>
                                     </div>
                                 </div>
                             </div>
@@ -2183,7 +2630,7 @@ if ($total_ratings > 0) {
         </div>
 
         <!-- PANEL 3: General Customer Feedbacks & Testimonials -->
-        <div class="rt-tab-panel" id="panel-feedbacks" role="tabpanel">
+        <div class="rt-tab-panel <?php echo $active_tab === 'feedbacks' ? 'is-active' : ''; ?>" id="panel-feedbacks" role="tabpanel">
             <div style="margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;">
                 <div>
                     <h3 style="font-size:20px;font-weight:800;color:#0f172a;">Customer Reviews &amp; Testimonials</h3>
@@ -2236,6 +2683,24 @@ if ($total_ratings > 0) {
                                     <?php endif; ?>
 
                                     <div class="rt-review-actions">
+                                        <!-- Like / Helpful Button -->
+                                        <button type="button" class="rt-review-like-btn <?php echo !empty($user_voted_ratings[$rv['id']]) ? 'is-liked' : ''; ?>" id="likeBtn-<?php echo (int)$rv['id']; ?>" onclick="toggleReviewLike(<?php echo (int)$rv['id']; ?>, this)" title="Helpful review">
+                                            <span class="rt-like-icon">👍</span>
+                                            <span class="rt-like-label"><?php echo !empty($user_voted_ratings[$rv['id']]) ? 'Liked' : 'Like'; ?></span>
+                                            <span class="rt-like-count">(<span class="count-num"><?php echo (int)($rv['helpful_count'] ?? 0); ?></span>)</span>
+                                        </button>
+
+                                        <!-- Reply Button with Count -->
+                                        <?php 
+                                        $rv_replies = $rating_replies_map[$rv['id']] ?? []; 
+                                        $reply_count = count($rv_replies);
+                                        ?>
+                                        <button type="button" class="rt-review-reply-btn" id="replyToggleBtn-<?php echo (int)$rv['id']; ?>" onclick="toggleReplySection(<?php echo (int)$rv['id']; ?>)" title="Reply to this review">
+                                            <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                            Reply
+                                            <span class="rt-reply-count-badge" id="replyCountBadge-<?php echo (int)$rv['id']; ?>"><?php echo $reply_count > 0 ? "($reply_count)" : ''; ?></span>
+                                        </button>
+
                                         <?php if (!empty($company['whatsapp_number'])): 
                                             $rv_author = trim($rv['customer_name'] ?: 'a customer');
                                             $rv_snippet = !empty($rv['comment']) ? '"' . mb_substr(strip_tags($rv['comment']), 0, 70) . '..."' : ((int)$rv['rating'] . '-star review');
@@ -2268,6 +2733,51 @@ if ($total_ratings > 0) {
                                                 <span>🎨</span> Story Graphic ↗
                                             </a>
                                         <?php endif; ?>
+
+                                        <button type="button" class="rt-review-report-btn" onclick="reportReviewModal(<?php echo (int)$rv['id']; ?>)" title="Report inappropriate review">
+                                            <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                                            Report
+                                        </button>
+                                    </div>
+
+                                    <!-- Collapsible Replies Thread Container -->
+                                    <div class="rt-replies-container" id="replyContainer-<?php echo (int)$rv['id']; ?>" style="display:none;">
+                                        <div class="rt-replies-list" id="replyList-<?php echo (int)$rv['id']; ?>">
+                                            <?php foreach ($rv_replies as $rp): ?>
+                                                <div class="rt-reply-item <?php echo !empty($rp['is_official']) ? 'is-official' : ''; ?>">
+                                                    <div class="rt-reply-avatar"><?php echo strtoupper(substr(trim($rp['user_name'] ?: 'G'), 0, 1)); ?></div>
+                                                    <div class="rt-reply-body">
+                                                        <div class="rt-reply-meta">
+                                                            <span class="rt-reply-author"><?php echo htmlspecialchars($rp['user_name']); ?></span>
+                                                            <?php if (!empty($rp['is_official'])): ?>
+                                                                <span class="rt-official-badge">🛡️ Official Response</span>
+                                                            <?php endif; ?>
+                                                            <span class="rt-reply-time"><?php echo function_exists('timeAgo') ? timeAgo($rp['created_at']) : date('M j, Y', strtotime($rp['created_at'])); ?></span>
+                                                        </div>
+                                                        <div class="rt-reply-content"><?php echo nl2br(htmlspecialchars($rp['reply_text'])); ?></div>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+
+                                        <!-- Inline Add Reply Form -->
+                                        <form class="rt-reply-form" onsubmit="return submitReviewReply(event, <?php echo (int)$rv['id']; ?>, this)">
+                                            <input type="hidden" name="rating_id" value="<?php echo (int)$rv['id']; ?>">
+                                            <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
+                                            <div class="rt-reply-form-row">
+                                                <input type="text" name="user_name" class="rt-reply-input" placeholder="Your name (optional)" style="flex:1;">
+                                                <input type="email" name="user_email" class="rt-reply-input" placeholder="Your email (optional)" style="flex:1;">
+                                            </div>
+                                            <div class="rt-reply-form-row" style="margin-top:8px;">
+                                                <textarea name="reply_text" class="rt-reply-textarea" rows="2" required placeholder="Write a reply or follow-up response…"></textarea>
+                                            </div>
+                                            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+                                                <button type="button" class="rt-reply-cancel-btn" onclick="toggleReplySection(<?php echo (int)$rv['id']; ?>)">Cancel</button>
+                                                <button type="submit" class="rt-reply-submit-btn">
+                                                    <i class="fa-solid fa-paper-plane"></i> Post Reply
+                                                </button>
+                                            </div>
+                                        </form>
                                     </div>
                                 </div>
                             </div>
@@ -2282,7 +2792,7 @@ if ($total_ratings > 0) {
         </div>
 
         <!-- PANEL 4: Community Q&A (Customer Questions & Official Management Answers) -->
-        <div class="rt-tab-panel" id="panel-qa" role="tabpanel">
+        <div class="rt-tab-panel <?php echo $active_tab === 'qa' ? 'is-active' : ''; ?>" id="panel-qa" role="tabpanel">
             <div style="margin-bottom:20px;">
                 <h3 style="font-size:20px;font-weight:800;color:#0f172a;">Community Q&amp;A</h3>
                 <p class="rt-subtext" style="margin-top:4px;">Have a question before purchasing or visiting? Explore official answers from <?php echo htmlspecialchars($brand_name); ?> or ask your own.</p>
@@ -2716,6 +3226,144 @@ function voteQaHelpful(questionId, btn) {
     })
     .catch(function(e) {
         console.error(e);
+    });
+}
+
+/* Like / Helpful Toggle for Review Responses and Feedback Cards */
+function toggleReviewLike(ratingId, btn) {
+    var fd = new FormData();
+    fd.append('rating_id', ratingId);
+    
+    fetch('../api/helpful.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            var buttons = document.querySelectorAll('[id="likeBtn-' + ratingId + '"]');
+            buttons.forEach(function(b) {
+                var labelEl = b.querySelector('.rt-like-label');
+                var countEl = b.querySelector('.count-num');
+                if (data.liked) {
+                    b.classList.add('is-liked');
+                    if (labelEl) labelEl.textContent = 'Liked';
+                } else {
+                    b.classList.remove('is-liked');
+                    if (labelEl) labelEl.textContent = 'Like';
+                }
+                if (countEl && typeof data.count !== 'undefined') {
+                    countEl.textContent = data.count;
+                }
+            });
+        } else {
+            alert(data.message || 'Unable to register like.');
+        }
+    })
+    .catch(function(err) {
+        console.error('Like error:', err);
+    });
+}
+
+/* Toggle Expandable Reply Section */
+function toggleReplySection(ratingId) {
+    var containers = document.querySelectorAll('[id="replyContainer-' + ratingId + '"]');
+    containers.forEach(function(c) {
+        if (c.style.display === 'none' || c.style.display === '') {
+            c.style.display = 'block';
+            var ta = c.querySelector('textarea');
+            if (ta) ta.focus();
+        } else {
+            c.style.display = 'none';
+        }
+    });
+}
+
+/* Submit Review Reply via AJAX */
+function submitReviewReply(e, ratingId, form) {
+    e.preventDefault();
+    var submitBtn = form.querySelector('button[type="submit"]');
+    var originalBtnText = submitBtn ? submitBtn.innerHTML : 'Post Reply';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Posting…';
+    }
+
+    var fd = new FormData(form);
+    fetch('../api/submit_reply.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success && data.reply) {
+            var rp = data.reply;
+            var replyItemHtml = '<div class="rt-reply-item ' + (rp.is_official ? 'is-official' : '') + '">' +
+                '<div class="rt-reply-avatar">' + rp.avatar_letter + '</div>' +
+                '<div class="rt-reply-body">' +
+                    '<div class="rt-reply-meta">' +
+                        '<span class="rt-reply-author">' + rp.user_name + '</span>' +
+                        (rp.is_official ? '<span class="rt-official-badge">🛡️ Official Response</span>' : '') +
+                        '<span class="rt-reply-time">' + rp.time_ago + '</span>' +
+                    '</div>' +
+                    '<div class="rt-reply-content">' + rp.reply_text + '</div>' +
+                '</div>' +
+            '</div>';
+
+            var lists = document.querySelectorAll('[id="replyList-' + ratingId + '"]');
+            lists.forEach(function(list) {
+                list.insertAdjacentHTML('beforeend', replyItemHtml);
+            });
+
+            var badges = document.querySelectorAll('[id="replyCountBadge-' + ratingId + '"]');
+            badges.forEach(function(b) {
+                b.textContent = '(' + data.total_replies + ')';
+            });
+
+            var ta = form.querySelector('textarea[name="reply_text"]');
+            if (ta) ta.value = '';
+        } else {
+            alert(data.message || 'Could not post reply. Please try again.');
+        }
+    })
+    .catch(function(err) {
+        console.error('Reply submit error:', err);
+        alert('Network error. Could not post reply.');
+    })
+    .finally(function() {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
+        }
+    });
+
+    return false;
+}
+
+/* Report Review Modal */
+function reportReviewModal(ratingId) {
+    var reason = prompt('Please describe why you are reporting this review (e.g. Spam, Fake, Abusive language, Off-topic):');
+    if (!reason || !reason.trim()) {
+        return;
+    }
+    var fd = new FormData();
+    fd.append('rating_id', ratingId);
+    fd.append('reason', reason.trim());
+
+    fetch('../api/report.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            alert('✓ Thank you! This review has been submitted for moderation review.');
+        } else {
+            alert(data.message || 'Could not submit report.');
+        }
+    })
+    .catch(function(err) {
+        console.error('Report error:', err);
     });
 }
 
