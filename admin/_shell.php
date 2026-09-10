@@ -91,6 +91,9 @@ $activeNav = $activeNav ?? 'dashboard';
     <a <?php echo $activeNav === 'ratings' ? 'class="active"' : ''; ?> href="ratings.php" title="Ratings & Reviews">
       <span>☆</span><span class="nav-label">Ratings &amp; Reviews</span>
     </a>
+    <a <?php echo $activeNav === 'services' ? 'class="active"' : ''; ?> href="services.php" title="Services">
+      <span>🧰</span><span class="nav-label">Services</span>
+    </a>
     <a <?php echo $activeNav === 'social' ? 'class="active"' : ''; ?> href="social.php" title="Social">
       <span>❋</span><span class="nav-label">Social</span>
     </a>
@@ -117,6 +120,7 @@ $activeNav = $activeNav ?? 'dashboard';
     <a href="<?php echo htmlspecialchars(auth_logout_url()); ?>" title="Log out" data-admin-confirm="Sign out of the workspace?">↪</a>
   </div>
 </aside>
+<div class="admin-sidebar-backdrop" data-admin-backdrop></div>
 
 <section class="admin-main">
   <header class="admin-topbar">

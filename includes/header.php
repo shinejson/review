@@ -94,6 +94,7 @@ $assetBase = rtrim($BASE, '/');
         }
     </style>
     <link rel="stylesheet" href="<?php echo sa_asset('assets/css/style.css'); ?>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <?php if (isset($extraBrandLink)): ?>
     <?php echo $extraBrandLink; ?>
     <?php endif; ?>

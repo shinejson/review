@@ -130,21 +130,50 @@
     function initSidebar() {
         var burger = document.querySelector('.admin-burger');
         var sidebar = document.querySelector('.admin-sidebar');
+        var backdrop = document.querySelector('[data-admin-backdrop]');
         if (!burger || !sidebar) {
             return;
         }
 
-        burger.addEventListener('click', function () {
-            sidebar.classList.toggle('open');
+        function setSidebarState(open) {
+            var isOpen = typeof open === 'boolean' ? open : !sidebar.classList.contains('open');
+            sidebar.classList.toggle('open', isOpen);
+            document.body.classList.toggle('admin-sidebar-open', isOpen);
+            burger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        }
+
+        burger.addEventListener('click', function (e) {
+            e.stopPropagation();
+            setSidebarState();
         });
+
+        if (backdrop) {
+            backdrop.addEventListener('click', function () {
+                setSidebarState(false);
+            });
+        }
 
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', function (e) {
             if (window.innerWidth > 768) {
                 return;
             }
-            if (!sidebar.contains(e.target) && !burger.contains(e.target)) {
-                sidebar.classList.remove('open');
+            if (sidebar.classList.contains('open') && !sidebar.contains(e.target) && !burger.contains(e.target)) {
+                setSidebarState(false);
+            }
+        });
+
+        // Close on ESC key
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && sidebar.classList.contains('open')) {
+                setSidebarState(false);
+            }
+        });
+
+        // Auto close on window resize above mobile breakpoint
+        window.addEventListener('resize', function () {
+            if (window.innerWidth > 768 && sidebar.classList.contains('open')) {
+                setSidebarState(false);
             }
         });
     }

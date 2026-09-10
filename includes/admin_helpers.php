@@ -110,6 +110,20 @@ if (!function_exists('admin_ensure_schema')) {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         );
 
+        @$conn->query(
+            "CREATE TABLE IF NOT EXISTS services (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                tenant_id INT NOT NULL,
+                title VARCHAR(150) NOT NULL,
+                description TEXT NULL,
+                icon VARCHAR(80) DEFAULT 'fa-solid fa-star',
+                sort_order INT NOT NULL DEFAULT 0,
+                status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_services_tenant (tenant_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+
         if (session_status() === PHP_SESSION_ACTIVE) {
             $_SESSION['admin_schema_ok'] = 1;
         }

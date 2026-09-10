@@ -131,6 +131,22 @@ if ($tenant_id > 0) {
     }
 }
 
+// Fetch the company's active services with their rating stats (star avg + review count)
+$services = [];
+if ($tenant_id > 0) {
+    $svc_stmt = $conn->prepare("
+        SELECT s.*,
+            (SELECT COUNT(*) FROM ratings r WHERE r.service_id = s.id AND r.company_id = ?) AS review_count,
+            (SELECT COALESCE(AVG(r.rating), 0) FROM ratings r WHERE r.service_id = s.id AND r.company_id = ?) AS avg_score
+          FROM services s
+         WHERE s.tenant_id = ? AND s.status = 'active'
+         ORDER BY s.sort_order ASC, s.id ASC
+    ");
+    $svc_stmt->bind_param("iii", $company_id, $company_id, $tenant_id);
+    $svc_stmt->execute();
+    $services = $svc_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+}
+
 // Fetch GENERAL customer reviews (no question) - shown in the "Reviews" tab
 $gr_stmt = $conn->prepare("SELECT * FROM ratings WHERE company_id = ? AND (question_id IS NULL OR question_id = 0) ORDER BY created_at DESC");
 $gr_stmt->bind_param("i", $company_id);
@@ -312,6 +328,7 @@ if ($total_ratings > 0) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -1484,6 +1501,185 @@ if ($total_ratings > 0) {
             color: #94a3b8;
             font-size: 14px;
         }
+        /* ===== Services Grid (company services with per-service reviews) ===== */
+        .rt-services-section {
+            margin-top: 44px;
+            padding: 34px;
+            background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+        }
+        .rt-services-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+        .rt-services-head h2 {
+            font-size: 22px;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0;
+        }
+        .rt-services-head p {
+            font-size: 13.5px;
+            color: #64748b;
+            margin: 4px 0 0;
+        }
+        .rt-services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 18px;
+        }
+        .rt-service-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 22px 18px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            transition: all .25s ease;
+        }
+        .rt-service-card:hover {
+            border-color: #10b981;
+            box-shadow: 0 10px 30px rgba(5, 150, 105, 0.10);
+            transform: translateY(-3px);
+        }
+        .rt-service-icon {
+            width: 54px;
+            height: 54px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #ffffff;
+            display: grid;
+            place-items: center;
+            font-size: 22px;
+            margin-bottom: 14px;
+            box-shadow: 0 6px 16px rgba(16, 185, 129, 0.22);
+            flex-shrink: 0;
+        }
+        .rt-service-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1.3;
+            margin-bottom: 6px;
+        }
+        .rt-service-desc {
+            font-size: 12.5px;
+            color: #64748b;
+            line-height: 1.55;
+            margin-bottom: 14px;
+            flex: 1;
+        }
+        .rt-service-stars {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            color: #f59e0b;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .rt-service-stars b {
+            color: #0f172a;
+            font-size: 14px;
+        }
+        .rt-service-meta {
+            font-size: 11.5px;
+            color: #94a3b8;
+            margin-bottom: 16px;
+        }
+        .rt-service-comment-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1.5px solid #e2e8f0;
+            background: #f8fafc;
+            color: #334155;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all .2s ease;
+        }
+        .rt-service-comment-btn:hover {
+            background: #d1fae5;
+            border-color: #10b981;
+            color: #065f46;
+        }
+        .rt-service-comment-btn svg { width: 15px; height: 15px; }
+        .rt-service-review-form {
+            display: none;
+            margin-top: 14px;
+            padding: 16px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            animation: rtFadeIn .25s ease-out;
+        }
+        .rt-service-review-form.is-open { display: block; }
+        .rt-service-review-form .rt-review-form-label { margin-bottom: 6px; }
+        .rt-service-form-stars {
+            display: flex;
+            flex-direction: row-reverse;
+            justify-content: flex-start;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        .rt-service-form-stars input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+            pointer-events: none;
+        }
+        .rt-service-form-stars label {
+            font-size: 22px;
+            color: #cbd5e1;
+            cursor: pointer;
+            transition: color .15s;
+        }
+        .rt-service-form-stars input:checked ~ label,
+        .rt-service-form-stars label:hover,
+        .rt-service-form-stars label:hover ~ label { color: #f59e0b; }
+        .rt-service-form-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .rt-service-form-actions .rt-input-email {
+            flex: 1;
+            min-width: 160px;
+            padding: 9px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+        .rt-service-submit {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            background: #10b981;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all .2s ease;
+        }
+        .rt-service-submit:hover { background: #059669; }
+
         @media (max-width: 850px) {
             .rt-container { padding: 24px 18px; }
             .rt-rating-grid { grid-template-columns: 1fr; gap: 32px; }
@@ -1663,6 +1859,75 @@ if ($total_ratings > 0) {
         </div>
     </div>
     
+    <?php if (!empty($services)): ?>
+    <!-- Services Grid: the things this company does, with per-service reviews -->
+    <section class="rt-services-section">
+        <div class="rt-services-head">
+            <div>
+                <h2>Our Services</h2>
+                <p>Rate each service <?php echo htmlspecialchars($brand_name); ?> provides — tap the comment icon to leave a review.</p>
+            </div>
+        </div>
+        <div class="rt-services-grid">
+            <?php foreach ($services as $svc):
+                $svc_id     = (int)$svc['id'];
+                $svc_avg    = round((float)($svc['avg_score'] ?? 0), 1);
+                $svc_count  = (int)($svc['review_count'] ?? 0);
+                $svc_full   = (int)floor($svc_avg);
+                $svc_half   = ($svc_avg - $svc_full) >= 0.5;
+                $svc_icon   = !empty($svc['icon']) ? htmlspecialchars($svc['icon']) : 'fa-solid fa-star';
+                $svc_title  = htmlspecialchars($svc['title']);
+                $svc_descr  = !empty($svc['description']) ? htmlspecialchars($svc['description']) : '';
+                $svc_trunc  = mb_strlen($svc_descr) > 90 ? mb_substr($svc_descr, 0, 90) . '…' : $svc_descr;
+            ?>
+            <article class="rt-service-card" id="service-<?php echo $svc_id; ?>">
+                <div class="rt-service-icon"><i class="<?php echo $svc_icon; ?>"></i></div>
+                <div class="rt-service-title"><?php echo $svc_title; ?></div>
+                <?php if ($svc_trunc !== ''): ?>
+                <div class="rt-service-desc"><?php echo $svc_trunc; ?></div>
+                <?php endif; ?>
+                <div class="rt-service-stars">
+                    <span>
+                        <?php
+                        for ($i = 0; $i < $svc_full; $i++) echo '★';
+                        if ($svc_half) echo '★';
+                        for ($i = 0; $i < (5 - $svc_full - ($svc_half ? 1 : 0)); $i++) echo '☆';
+                        ?>
+                    </span>
+                    <b><?php echo number_format($svc_avg, 1); ?></b>
+                </div>
+                <div class="rt-service-meta"><?php echo number_format($svc_count); ?> review<?php echo $svc_count === 1 ? '' : 's'; ?></div>
+
+                <button type="button" class="rt-service-comment-btn" onclick="toggleServiceForm(<?php echo $svc_id; ?>, this)" aria-expanded="false" title="Write a review for this service">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    Write a review
+                </button>
+
+                <form class="rt-service-review-form" action="../api/submit_rating.php" method="POST" onsubmit="return validateServiceReview(<?php echo $svc_id; ?>)">
+                    <input type="hidden" name="service_id" value="<?php echo $svc_id; ?>">
+                    <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
+                    <label class="rt-review-form-label">Rate this service</label>
+                    <div class="rt-service-form-stars">
+                        <input type="radio" name="rating" value="5" id="svc_<?php echo $svc_id; ?>_5"><label for="svc_<?php echo $svc_id; ?>_5" title="5 Stars">★</label>
+                        <input type="radio" name="rating" value="4" id="svc_<?php echo $svc_id; ?>_4"><label for="svc_<?php echo $svc_id; ?>_4" title="4 Stars">★</label>
+                        <input type="radio" name="rating" value="3" id="svc_<?php echo $svc_id; ?>_3"><label for="svc_<?php echo $svc_id; ?>_3" title="3 Stars">★</label>
+                        <input type="radio" name="rating" value="2" id="svc_<?php echo $svc_id; ?>_2"><label for="svc_<?php echo $svc_id; ?>_2" title="2 Stars">★</label>
+                        <input type="radio" name="rating" value="1" id="svc_<?php echo $svc_id; ?>_1"><label for="svc_<?php echo $svc_id; ?>_1" title="1 Star">★</label>
+                    </div>
+                    <label class="rt-review-form-label">Your review (optional)</label>
+                    <textarea name="comment" class="rt-form-textarea" rows="2" maxlength="500" placeholder="Tell us about your experience with this service…" style="min-height:58px;margin-bottom:0;padding:9px 12px;font-size:13px;"></textarea>
+                    <div class="rt-service-form-actions">
+                        <input type="email" name="customer_email" class="rt-input-email" placeholder="Your email (optional)">
+                        <button type="submit" class="rt-service-submit">Submit Review</button>
+                    </div>
+                    <span class="rt-service-mail-note" style="display:none;font-size:11px;color:#64748b;"></span>
+                </form>
+            </article>
+            <?php endforeach; ?>
+        </div>
+    </section>
+    <?php endif; ?>
+
     <!-- ============================================================
          Bottom Section: Divided into Two
          1. Rating Questions (Questions created by admin)
@@ -2456,6 +2721,58 @@ function updateVerifiedPreview() {
     var hasMomo = momo && momo.value.trim().length > 0;
     var hasPhoto = photo && photo.files && photo.files.length > 0;
     box.style.display = (hasMomo || hasPhoto) ? 'flex' : 'none';
+}
+
+/* Service Card Review Functions */
+function toggleServiceForm(serviceId, btn) {
+    var card = document.getElementById('service-' + serviceId);
+    if (!card) return;
+    
+    var form = card.querySelector('.rt-service-review-form');
+    if (!form) return;
+    
+    var isOpen = form.style.display === 'block';
+    
+    // Close all other service forms first
+    document.querySelectorAll('.rt-service-review-form').forEach(function(f) {
+        f.style.display = 'none';
+    });
+    document.querySelectorAll('.rt-service-comment-btn').forEach(function(b) {
+        b.setAttribute('aria-expanded', 'false');
+        b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Write a review';
+    });
+    
+    if (!isOpen) {
+        form.style.display = 'block';
+        btn.setAttribute('aria-expanded', 'true');
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Cancel';
+        
+        // Scroll into view
+        setTimeout(function() {
+            form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
+    }
+}
+
+function validateServiceReview(serviceId) {
+    var card = document.getElementById('service-' + serviceId);
+    if (!card) return false;
+    
+    var form = card.querySelector('.rt-service-review-form');
+    if (!form) return false;
+    
+    var ratingSelected = form.querySelector('input[name="rating"]:checked');
+    if (!ratingSelected) {
+        alert('Please select a star rating (1 to 5 stars) before submitting your review.');
+        return false;
+    }
+    
+    // Track event if analytics available
+    if (typeof window.trackOptibizEvent === 'function') {
+        window.trackOptibizEvent('review_submit', 'service_review', 'Service Review: ' + serviceId);
+    }
+    
+    return true;
 }
 
 function shareCustomerReview(data) {
