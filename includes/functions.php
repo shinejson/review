@@ -1587,4 +1587,300 @@ function getAdsFunnelMetrics($conn, $tenant_id, $company_id = 0, $days = 30) {
         'overall_funnel_cvr'    => min(100.0, $ov_cvr)
     ];
 }
+
+/* ============================================================
+ *  Real Public ID + Tenant Onboarding Email System
+ * ============================================================
+ *  Every tenant and quote gets a human-friendly public ID
+ *  (e.g. OPT-8K2F9Q1A, QTE-4X7P2M9L) instead of exposing the
+ *  auto-increment database id. When a tenant is created from
+ *  the public quote wizard or from the super-admin panel, an
+ *  email with a secure password-setup link is dispatched.
+ */
+
+function ensureRealIdSchema($conn) {
+    static $done = false;
+    if ($done || !is_object($conn) || !method_exists($conn, 'query')) {
+        return;
+    }
+    $done = true;
+
+    // Tenants: public_id, setup_token, setup_token_expires, email_verified_at
+    $tenantCols = [];
+    $res = @$conn->query("SHOW COLUMNS FROM tenants");
+    if ($res) {
+        while ($r = $res->fetch_assoc()) { $tenantCols[] = $r['Field']; }
+        $res->close();
+    }
+    if (!in_array('public_id', $tenantCols, true)) {
+        @$conn->query("ALTER TABLE tenants ADD COLUMN public_id VARCHAR(32) NULL AFTER id");
+    }
+    if (!in_array('setup_token', $tenantCols, true)) {
+        @$conn->query("ALTER TABLE tenants ADD COLUMN setup_token VARCHAR(128) NULL AFTER public_id");
+    }
+    if (!in_array('setup_token_expires', $tenantCols, true)) {
+        @$conn->query("ALTER TABLE tenants ADD COLUMN setup_token_expires DATETIME NULL AFTER setup_token");
+    }
+    if (!in_array('email_verified_at', $tenantCols, true)) {
+        @$conn->query("ALTER TABLE tenants ADD COLUMN email_verified_at DATETIME NULL AFTER setup_token_expires");
+    }
+    // Ensure unique index on public_id (ignore if already exists)
+    @$conn->query("ALTER TABLE tenants ADD UNIQUE KEY uniq_tenant_public_id (public_id)");
+
+    // Backfill existing tenants without public_id
+    $chk = @$conn->query("SELECT id FROM tenants WHERE public_id IS NULL OR public_id = '' LIMIT 50");
+    if ($chk) {
+        while ($row = $chk->fetch_assoc()) {
+            $pid = generateRealPublicId($conn, 'tenants', 'public_id', 'OPT-', 8);
+            @$conn->query("UPDATE tenants SET public_id = '" . $conn->real_escape_string($pid) . "' WHERE id = " . (int)$row['id']);
+        }
+        $chk->close();
+    }
+
+    // Quote requests: public_id, converted_tenant_id, setup_email_sent
+    $quoteCols = [];
+    $res2 = @$conn->query("SHOW COLUMNS FROM quote_requests");
+    if ($res2) {
+        while ($r = $res2->fetch_assoc()) { $quoteCols[] = $r['Field']; }
+        $res2->close();
+    } else {
+        // Table may not exist yet, create with public_id included
+        return;
+    }
+    if (!in_array('public_id', $quoteCols, true)) {
+        @$conn->query("ALTER TABLE quote_requests ADD COLUMN public_id VARCHAR(32) NULL AFTER id");
+    }
+    if (!in_array('converted_tenant_id', $quoteCols, true)) {
+        @$conn->query("ALTER TABLE quote_requests ADD COLUMN converted_tenant_id INT NULL AFTER public_id");
+    }
+    if (!in_array('setup_email_sent', $quoteCols, true)) {
+        @$conn->query("ALTER TABLE quote_requests ADD COLUMN setup_email_sent TINYINT(1) NOT NULL DEFAULT 0 AFTER converted_tenant_id");
+    }
+    if (!in_array('setup_token', $quoteCols, true)) {
+        @$conn->query("ALTER TABLE quote_requests ADD COLUMN setup_token VARCHAR(128) NULL AFTER setup_email_sent");
+    }
+    @$conn->query("ALTER TABLE quote_requests ADD UNIQUE KEY uniq_quote_public_id (public_id)");
+
+    $chk2 = @$conn->query("SELECT id FROM quote_requests WHERE public_id IS NULL OR public_id = '' LIMIT 50");
+    if ($chk2) {
+        while ($row = $chk2->fetch_assoc()) {
+            $pid = generateRealPublicId($conn, 'quote_requests', 'public_id', 'QTE-', 8);
+            @$conn->query("UPDATE quote_requests SET public_id = '" . $conn->real_escape_string($pid) . "' WHERE id = " . (int)$row['id']);
+        }
+        $chk2->close();
+    }
+}
+
+function generateRealPublicId($conn, $table, $column, $prefix = 'OPT-', $len = 8) {
+    $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I,O,0,1 for readability
+    $maxAttempts = 30;
+    for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+        $rand = '';
+        try {
+            $bytes = random_bytes($len);
+        } catch (Exception $e) {
+            $bytes = openssl_random_pseudo_bytes($len);
+        }
+        for ($i = 0; $i < $len; $i++) {
+            $rand .= $chars[ord($bytes[$i]) % strlen($chars)];
+        }
+        $candidate = $prefix . $rand;
+        if (is_object($conn) && method_exists($conn, 'query')) {
+            $esc = $conn->real_escape_string($candidate);
+            $res = @$conn->query("SELECT COUNT(*) AS c FROM `$table` WHERE `$column` = '$esc' LIMIT 1");
+            if ($res) {
+                $row = $res->fetch_assoc();
+                $res->close();
+                if ((int)($row['c'] ?? 0) === 0) {
+                    return $candidate;
+                }
+                continue;
+            }
+        }
+        // If we can't check DB, just return candidate
+        return $candidate;
+    }
+    // Fallback: timestamp based
+    return $prefix . strtoupper(substr(md5(uniqid((string)mt_rand(), true)), 0, $len));
+}
+
+function generateSecureToken($length = 48) {
+    // $length = byte length; hex will be double
+    try {
+        return bin2hex(random_bytes($length));
+    } catch (Exception $e) {
+        return bin2hex(openssl_random_pseudo_bytes($length));
+    }
+}
+
+function getPlatformBaseUrl() {
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+    $scheme = $https ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+    // Determine base path: script is /admin/setup-password.php or /api/... -> go up one level
+    $script = $_SERVER['SCRIPT_NAME'] ?? '';
+    $basePath = '';
+    if ($script !== '') {
+        // If script is in subfolder like /admin/ or /api/, base is directory up
+        // We want root: remove last segment if it's a file, then if ends with /admin or /api, remove that too
+        $dir = dirname($script);
+        if ($dir === '/' || $dir === '\\' || $dir === '.') {
+            $basePath = '';
+        } else {
+            // Normalize: if dir is /admin or /superadmin or /api, base is /
+            if (in_array(basename($dir), ['admin', 'superadmin', 'api', 'includes'], true)) {
+                $basePath = dirname($dir);
+                if ($basePath === '/' || $basePath === '\\' || $basePath === '.') $basePath = '';
+            } else {
+                $basePath = $dir;
+                if ($basePath === '/' || $basePath === '.') $basePath = '';
+            }
+        }
+    }
+    return rtrim($scheme . '://' . $host . $basePath, '/');
+}
+
+function sendTenantSetupEmail($conn, $tenant, $setup_token, $is_new_registration = true) {
+    if (!is_array($tenant) || empty($tenant['email'])) {
+        return ['success' => false, 'message' => 'Missing tenant email'];
+    }
+    $email = trim((string)$tenant['email']);
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return ['success' => false, 'message' => 'Invalid tenant email'];
+    }
+
+    $company = $tenant['company_name'] ?? $tenant['contact_person'] ?? 'Your Company';
+    $public_id = $tenant['public_id'] ?? ('TEN-' . ($tenant['id'] ?? ''));
+    $site_name = 'Optibiz';
+    if (is_object($conn) && method_exists($conn, 'query')) {
+        $site_name = @sa_setting($conn, 'site_name', 'Optibiz') ?: 'Optibiz';
+        // Fallback to settings table direct query if sa_setting not loaded
+        if (function_exists('sa_setting') === false) {
+            $r = @$conn->query("SELECT setting_value FROM settings WHERE setting_key='site_name' LIMIT 1");
+            if ($r && $row = $r->fetch_assoc()) { $site_name = $row['setting_value'] ?: $site_name; $r->close(); }
+        }
+    }
+
+    $baseUrl = getPlatformBaseUrl();
+    if ($baseUrl === '' || $baseUrl === 'http://localhost' || $baseUrl === 'https://localhost') {
+        // Try to guess from settings or use relative
+        $baseUrl = (isset($_SERVER['HTTP_HOST']) ? ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST']) : 'https://optibiz.example.com');
+    }
+    $setupUrl = rtrim($baseUrl, '/') . '/admin/setup-password.php?token=' . urlencode($setup_token);
+    // Also provide login URL
+    $loginUrl = rtrim($baseUrl, '/') . '/admin/login.php';
+
+    $subject = $is_new_registration
+        ? 'Welcome to ' . $site_name . ' — Set up your account password'
+        : 'Your ' . $site_name . ' account — Set a new password';
+
+    $greetingName = htmlspecialchars($company, ENT_QUOTES, 'UTF-8');
+
+    $bodyHtml = '
+        <p>Hi ' . $greetingName . ',</p>
+        ' . ($is_new_registration ? '
+        <p>Great news! Your quota request has been approved and your workspace is ready.</p>
+        <p>Your <strong>Account ID</strong> is:</p>
+        <div style="display:inline-block;padding:10px 18px;background:rgba(194,245,66,0.12);border:1px solid rgba(194,245,66,0.25);border-radius:10px;color:#c2f542;font-family:monospace;font-size:16px;font-weight:800;letter-spacing:1px;margin:6px 0 14px;">' . htmlspecialchars($public_id, ENT_QUOTES, 'UTF-8') . '</div>
+        <p>To get started, you need to set up your account password. This secure link will expire in 48 hours.</p>
+        ' : '
+        <p>You requested (or an admin initiated) a password setup for your workspace.</p>
+        <p>Your <strong>Account ID</strong> is:</p>
+        <div style="display:inline-block;padding:10px 18px;background:rgba(194,245,66,0.12);border:1px solid rgba(194,245,66,0.25);border-radius:10px;color:#c2f542;font-family:monospace;font-size:16px;font-weight:800;letter-spacing:1px;margin:6px 0 14px;">' . htmlspecialchars($public_id, ENT_QUOTES, 'UTF-8') . '</div>
+        <p>Click the button below to set your password. This link expires in 48 hours.</p>
+        ') . '
+        <p style="margin:18px 0 6px;color:#94a3b8;font-size:13px;">Keep your Account ID safe — you can use it to reference your account with support.</p>
+        <div style="margin:18px 0;padding:14px 16px;background:rgba(148,163,184,0.06);border:1px solid rgba(148,163,184,0.12);border-radius:10px;font-size:13px;color:#cbd5e1;line-height:1.6;">
+            <strong style="color:#eef2f7;">What happens next?</strong><br>
+            1. Click the button to set your password<br>
+            2. Sign in at <a href="' . htmlspecialchars($loginUrl, ENT_QUOTES, 'UTF-8') . '" style="color:#c2f542;text-decoration:none;">' . htmlspecialchars($loginUrl, ENT_QUOTES, 'UTF-8') . '</a><br>
+            3. Complete your company profile and start collecting reviews
+        </div>
+        <p style="font-size:12.5px;color:#64748b;margin-top:18px;">If you did not expect this email, you can safely ignore it. The link will expire automatically.</p>
+    ';
+
+    $fullHtml = function_exists('sa_render_email_template')
+        ? sa_render_email_template($subject, $bodyHtml, $site_name, $setupUrl, 'Set Up My Password')
+        : $bodyHtml;
+
+    $res = function_exists('sa_send_mail')
+        ? sa_send_mail($email, $subject, $fullHtml, $conn)
+        : ['success' => false, 'message' => 'Mailer not available'];
+
+    return $res;
+}
+
+function sendQuoteConfirmationEmail($conn, $quote) {
+    if (!is_array($quote) || empty($quote['email'])) {
+        return ['success' => false, 'message' => 'Missing quote email'];
+    }
+    $email = trim((string)$quote['email']);
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return ['success' => false, 'message' => 'Invalid quote email'];
+    }
+
+    $company = $quote['company_name'] ?? 'Your Company';
+    $public_id = $quote['public_id'] ?? ('QTE-' . ($quote['id'] ?? ''));
+    $contact_person = $quote['contact_person'] ?? $company;
+    $site_name = 'Optibiz';
+    if (is_object($conn) && method_exists($conn, 'query') && function_exists('sa_setting')) {
+        $site_name = @sa_setting($conn, 'site_name', 'Optibiz') ?: 'Optibiz';
+    }
+
+    $baseUrl = getPlatformBaseUrl();
+    $loginUrl = rtrim($baseUrl, '/') . '/admin/login.php';
+
+    $subject = 'Your ' . $site_name . ' quota request received — Ref: ' . $public_id;
+
+    $bodyHtml = '
+        <p>Hi ' . htmlspecialchars($contact_person, ENT_QUOTES, 'UTF-8') . ',</p>
+        <p>Thank you for requesting a quota with <strong>' . htmlspecialchars($site_name, ENT_QUOTES, 'UTF-8') . '</strong>!</p>
+        <p>We have received your request for <strong>' . htmlspecialchars($company, ENT_QUOTES, 'UTF-8') . '</strong> and our team will review it within 24 hours.</p>
+        <p>Your <strong>Quota Reference ID</strong> is:</p>
+        <div style="display:inline-block;padding:10px 18px;background:rgba(194,245,66,0.12);border:1px solid rgba(194,245,66,0.25);border-radius:10px;color:#c2f542;font-family:monospace;font-size:16px;font-weight:800;letter-spacing:1px;margin:6px 0 14px;">' . htmlspecialchars($public_id, ENT_QUOTES, 'UTF-8') . '</div>
+        <p>Please keep this ID for your records. Once approved, you will receive a second email with instructions to set up your account password and access your workspace.</p>
+        <div style="margin:18px 0;padding:14px 16px;background:rgba(148,163,184,0.06);border:1px solid rgba(148,163,184,0.12);border-radius:10px;font-size:13px;color:#cbd5e1;line-height:1.6;">
+            <strong style="color:#eef2f7;">What to expect next:</strong><br>
+            • Our team reviews your requirements<br>
+            • You receive an approval email with your Account ID (e.g. OPT-XXXXXX)<br>
+            • You set your password and sign in at <a href="' . htmlspecialchars($loginUrl, ENT_QUOTES, 'UTF-8') . '" style="color:#c2f542;text-decoration:none;">' . htmlspecialchars($loginUrl, ENT_QUOTES, 'UTF-8') . '</a><br>
+            • You start collecting customer reviews
+        </div>
+        <p style="font-size:12.5px;color:#64748b;margin-top:18px;">If you have any questions, reply to this email or contact our support team.</p>
+    ';
+
+    $fullHtml = function_exists('sa_render_email_template')
+        ? sa_render_email_template('Quota Request Received — ' . $public_id, $bodyHtml, $site_name, '', '')
+        : $bodyHtml;
+
+    $res = function_exists('sa_send_mail')
+        ? sa_send_mail($email, $subject, $fullHtml, $conn)
+        : ['success' => false, 'message' => 'Mailer not available'];
+
+    return $res;
+}
+
+function sendTenantWelcomeAfterSetup($conn, $tenant) {
+    if (!is_array($tenant) || empty($tenant['email'])) return ['success'=>false,'message'=>'Missing email'];
+    $email = trim((string)$tenant['email']);
+    $company = $tenant['company_name'] ?? 'Your Company';
+    $public_id = $tenant['public_id'] ?? ('OPT-' . ($tenant['id'] ?? ''));
+    $site_name = function_exists('sa_setting') && is_object($conn) ? @sa_setting($conn, 'site_name', 'Optibiz') : 'Optibiz';
+    $baseUrl = getPlatformBaseUrl();
+    $loginUrl = rtrim($baseUrl, '/') . '/admin/login.php';
+    $subject = 'Welcome aboard — Your ' . $site_name . ' workspace is ready!';
+
+    $bodyHtml = '
+        <p>Hi ' . htmlspecialchars($company, ENT_QUOTES, 'UTF-8') . ',</p>
+        <p>Your password has been set successfully and your workspace is now active!</p>
+        <p>Your <strong>Account ID</strong> remains:</p>
+        <div style="display:inline-block;padding:10px 18px;background:rgba(194,245,66,0.12);border:1px solid rgba(194,245,66,0.25);border-radius:10px;color:#c2f542;font-family:monospace;font-size:16px;font-weight:800;letter-spacing:1px;margin:6px 0 14px;">' . htmlspecialchars($public_id, ENT_QUOTES, 'UTF-8') . '</div>
+        <p>You can now sign in anytime at:</p>
+        <p><a href="' . htmlspecialchars($loginUrl, ENT_QUOTES, 'UTF-8') . '" style="color:#c2f542;">' . htmlspecialchars($loginUrl, ENT_QUOTES, 'UTF-8') . '</a></p>
+        <p style="font-size:13px;color:#cbd5e1;">Next steps: complete your company profile, add your WhatsApp number, connect Google reviews, and share your rating link with customers.</p>
+    ';
+    $fullHtml = function_exists('sa_render_email_template') ? sa_render_email_template($subject, $bodyHtml, $site_name, $loginUrl, 'Go to Dashboard') : $bodyHtml;
+    return function_exists('sa_send_mail') ? sa_send_mail($email, $subject, $fullHtml, $conn) : ['success'=>false,'message'=>'Mailer not available'];
+}
 ?>
+

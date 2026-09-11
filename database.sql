@@ -36,9 +36,13 @@ INSERT INTO subscription_plans (plan_name, price, max_ratings, max_customers, fe
 ('Professional', 79.99, 500, 50, 'Advanced analytics, Priority support, 50 customers, 500 ratings/month, Custom branding'),
 ('Enterprise', 199.99, 9999, 999, 'Full analytics suite, 24/7 support, Unlimited customers, Unlimited ratings, API access, White label');
 
--- Tenants table (Companies using the SaaS)
+-- Tenants table (Companies using the SaaS) — with Real Public ID + onboarding email
 CREATE TABLE IF NOT EXISTS tenants (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    public_id VARCHAR(32) NULL COMMENT 'Real public ID e.g. OPT-8K2F9Q1A, not DB id',
+    setup_token VARCHAR(128) NULL COMMENT 'Secure token for password setup email',
+    setup_token_expires DATETIME NULL COMMENT 'Expiry for setup link (48h)',
+    email_verified_at DATETIME NULL COMMENT 'When password was set via email link',
     company_name VARCHAR(255) NOT NULL,
     email VARCHAR(100) NOT NULL UNIQUE,
     phone VARCHAR(20),
@@ -51,13 +55,15 @@ CREATE TABLE IF NOT EXISTS tenants (
     subscription_end_date DATE,
     auto_renew BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_tenant_public_id (public_id),
+    INDEX idx_tenant_setup_token (setup_token),
     FOREIGN KEY (plan_id) REFERENCES subscription_plans(id)
 );
 
--- Insert sample tenants
-INSERT INTO tenants (company_name, email, phone, username, password, plan_id, subscription_status, subscription_price, subscription_start_date, subscription_end_date) VALUES 
-('ABC Corporation', 'admin@abccorp.com', '555-0101', 'abc_corporation', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 2, 'active', 79.99, '2026-01-01', '2026-12-31'),
-('XYZ Industries', 'admin@xyzind.com', '555-0102', 'xyz_industries', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1, 'active', 29.99, '2026-02-01', '2027-02-01');
+-- Insert sample tenants with Real IDs (OPT-XXXXXXXX) — password: password (hashed as admin123 placeholder)
+INSERT INTO tenants (public_id, company_name, email, phone, username, password, plan_id, subscription_status, subscription_price, subscription_start_date, subscription_end_date, email_verified_at) VALUES 
+('OPT-A1B2C3D4', 'ABC Corporation', 'admin@abccorp.com', '555-0101', 'abc_corporation', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 2, 'active', 79.99, '2026-01-01', '2026-12-31', NOW()),
+('OPT-E5F6G7H8', 'XYZ Industries', 'admin@xyzind.com', '555-0102', 'xyz_industries', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1, 'active', 29.99, '2026-02-01', '2027-02-01', NOW());
 
 -- Admins table
 CREATE TABLE IF NOT EXISTS admins (
@@ -202,9 +208,13 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 ('admin_email', 'admin@example.com'),
 ('ratings_per_page', '10');
 
--- Quote requests from the public "Get Started" wizard (index.php)
+-- Quote requests from the public "Get Started" wizard (index.php) — Real ID + tenant link
 CREATE TABLE IF NOT EXISTS quote_requests (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    public_id VARCHAR(32) NULL COMMENT 'Real public ID e.g. QTE-8K2F9Q1A, not DB id',
+    converted_tenant_id INT NULL COMMENT 'Tenant created from this quote',
+    setup_email_sent TINYINT(1) NOT NULL DEFAULT 0,
+    setup_token VARCHAR(128) NULL,
     company_name VARCHAR(255) NOT NULL,
     contact_person VARCHAR(255) NOT NULL,
     email VARCHAR(100) NOT NULL,
@@ -218,6 +228,8 @@ CREATE TABLE IF NOT EXISTS quote_requests (
     notes TEXT,
     status ENUM('pending', 'contacted', 'converted', 'rejected') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_quote_public_id (public_id),
+    INDEX idx_quote_tenant (converted_tenant_id),
     FOREIGN KEY (category_id) REFERENCES categories(id),
     FOREIGN KEY (plan_id) REFERENCES subscription_plans(id)
 );

@@ -1,10 +1,8 @@
 <?php
 /**
  * ============================================================
- *  Super Admin — Tenants
+ *  Super Admin — Tenants (Real IDs + Email Onboarding)
  * ============================================================
- *  Create, search, filter, edit, change plan/status, reset the
- *  tenant login password and delete tenants.
  */
 
 require_once dirname(__DIR__) . '/includes/auth.php';
@@ -15,7 +13,9 @@ require_once dirname(__DIR__) . '/includes/sa_helpers.php';
 requireSuperAdminLogin();
 require_sa_permission('tenants');
 
-/* ---------- POST handlers (PRG: redirect after every write) ---------- */
+ensureRealIdSchema($conn);
+
+/* ---------- POST handlers ---------- */
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!sa_csrf_ok()) {
         sa_flash('error', 'Your session expired. Please try again.');
@@ -31,52 +31,98 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $plan_id = (int) ($_POST['plan_id'] ?? 0);
         $status  = in_array($_POST['subscription_status'] ?? 'trial', ['trial', 'active', 'inactive'], true)
             ? $_POST['subscription_status'] : 'trial';
-        $raw_pw  = (string) ($_POST['password'] ?? '');
         $months  = max(0, (int) ($_POST['trial_months'] ?? 1));
+        $send_email = !empty($_POST['send_setup_email']);
 
         if ($company === '' || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             sa_flash('error', 'A company name and a valid email address are required.');
-        } elseif (strlen($raw_pw) < 6) {
-            sa_flash('error', 'The tenant password must be at least 6 characters.');
         } elseif ((int) sa_scalar($conn, "SELECT COUNT(*) FROM tenants WHERE email = '" . $conn->real_escape_string($email) . "'", 0, 'tenants') > 0) {
             sa_flash('error', 'A tenant with that email address already exists.');
         } else {
             $plan = sa_one($conn, "SELECT id, price FROM subscription_plans WHERE id = " . $plan_id, 'subscription_plans');
             $price = $plan ? (float) $plan['price'] : 0.0;
             $username = sa_unique_username($conn, $company);
-            $hash = password_hash($raw_pw, PASSWORD_DEFAULT);
+            $public_id = generateRealPublicId($conn, 'tenants', 'public_id', 'OPT-', 8);
+            $setup_token = generateSecureToken(32);
+            $setup_expires = date('Y-m-d H:i:s', strtotime('+48 hours'));
+            $placeholder_hash = password_hash(generateSecureToken(16), PASSWORD_DEFAULT);
             $start = date('Y-m-d');
             $end = $months > 0 ? date('Y-m-d', strtotime('+' . $months . ' month')) : null;
 
             $stmt = $conn->prepare(
                 "INSERT INTO tenants
-                    (company_name, email, phone, username, password, plan_id,
+                    (public_id, setup_token, setup_token_expires, company_name, email, phone, username, password, plan_id,
                      subscription_status, subscription_price, subscription_start_date, subscription_end_date)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
-            $end_placeholder = $end; // bound by reference, may be NULL
-            $stmt->bind_param(
-                "sssssisssd",
-                $company, $email, $phone, $username, $hash, $plan_id,
-                $status, $price, $start, $end_placeholder
-            );
-            $stmt->execute();
+            $end_placeholder = $end;
+            if ($stmt) {
+                $stmt->bind_param(
+                    "ssssssssissss",
+                    $public_id, $setup_token, $setup_expires, $company, $email, $phone, $username, $placeholder_hash, $plan_id,
+                    $status, $price, $start, $end_placeholder
+                );
+                $stmt->execute();
+            } else {
+                // Fallback for old schema
+                $stmt2 = $conn->prepare(
+                    "INSERT INTO tenants
+                        (company_name, email, phone, username, password, plan_id,
+                         subscription_status, subscription_price, subscription_start_date, subscription_end_date)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                );
+                $stmt2->bind_param(
+                    "sssssisssd",
+                    $company, $email, $phone, $username, $placeholder_hash, $plan_id,
+                    $status, $price, $start, $end_placeholder
+                );
+                $stmt2->execute();
+                $stmt = $stmt2;
+                // Try to backfill public_id after
+                $nid = (int)$conn->insert_id;
+                @$conn->query("UPDATE tenants SET public_id = '" . $conn->real_escape_string($public_id) . "', setup_token = '" . $conn->real_escape_string($setup_token) . "', setup_token_expires = '" . $conn->real_escape_string($setup_expires) . "' WHERE id = " . $nid);
+            }
 
             if ($stmt->error) {
                 sa_flash('error', 'Could not create the tenant: ' . $stmt->error);
             } else {
                 $new_id = (int) $conn->insert_id;
+                if ($new_id === 0) $new_id = (int)($conn->insert_id ?: 0);
+                // Ensure public_id exists
+                $check = sa_one($conn, "SELECT public_id FROM tenants WHERE id = " . $new_id, 'tenants');
+                if (empty($check['public_id'])) {
+                    @$conn->query("UPDATE tenants SET public_id = '" . $conn->real_escape_string($public_id) . "' WHERE id = " . $new_id);
+                } else {
+                    $public_id = $check['public_id'];
+                }
 
-                // Auto-create the tenant's own company profile in the customers table
                 $co_stmt = $conn->prepare(
                     "INSERT INTO customers (tenant_id, company_name, email, phone, created_at)
                      VALUES (?, ?, ?, ?, NOW())"
                 );
-                $co_stmt->bind_param("isss", $new_id, $company, $email, $phone);
-                $co_stmt->execute();
-                $co_stmt->close();
+                if ($co_stmt) {
+                    $co_stmt->bind_param("isss", $new_id, $company, $email, $phone);
+                    $co_stmt->execute();
+                    $co_stmt->close();
+                }
 
-                sa_flash('success', $company . ' was created with the login “' . $username . '”.');
+                if ($send_email) {
+                    $tenantRow = [
+                        'id' => $new_id,
+                        'public_id' => $public_id,
+                        'company_name' => $company,
+                        'email' => $email,
+                        'username' => $username,
+                    ];
+                    $mailRes = sendTenantSetupEmail($conn, $tenantRow, $setup_token, true);
+                    if ($mailRes['success']) {
+                        sa_flash('success', $company . ' was created with Real ID ' . $public_id . ' (login "' . $username . '"). Setup email sent to ' . $email . '.');
+                    } else {
+                        sa_flash('warning', $company . ' was created with Real ID ' . $public_id . ' (login "' . $username . '"), but setup email failed: ' . $mailRes['message']);
+                    }
+                } else {
+                    sa_flash('success', $company . ' was created with Real ID ' . $public_id . ' (login "' . $username . '"). No email sent — you can send setup link from actions.');
+                }
             }
             $stmt->close();
         }
@@ -154,11 +200,33 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             sa_flash('error', 'Choose a tenant and use a password of at least 6 characters.');
         } else {
             $hash = password_hash($raw_pw, PASSWORD_DEFAULT);
-            $stmt = $conn->prepare("UPDATE tenants SET password = ? WHERE id = ?");
+            $stmt = $conn->prepare("UPDATE tenants SET password = ?, setup_token = NULL, setup_token_expires = NULL, email_verified_at = NOW() WHERE id = ?");
             $stmt->bind_param("si", $hash, $id);
             $stmt->execute();
             $stmt->close();
-            sa_flash('success', 'Tenant password updated.');
+            sa_flash('success', 'Tenant password updated and verified.');
+        }
+        redirect('tenants.php');
+    }
+
+    if ($action === 'send_setup_email') {
+        $id = (int) ($_POST['tenant_id'] ?? 0);
+        $tenant = sa_one($conn, "SELECT * FROM tenants WHERE id = " . $id, 'tenants');
+        if (!$tenant) {
+            sa_flash('error', 'Tenant not found.');
+            redirect('tenants.php');
+        }
+        $new_token = generateSecureToken(32);
+        $new_exp = date('Y-m-d H:i:s', strtotime('+48 hours'));
+        $up = $conn->prepare("UPDATE tenants SET setup_token = ?, setup_token_expires = ? WHERE id = ?");
+        if ($up) { $up->bind_param("ssi", $new_token, $new_exp, $id); $up->execute(); $up->close(); }
+        else { @$conn->query("UPDATE tenants SET setup_token = '" . $conn->real_escape_string($new_token) . "', setup_token_expires = '" . $conn->real_escape_string($new_exp) . "' WHERE id = " . $id); }
+
+        $mailRes = sendTenantSetupEmail($conn, $tenant, $new_token, false);
+        if ($mailRes['success']) {
+            sa_flash('success', 'Setup email sent to ' . $tenant['email'] . ' for tenant ' . ($tenant['public_id'] ?? ('#'.$id)) . '. Link valid 48h.');
+        } else {
+            sa_flash('error', 'Failed to send setup email: ' . $mailRes['message']);
         }
         redirect('tenants.php');
     }
@@ -181,11 +249,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             redirect('tenants.php');
         }
 
-        // Store super admin identity for clean exit
         $_SESSION['impersonator_super_admin_id'] = (int) $_SESSION['super_admin_id'];
         $_SESSION['impersonator_super_admin_name'] = $_SESSION['super_admin_username'] ?? 'Super Admin';
 
-        // Set tenant session context
         $_SESSION['tenant_id'] = (int) $tenant['id'];
         $_SESSION['tenant_name'] = $tenant['company_name'];
         $_SESSION['tenant_logo'] = $tenant['logo'] ?? '';
@@ -201,13 +267,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     }
 }
 
-/* ---------- 1-click server CSV export ---------- */
+/* ---------- CSV export ---------- */
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     while (ob_get_level()) { ob_end_clean(); }
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename=tenants-' . date('Y-m-d') . '.csv');
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['ID', 'Company Name', 'Email', 'Phone', 'Username', 'Plan', 'Price/mo', 'Status', 'Profiles Used', 'Profiles Limit', 'Reviews Used', 'Reviews Limit', 'Renews On', 'Created At']);
+    fputcsv($out, ['Real ID', 'DB ID', 'Company Name', 'Email', 'Phone', 'Username', 'Plan', 'Price/mo', 'Status', 'Profiles Used', 'Profiles Limit', 'Reviews Used', 'Reviews Limit', 'Renews On', 'Created At']);
     $export_rows = sa_query(
         $conn,
         "SELECT t.*, p.plan_name, p.max_customers, p.max_ratings,
@@ -219,7 +285,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         ['tenants', 'subscription_plans', 'customers']
     );
     foreach ($export_rows as $er) {
+        $realId = $er['public_id'] ?? ('OPT-' . str_pad((string)$er['id'], 6, '0', STR_PAD_LEFT));
         fputcsv($out, [
+            $realId,
             $er['id'],
             $er['company_name'],
             $er['email'],
@@ -253,7 +321,7 @@ if ($q !== '') {
     $like = '%' . $q . '%';
     $escaped = $conn->real_escape_string($like);
     $where .= ($where === '' ? ' WHERE ' : ' AND ')
-        . " (t.company_name LIKE '" . $escaped . "' OR t.email LIKE '" . $escaped
+        . " (t.public_id LIKE '" . $escaped . "' OR t.company_name LIKE '" . $escaped . "' OR t.email LIKE '" . $escaped
         . "' OR t.username LIKE '" . $escaped . "')";
 }
 
@@ -284,6 +352,9 @@ foreach ($raw_tenants as $t) {
     $t['cust_pct'] = $cpct;
     $t['rat_pct'] = $rpct;
     $t['is_near_limit'] = $is_near;
+    if (!isset($t['public_id']) || empty($t['public_id'])) {
+        $t['public_id'] = 'OPT-' . str_pad((string)$t['id'], 6, '0', STR_PAD_LEFT);
+    }
 
     if ($filter === 'near_limit' && !$is_near) {
         continue;
@@ -300,13 +371,13 @@ $m = sa_metrics($conn);
 $robots    = 'noindex, nofollow';
 $pageTitle = 'Tenants';
 $pageHeading = 'Tenants';
-$pageSubtitle = 'Every company subscribed to the Optibiz platform.';
+$pageSubtitle = 'Every company subscribed — Real IDs (OPT-XXXXXXXX) + email password setup.';
 $activePage = 'tenants';
 $BASE = '../';
 $extraCss = ['assets/css/superadmin.css'];
 $bodyClass    = 'sa-body';
 $searchTarget = '#tenantsTable';
-$searchPlaceholder = 'Filter tenants…';
+$searchPlaceholder = 'Filter by Real ID, name, email…';
 
 include dirname(__DIR__) . '/includes/header.php';
 include __DIR__ . '/_shell.php';
@@ -319,17 +390,17 @@ include __DIR__ . '/_shell.php';
             <?php echo sa_icon('chevron-right'); ?>
             <span>Tenants</span>
         </div>
-        <h2>Manage tenants</h2>
+        <h2>Manage tenants — Real IDs</h2>
         <p><?php echo sa_e(sa_num($counts['all'])); ?> companies &middot;
            <?php echo sa_e(sa_num($counts['active'])); ?> active &middot;
            <?php echo sa_e(sa_num($counts['trial'])); ?> on trial &middot;
-           <?php echo sa_e(sa_money($m['mrr'])); ?> MRR</p>
+           <?php echo sa_e(sa_money($m['mrr'])); ?> MRR &middot; IDs like <span class="sa-mono" style="background:rgba(194,245,66,0.15);padding:2px 6px;border-radius:6px;">OPT-8K2F9Q1A</span> not DB id</p>
     </div>
     <div class="sa-head-actions">
         <button type="button" class="sa-btn sa-btn-ghost" data-sa-export="#tenantsTable" data-sa-export-name="optibiz-tenants" title="Export visible table to CSV">
             <?php echo sa_icon('download'); ?> View CSV
         </button>
-        <a class="sa-btn sa-btn-ghost" href="tenants.php?export=csv" title="Download entire database records">
+        <a class="sa-btn sa-btn-ghost" href="tenants.php?export=csv" title="Download entire database records with Real IDs">
             <?php echo sa_icon('file-text'); ?> Full DB CSV
         </a>
         <button type="button" class="sa-btn sa-btn-primary" data-sa-open-dialog="#tenantCreateDialog">
@@ -340,7 +411,6 @@ include __DIR__ . '/_shell.php';
 
 <?php echo sa_render_flash(); ?>
 
-<!-- ============ FILTERS ============ -->
 <section class="sa-card sa-mb">
     <div class="sa-filters">
         <div class="sa-chips">
@@ -359,9 +429,9 @@ include __DIR__ . '/_shell.php';
 
         <form method="GET" action="tenants.php" style="margin-left:auto;display:flex;gap:8px;align-items:center">
             <input type="hidden" name="status" value="<?php echo sa_e($filter); ?>">
-            <div class="sa-search" style="display:block;width:min(280px,52vw)">
+            <div class="sa-search" style="display:block;width:min(320px,52vw)">
                 <?php echo sa_icon('search'); ?>
-                <input type="search" name="q" value="<?php echo sa_e($q); ?>" placeholder="Search name, email or login…" aria-label="Search tenants">
+                <input type="search" name="q" value="<?php echo sa_e($q); ?>" placeholder="Search Real ID, name, email or login…" aria-label="Search tenants">
             </div>
             <button type="submit" class="sa-btn sa-btn-sm sa-btn-ghost">Search</button>
 <?php if ($q !== '' || $filter !== 'all'): ?>
@@ -371,12 +441,11 @@ include __DIR__ . '/_shell.php';
     </div>
 </section>
 
-<!-- ============ TABLE ============ -->
 <section class="sa-card">
     <div class="sa-card-head">
         <div>
-            <h3><?php echo sa_e(ucfirst(str_replace('_', ' ', $filter))); ?> tenants</h3>
-            <p><?php echo sa_e(sa_num(count($tenants))); ?> result<?php echo count($tenants) === 1 ? '' : 's'; ?><?php echo $q !== '' ? ' for “' . sa_e($q) . '”' : ''; ?></p>
+            <h3><?php echo sa_e(ucfirst(str_replace('_', ' ', $filter))); ?> tenants — Real IDs</h3>
+            <p><?php echo sa_e(sa_num(count($tenants))); ?> result<?php echo count($tenants) === 1 ? '' : 's'; ?><?php echo $q !== '' ? ' for “' . sa_e($q) . '”' : ''; ?> &middot; Showing <span class="sa-mono">OPT-XXXXXXXX</span></p>
         </div>
         <div class="sa-card-head-actions">
             <span class="sa-pill"><?php echo sa_icon('users'); ?> <?php echo sa_e(sa_num($m['customers_total'])); ?> companies managed</span>
@@ -385,17 +454,17 @@ include __DIR__ . '/_shell.php';
 
     <div class="sa-table-wrap">
         <table class="sa-table" id="tenantsTable" data-sa-sortable-table>
-            <thead scope="col">
+            <thead>
                 <tr>
-                    <th data-sa-sort="0" data-type="num" scope="col" aria-sort="none">ID</th>
-                    <th data-sa-sort="1" scope="col" aria-sort="none">Company</th>
-                    <th data-sa-sort="2" scope="col" aria-sort="none">Contact</th>
-                    <th data-sa-sort="3" scope="col" aria-sort="none">Plan</th>
-                    <th data-sa-sort="4" data-type="num" scope="col" aria-sort="none">Price / mo</th>
-                    <th data-sa-sort="5" scope="col" aria-sort="none">Status</th>
-                    <th data-sa-sort="6" data-type="num" scope="col" aria-sort="none">Quota usage</th>
-                    <th data-sa-sort="7" data-type="date" scope="col" aria-sort="none">Renews</th>
-                    <th data-sa-sort="8" data-type="date" scope="col" aria-sort="none">Joined</th>
+                    <th data-sa-sort="0" scope="col">Real ID</th>
+                    <th data-sa-sort="1" scope="col">Company</th>
+                    <th data-sa-sort="2" scope="col">Contact</th>
+                    <th data-sa-sort="3" scope="col">Plan</th>
+                    <th data-sa-sort="4" data-type="num" scope="col">Price / mo</th>
+                    <th data-sa-sort="5" scope="col">Status</th>
+                    <th data-sa-sort="6" data-type="num" scope="col">Quota usage</th>
+                    <th data-sa-sort="7" data-type="date" scope="col">Renews</th>
+                    <th data-sa-sort="8" data-type="date" scope="col">Joined</th>
                     <th data-no-export scope="col"><span class="sa-sr-only">Actions</span></th>
                 </tr>
             </thead>
@@ -415,14 +484,22 @@ include __DIR__ . '/_shell.php';
 <?php else: ?>
 <?php foreach ($tenants as $t): ?>
 <?php
+    $realId = $t['public_id'];
     $search_blob = strtolower(implode(' ', [
-        $t['id'], $t['company_name'], $t['email'], $t['username'], $t['phone'],
+        $realId, $t['id'], $t['company_name'], $t['email'], $t['username'], $t['phone'],
         $t['plan_name'], $t['subscription_status'],
     ]));
     list($renew_badge, $renew_kind) = sa_renewal_badge($t['subscription_end_date'], $t['auto_renew']);
+    $is_verified = !empty($t['email_verified_at']);
+    $has_token = !empty($t['setup_token']);
 ?>
                 <tr data-filterable data-search="<?php echo sa_e($search_blob); ?>">
-                    <td class="num sa-faint" data-sort-value="<?php echo (int) $t['id']; ?>">#<?php echo (int) $t['id']; ?></td>
+                    <td data-sort-value="<?php echo sa_e($realId); ?>">
+                        <div style="display:flex;flex-direction:column;gap:4px;">
+                            <span class="sa-badge" style="font-family:monospace;background:rgba(99,102,241,0.12);color:#4338ca;border:1px solid rgba(99,102,241,0.25);font-weight:800;letter-spacing:0.8px;padding:4px 10px;border-radius:8px;align-self:flex-start;"><?php echo sa_e($realId); ?></span>
+                            <span style="font-size:10px;color:var(--sa-muted);">DB #<?php echo (int)$t['id']; ?> &middot; <?php echo $is_verified ? '<span style="color:#10b981;">✓ Verified</span>' : ($has_token ? '<span style="color:#f59e0b;">◷ Setup pending</span>' : '<span style="color:#64748b;">— No token</span>'); ?></span>
+                        </div>
+                    </td>
                     <td>
                         <div class="sa-cell-main">
                             <span class="sa-cell-avatar"><?php echo sa_e(sa_initials($t['company_name'])); ?></span>
@@ -484,8 +561,8 @@ include __DIR__ . '/_shell.php';
                     <td data-sort-value="<?php echo sa_e($t['subscription_end_date'] ?: ''); ?>"><?php echo $renew_badge; ?></td>
                     <td data-sort-value="<?php echo sa_e($t['created_at']); ?>"><?php echo sa_e(sa_date($t['created_at'])); ?></td>
                     <td data-no-export>
-                        <div class="sa-row-actions">
-                            <a class="sa-btn sa-btn-sm sa-btn-ghost" href="tenant_details.php?id=<?php echo (int) $t['id']; ?>" title="Open <?php echo sa_e($t['company_name']); ?>">
+                        <div class="sa-row-actions" style="display:flex;flex-wrap:wrap;gap:4px;">
+                            <a class="sa-btn sa-btn-sm sa-btn-ghost" href="tenant_details.php?id=<?php echo (int) $t['id']; ?>" title="Open <?php echo sa_e($t['company_name']); ?> — <?php echo sa_e($realId); ?>">
                                 <?php echo sa_icon('eye'); ?>
                             </a>
                             <form method="POST" action="tenants.php" style="display:inline">
@@ -496,7 +573,15 @@ include __DIR__ . '/_shell.php';
                                     <?php echo sa_icon('external'); ?>
                                 </button>
                             </form>
-                            <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" title="Edit tenant"
+                            <form method="POST" action="tenants.php" style="display:inline">
+                                <?php echo sa_csrf_field(); ?>
+                                <input type="hidden" name="action" value="send_setup_email">
+                                <input type="hidden" name="tenant_id" value="<?php echo (int) $t['id']; ?>">
+                                <button type="submit" class="sa-btn sa-btn-sm sa-btn-ghost" style="color:#10b981;" title="Send password setup email to <?php echo sa_e($t['email']); ?> — Real ID <?php echo sa_e($realId); ?>">
+                                    <?php echo sa_icon('mail'); ?>
+                                </button>
+                            </form>
+                            <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" title="Edit tenant <?php echo sa_e($realId); ?>"
                                     data-sa-edit-tenant
                                     data-id="<?php echo (int) $t['id']; ?>"
                                     data-company="<?php echo sa_e($t['company_name']); ?>"
@@ -510,12 +595,12 @@ include __DIR__ . '/_shell.php';
                                     data-end="<?php echo sa_e($t['subscription_end_date']); ?>">
                                 <?php echo sa_icon('edit'); ?>
                             </button>
-                            <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" title="Reset tenant password"
+                            <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" title="Reset password manually"
                                     data-sa-password-tenant data-id="<?php echo (int) $t['id']; ?>" data-company="<?php echo sa_e($t['company_name']); ?>">
                                 <?php echo sa_icon('key'); ?>
                             </button>
                             <form method="POST" action="tenants.php" style="display:inline"
-                                  onsubmit="return confirm('Delete <?php echo sa_e(addslashes($t['company_name'])); ?> and all of its companies, ratings and history? This cannot be undone.');">
+                                  onsubmit="return confirm('Delete <?php echo sa_e(addslashes($t['company_name'])); ?> (<?php echo sa_e($realId); ?>) and all of its companies, ratings and history? This cannot be undone.');">
                                 <?php echo sa_csrf_field(); ?>
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="tenant_id" value="<?php echo (int) $t['id']; ?>">
@@ -537,8 +622,8 @@ include __DIR__ . '/_shell.php';
     </div>
 
     <div class="sa-card-foot">
-        <span>Showing <?php echo sa_e(sa_num(count($tenants))); ?> of <?php echo sa_e(sa_num($counts['all'])); ?> tenants</span>
-        <span>Status changes save instantly &middot; use <?php echo sa_icon('key', 'style="width:12px;height:12px;vertical-align:-2px"'); ?> to reset a tenant login</span>
+        <span>Showing <?php echo sa_e(sa_num(count($tenants))); ?> of <?php echo sa_e(sa_num($counts['all'])); ?> tenants &middot; Real IDs not DB IDs</span>
+        <span>Use <?php echo sa_icon('mail', 'style="width:12px;height:12px;vertical-align:-2px"'); ?> to email password setup &middot; <?php echo sa_icon('key', 'style="width:12px;height:12px;vertical-align:-2px"'); ?> to reset manually</span>
     </div>
 </section>
 
@@ -549,20 +634,26 @@ include __DIR__ . '/_shell.php';
         <input type="hidden" name="action" value="create">
         <div class="sa-dialog-head">
             <div>
-                <h3 id="tenantCreateDialogTitle">Create a tenant</h3>
-                <p>This also creates the login the company will use at <span class="sa-mono">/admin/login.php</span>.</p>
+                <h3 id="tenantCreateDialogTitle">Create a tenant — Real ID + Email</h3>
+                <p>Generates OPT-XXXXXXXX ID and emails password setup link. Login at <span class="sa-mono">/admin/login.php</span>.</p>
             </div>
             <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>
         </div>
 
         <div class="sa-dialog-body">
+            <div style="margin-bottom:16px;padding:12px 14px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;font-size:13px;line-height:1.5;color:#4338ca;">
+                <strong>New onboarding flow:</strong><br>
+                • Real ID like OPT-8K2F9Q1A generated automatically (not DB id)<br>
+                • Tenant receives email with secure link to set password (48h valid)<br>
+                • After setup, they sign in with username (auto-generated) or email
+            </div>
             <div class="sa-form-grid">
                 <div class="sa-field">
                     <label for="c_company">Company name *</label>
                     <input id="c_company" type="text" name="company_name" placeholder="e.g. Accra Consulting Ltd" required>
                 </div>
                 <div class="sa-field">
-                    <label for="c_email">Billing email *</label>
+                    <label for="c_email">Billing email * (will receive setup link)</label>
                     <input id="c_email" type="email" name="email" placeholder="billing@company.com" required>
                 </div>
                 <div class="sa-field">
@@ -594,16 +685,19 @@ include __DIR__ . '/_shell.php';
                     <span class="sa-hint">0 leaves the end date open.</span>
                 </div>
                 <div class="sa-field" style="grid-column:1/-1">
-                    <label for="c_password">Temporary password *</label>
-                    <input id="c_password" type="text" name="password" minlength="6" placeholder="At least 6 characters" required>
-                    <span class="sa-hint">The tenant login name is generated from the company name.</span>
+                    <label class="sa-switch">
+                        <input type="checkbox" name="send_setup_email" value="1" checked>
+                        <span class="sa-switch-track"></span>
+                        <span class="sa-switch-text">📧 Send password setup email immediately (Real ID + secure link)</span>
+                    </label>
+                    <span class="sa-hint">If unchecked, you can send later via the mail icon in the table.</span>
                 </div>
             </div>
         </div>
 
         <div class="sa-dialog-foot">
             <button type="button" class="sa-btn sa-btn-ghost" data-sa-close-dialog>Cancel</button>
-            <button type="submit" class="sa-btn sa-btn-primary"><?php echo sa_icon('check'); ?> Create tenant</button>
+            <button type="submit" class="sa-btn sa-btn-primary"><?php echo sa_icon('mail'); ?> Create & email setup link</button>
         </div>
     </form>
 </dialog>
@@ -690,8 +784,8 @@ include __DIR__ . '/_shell.php';
         <input type="hidden" name="tenant_id" id="p_id" value="">
         <div class="sa-dialog-head">
             <div>
-                <h3 id="tenantPasswordDialogTitle">Reset tenant password</h3>
-                <p id="p_subtitle">Set a new login password for this tenant.</p>
+                <h3 id="tenantPasswordDialogTitle">Reset tenant password (manual)</h3>
+                <p id="p_subtitle">Set a new login password for this tenant — bypasses email link.</p>
             </div>
             <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>
         </div>
@@ -699,7 +793,7 @@ include __DIR__ . '/_shell.php';
             <div class="sa-field">
                 <label for="p_password">New password</label>
                 <input id="p_password" type="text" name="password" minlength="6" placeholder="At least 6 characters" required>
-                <span class="sa-hint">Share it with the tenant over a secure channel.</span>
+                <span class="sa-hint">Share it with the tenant over a secure channel. Or use mail icon to send setup link instead.</span>
             </div>
         </div>
         <div class="sa-dialog-foot">
@@ -710,8 +804,6 @@ include __DIR__ . '/_shell.php';
 </dialog>
 
 <script>
-/* Edit / password prefill for the tenants page.
-   Generic dialog open+close is handled by assets/js/superadmin.js. */
 (function () {
     function openDialog(sel) {
         var d = document.querySelector(sel);

@@ -1948,13 +1948,21 @@ if ($plan_result) {
                 </form>
             </div>
 
-            <!-- Success view -->
+            <!-- Success view — Real ID + email onboarding -->
             <div class="quote-success" id="quoteSuccess" hidden>
                 <div class="quote-success-icon">
                     <i class="fa-solid fa-check"></i>
                 </div>
                 <h2>Request Received!</h2>
-                <p>Thank you for choosing Optibiz. Our team will review your requirements and contact you within 24 hours with your tailored quote and onboarding details.</p>
+                <div id="quoteRealIdBox" style="margin:0 auto 18px;display:none;max-width:420px;">
+                    <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#475569;letter-spacing:0.5px;text-transform:uppercase;">Your Quota Reference ID</p>
+                    <div id="quoteRealId" style="font-family:monospace;background:linear-gradient(135deg, #ecfccb, #d9f99d);border:1.5px solid #a3e635;color:#3f6212;padding:14px 18px;border-radius:12px;font-size:22px;font-weight:900;letter-spacing:1.5px;display:inline-block;min-width:200px;box-shadow:0 6px 20px rgba(132,204,22,0.15);">QTE-XXXXXXXX</div>
+                    <p style="margin:12px 0 0;font-size:12.5px;color:#64748b;line-height:1.5;">Keep this ID safe — use it to track your request with support.</p>
+                </div>
+                <p id="quoteSuccessMsg">Thank you for choosing Optibiz. Our team will review your requirements and contact you within 24 hours with your tailored quote and onboarding details. You will receive an email with your Reference ID and next steps.</p>
+                <div id="quoteEmailNotice" style="margin:0 auto 24px;max-width:460px;padding:12px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;font-size:13px;color:#166534;line-height:1.6;display:none;">
+                    <i class="fa-solid fa-envelope" style="margin-right:6px;"></i> A confirmation email has been sent to your inbox with your Reference ID. Once approved, you will receive a second email with your <strong>Real Account ID</strong> (e.g. OPT-XXXXXX) and a secure link to set up your password.
+                </div>
                 <button type="button" class="btn-lime" id="quoteDoneBtn">Done</button>
             </div>
 
@@ -2077,6 +2085,27 @@ if ($plan_result) {
             .then(function (response) { return response.json(); })
             .then(function (data) {
                 if (data.success) {
+                    // Show Real ID (not DB id)
+                    var realId = data.public_id || data.reference_id || data.id || '';
+                    var idBox = document.getElementById('quoteRealIdBox');
+                    var idEl = document.getElementById('quoteRealId');
+                    var emailNotice = document.getElementById('quoteEmailNotice');
+                    var msgEl = document.getElementById('quoteSuccessMsg');
+                    if (realId && idEl && idBox) {
+                        idEl.textContent = realId;
+                        idBox.style.display = 'block';
+                        if (msgEl) {
+                            msgEl.innerHTML = 'Thank you for choosing Optibiz! Your quota request <strong style="font-family:monospace;color:#3f6212;">' + realId + '</strong> has been received. Our team will review it within 24 hours.';
+                        }
+                    }
+                    if (emailNotice) {
+                        emailNotice.style.display = data.email_sent ? 'block' : 'none';
+                        if (!data.email_sent) {
+                            // Still show info that email will come after approval
+                            emailNotice.style.display = 'block';
+                            emailNotice.innerHTML = '<i class="fa-solid fa-envelope" style="margin-right:6px;"></i> Your Reference ID is <strong style="font-family:monospace;">' + (realId || '') + '</strong>. Once approved, you will receive an email with your <strong>Real Account ID</strong> (e.g. OPT-XXXXXX) and a secure link to set up your password and access your workspace at /admin/login.php';
+                        }
+                    }
                     formWrap.hidden = true;
                     successView.hidden = false;
                 } else {
