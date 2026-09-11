@@ -56,10 +56,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($company === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             sa_flash('error', 'A company name and a valid email address are required.');
             redirect('quote_requests.php?id=' . $id);
-        } elseif ((int) sa_scalar($conn, "SELECT COUNT(*) FROM tenants WHERE email = '" . $conn->real_escape_string($email) . "'", 0, 'tenants') > 0) {
-            sa_flash('error', 'A tenant with that email address already exists.');
-            redirect('quote_requests.php?id=' . $id);
         } else {
+            // If tenant with this email already exists (auto-created from public form), link & resend setup instead of error
+            $existingTenant = sa_one($conn, "SELECT id, public_id, company_name, email, username FROM tenants WHERE email = '" . $conn->real_escape_string($email) . "' LIMIT 1", 'tenants');
+            if ($existingTenant) {
+                $tid = (int)$existingTenant['id'];
+                $new_token = generateSecureToken(32);
+                $new_exp = date('Y-m-d H:i:s', strtotime('+48 hours'));
+                $up = $conn->prepare("UPDATE tenants SET setup_token = ?, setup_token_expires = ?, company_name = ?, phone = ?, plan_id = ? WHERE id = ?");
+                if ($up) {
+                    $up->bind_param("ssssii", $new_token, $new_exp, $company, $phone, $plan_id, $tid);
+                    $up->execute();
+                    $up->close();
+                } else {
+                    @$conn->query("UPDATE tenants SET setup_token = '" . $conn->real_escape_string($new_token) . "', setup_token_expires = '" . $conn->real_escape_string($new_exp) . "', company_name = '" . $conn->real_escape_string($company) . "', phone = '" . $conn->real_escape_string($phone) . "', plan_id = " . (int)$plan_id . " WHERE id = " . $tid);
+                }
+
+                $q_upd = $conn->prepare("UPDATE quote_requests SET status = 'converted', converted_tenant_id = ?, setup_email_sent = 1 WHERE id = ?");
+                if ($q_upd) { $q_upd->bind_param("ii", $tid, $id); $q_upd->execute(); $q_upd->close(); }
+                else { @$conn->query("UPDATE quote_requests SET status = 'converted', converted_tenant_id = " . $tid . ", setup_email_sent = 1 WHERE id = " . $id); }
+
+                $mailRes = sendTenantSetupEmail($conn, $existingTenant, $new_token, true);
+                if ($mailRes['success']) {
+                    sa_flash('success', 'Quote linked to existing tenant ' . ($existingTenant['public_id'] ?? ('#'.$tid)) . ' (' . $existingTenant['company_name'] . '). Setup email resent to ' . $email . '.');
+                } else {
+                    sa_flash('warning', 'Quote linked to existing tenant ' . ($existingTenant['public_id'] ?? ('#'.$tid)) . ' but email failed: ' . $mailRes['message']);
+                }
+                redirect('quote_requests.php?id=' . $id);
+            }
             $plan = sa_one($conn, "SELECT price FROM subscription_plans WHERE id = " . $plan_id, 'subscription_plans');
             $price = $plan ? (float) $plan['price'] : 0.0;
             $username = sa_unique_username($conn, $company);

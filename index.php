@@ -1948,7 +1948,7 @@ if ($plan_result) {
                 </form>
             </div>
 
-            <!-- Success view — Real ID + email onboarding -->
+            <!-- Success view — Real ID + email onboarding (QTE + OPT) -->
             <div class="quote-success" id="quoteSuccess" hidden>
                 <div class="quote-success-icon">
                     <i class="fa-solid fa-check"></i>
@@ -1959,9 +1959,17 @@ if ($plan_result) {
                     <div id="quoteRealId" style="font-family:monospace;background:linear-gradient(135deg, #ecfccb, #d9f99d);border:1.5px solid #a3e635;color:#3f6212;padding:14px 18px;border-radius:12px;font-size:22px;font-weight:900;letter-spacing:1.5px;display:inline-block;min-width:200px;box-shadow:0 6px 20px rgba(132,204,22,0.15);">QTE-XXXXXXXX</div>
                     <p style="margin:12px 0 0;font-size:12.5px;color:#64748b;line-height:1.5;">Keep this ID safe — use it to track your request with support.</p>
                 </div>
+                <div id="quoteTenantIdBox" style="margin:0 auto 18px;display:none;max-width:420px;">
+                    <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#475569;letter-spacing:0.5px;text-transform:uppercase;">Your Real Account ID (Tenant)</p>
+                    <div id="quoteTenantId" style="font-family:monospace;background:linear-gradient(135deg, #e0e7ff, #c7d2fe);border:1.5px solid #818cf8;color:#4338ca;padding:14px 18px;border-radius:12px;font-size:22px;font-weight:900;letter-spacing:1.5px;display:inline-block;min-width:200px;box-shadow:0 6px 20px rgba(99,102,241,0.15);">OPT-XXXXXXXX</div>
+                    <p style="margin:12px 0 0;font-size:12.5px;color:#64748b;line-height:1.5;">Use this Real ID to login at <span style="font-family:monospace;">/admin/login.php</span> after setting password.</p>
+                </div>
                 <p id="quoteSuccessMsg">Thank you for choosing Optibiz. Our team will review your requirements and contact you within 24 hours with your tailored quote and onboarding details. You will receive an email with your Reference ID and next steps.</p>
                 <div id="quoteEmailNotice" style="margin:0 auto 24px;max-width:460px;padding:12px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;font-size:13px;color:#166534;line-height:1.6;display:none;">
-                    <i class="fa-solid fa-envelope" style="margin-right:6px;"></i> A confirmation email has been sent to your inbox with your Reference ID. Once approved, you will receive a second email with your <strong>Real Account ID</strong> (e.g. OPT-XXXXXX) and a secure link to set up your password.
+                    <i class="fa-solid fa-envelope" style="margin-right:6px;"></i> A confirmation email has been sent to your inbox with your Reference ID. You will also receive your <strong>Real Account ID</strong> (e.g. OPT-XXXXXX) and a secure link to set up your password.
+                </div>
+                <div id="quoteTenantEmailNotice" style="margin:0 auto 24px;max-width:460px;padding:12px 14px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;font-size:13px;color:#4338ca;line-height:1.6;display:none;">
+                    <i class="fa-solid fa-key" style="margin-right:6px;"></i> Your tenant account <strong id="quoteTenantIdInline" style="font-family:monospace;">OPT-XXXXXXXX</strong> has been created! Check your email for a secure link to set your password (valid 48h). Then login at <strong>/admin/login.php</strong> using your Real ID, username or email.
                 </div>
                 <button type="button" class="btn-lime" id="quoteDoneBtn">Done</button>
             </div>
@@ -2085,25 +2093,48 @@ if ($plan_result) {
             .then(function (response) { return response.json(); })
             .then(function (data) {
                 if (data.success) {
-                    // Show Real ID (not DB id)
+                    // Show Real IDs (not DB ids) — QTE for quota, OPT for tenant
                     var realId = data.public_id || data.reference_id || data.id || '';
+                    var tenantRealId = data.tenant_public_id || data.tenant_id_real || data.tenant_real_id || '';
                     var idBox = document.getElementById('quoteRealIdBox');
                     var idEl = document.getElementById('quoteRealId');
+                    var tenantBox = document.getElementById('quoteTenantIdBox');
+                    var tenantEl = document.getElementById('quoteTenantId');
+                    var tenantInline = document.getElementById('quoteTenantIdInline');
                     var emailNotice = document.getElementById('quoteEmailNotice');
+                    var tenantEmailNotice = document.getElementById('quoteTenantEmailNotice');
                     var msgEl = document.getElementById('quoteSuccessMsg');
                     if (realId && idEl && idBox) {
                         idEl.textContent = realId;
                         idBox.style.display = 'block';
-                        if (msgEl) {
+                    }
+                    if (tenantRealId && tenantEl && tenantBox) {
+                        tenantEl.textContent = tenantRealId;
+                        tenantBox.style.display = 'block';
+                        if (tenantInline) tenantInline.textContent = tenantRealId;
+                    }
+                    if (msgEl) {
+                        if (tenantRealId) {
+                            msgEl.innerHTML = 'Thank you for choosing Optibiz! Your quota request <strong style="font-family:monospace;color:#3f6212;">' + realId + '</strong> has been received and your tenant account <strong style="font-family:monospace;color:#4338ca;">' + tenantRealId + '</strong> has been created. Check your email to set your password.';
+                        } else if (realId) {
                             msgEl.innerHTML = 'Thank you for choosing Optibiz! Your quota request <strong style="font-family:monospace;color:#3f6212;">' + realId + '</strong> has been received. Our team will review it within 24 hours.';
                         }
                     }
                     if (emailNotice) {
                         emailNotice.style.display = data.email_sent ? 'block' : 'none';
-                        if (!data.email_sent) {
-                            // Still show info that email will come after approval
+                        if (!data.email_sent && realId) {
                             emailNotice.style.display = 'block';
-                            emailNotice.innerHTML = '<i class="fa-solid fa-envelope" style="margin-right:6px;"></i> Your Reference ID is <strong style="font-family:monospace;">' + (realId || '') + '</strong>. Once approved, you will receive an email with your <strong>Real Account ID</strong> (e.g. OPT-XXXXXX) and a secure link to set up your password and access your workspace at /admin/login.php';
+                            emailNotice.innerHTML = '<i class="fa-solid fa-envelope" style="margin-right:6px;"></i> Your Reference ID is <strong style="font-family:monospace;">' + realId + '</strong>. You will receive an email with your <strong>Real Account ID</strong> (e.g. OPT-XXXXXX) and a secure link to set up your password at /admin/login.php';
+                        }
+                    }
+                    if (tenantEmailNotice) {
+                        if (tenantRealId && data.tenant_setup_email_sent) {
+                            tenantEmailNotice.style.display = 'block';
+                        } else if (tenantRealId) {
+                            tenantEmailNotice.style.display = 'block';
+                            tenantEmailNotice.innerHTML = '<i class="fa-solid fa-envelope" style="margin-right:6px;"></i> Your Real Account ID is <strong style="font-family:monospace;">' + tenantRealId + '</strong>. If email delivery fails, contact support or use <a href="admin/forgot-password.php" style="color:#4338ca;font-weight:700;">Forgot Password</a> to resend setup link.';
+                        } else {
+                            tenantEmailNotice.style.display = 'none';
                         }
                     }
                     formWrap.hidden = true;
