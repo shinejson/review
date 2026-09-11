@@ -14,6 +14,7 @@ require_once dirname(__DIR__) . '/includes/sa_helpers.php';
 
 requireSuperAdminLogin();
 require_sa_permission('tenants');
+ensureRealIdSchema($conn);
 
 $tenant_id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 if ($tenant_id <= 0) {
@@ -204,12 +205,14 @@ include __DIR__ . '/_shell.php';
             <?php echo sa_icon('chevron-right'); ?>
             <span><?php echo sa_e($tenant['company_name']); ?></span>
         </div>
-        <h2 class="sa-flex" style="gap:12px">
+        <h2 class="sa-flex" style="gap:12px;flex-wrap:wrap;">
             <span class="sa-cell-avatar" style="width:42px;height:42px;border-radius:13px;font-size:14px"><?php echo sa_e(sa_initials($tenant['company_name'])); ?></span>
             <?php echo sa_e($tenant['company_name']); ?>
             <?php echo sa_status_badge($tenant['subscription_status']); ?>
+            <span style="font-family:monospace;background:rgba(99,102,241,0.12);color:#4338ca;border:1px solid rgba(99,102,241,0.25);font-weight:800;letter-spacing:1px;padding:4px 10px;border-radius:8px;font-size:13px;"><?php echo sa_e($tenant['public_id'] ?? ('OPT-' . str_pad((string)$tenant['id'],6,'0',STR_PAD_LEFT))); ?></span>
+            <?php if (!empty($tenant['email_verified_at'])): ?><span style="font-size:11px;background:#dcfce7;color:#166534;border:1px solid #86efac;padding:3px 8px;border-radius:99px;font-weight:700;">✓ Verified</span><?php elseif (!empty($tenant['setup_token'])): ?><span style="font-size:11px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:3px 8px;border-radius:99px;font-weight:700;">◷ Setup pending</span><?php endif; ?>
         </h2>
-        <p>Customer since <?php echo sa_e(sa_date($tenant['created_at'])); ?> &middot; <?php echo sa_e(sa_num($company_count)); ?> companies &middot; <?php echo sa_e(sa_num($rating_count)); ?> ratings</p>
+        <p>Customer since <?php echo sa_e(sa_date($tenant['created_at'])); ?> &middot; <?php echo sa_e(sa_num($company_count)); ?> companies &middot; <?php echo sa_e(sa_num($rating_count)); ?> ratings &middot; Real ID <span class="sa-mono" style="font-weight:800;color:#4338ca;"><?php echo sa_e($tenant['public_id'] ?? ''); ?></span></p>
     </div>
     <div class="sa-head-actions">
         <a class="sa-btn sa-btn-ghost" href="tenants.php"><?php echo sa_icon('arrow-left'); ?> All tenants</a>
@@ -282,10 +285,13 @@ include __DIR__ . '/_shell.php';
         </div>
         <div class="sa-card-pad">
             <dl class="sa-kv">
+                <div class="sa-kv-row"><dt>Real Account ID</dt><dd><span style="font-family:monospace;background:rgba(99,102,241,0.12);color:#4338ca;border:1px solid rgba(99,102,241,0.25);font-weight:800;letter-spacing:1px;padding:4px 10px;border-radius:8px;"><?php echo sa_e($tenant['public_id'] ?? ('OPT-' . str_pad((string)$tenant['id'],6,'0',STR_PAD_LEFT))); ?></span></dd></div>
                 <div class="sa-kv-row"><dt>Company</dt><dd><?php echo sa_e($tenant['company_name']); ?></dd></div>
                 <div class="sa-kv-row"><dt>Email</dt><dd><a href="mailto:<?php echo sa_e($tenant['email']); ?>" style="color:var(--sa-accent);text-decoration:none"><?php echo sa_e($tenant['email']); ?></a></dd></div>
                 <div class="sa-kv-row"><dt>Phone</dt><dd><?php echo sa_e($tenant['phone'] ? $tenant['phone'] : '—'); ?></dd></div>
                 <div class="sa-kv-row"><dt>Tenant login</dt><dd class="sa-mono"><?php echo sa_e($tenant['username']); ?></dd></div>
+                <div class="sa-kv-row"><dt>DB ID (internal)</dt><dd class="sa-mono" style="color:#94a3b8;">#<?php echo (int)$tenant['id']; ?></dd></div>
+                <div class="sa-kv-row"><dt>Verified</dt><dd><?php echo !empty($tenant['email_verified_at']) ? '✓ ' . sa_e(sa_date($tenant['email_verified_at'])) : ( !empty($tenant['setup_token']) ? 'Pending — setup link active until ' . sa_e(sa_date($tenant['setup_token_expires'])) : '—'); ?></dd></div>
                 <div class="sa-kv-row"><dt>Created</dt><dd><?php echo sa_e(sa_date($tenant['created_at'], 'M d, Y H:i')); ?></dd></div>
             </dl>
         </div>

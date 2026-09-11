@@ -3,6 +3,8 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 
+ensureRealIdSchema($conn);
+
 if (isLoggedIn()) {
     redirect('index.php');
 }
@@ -18,9 +20,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($username) || empty($password)) {
         $error = 'Please enter both username/email and password.';
     } else {
-        // 1. Check if user is a Tenant in `tenants` table
-        $stmt = $conn->prepare("SELECT * FROM tenants WHERE username = ? OR email = ? LIMIT 1");
-        $stmt->bind_param("ss", $username, $username);
+        // 1. Check if user is a Tenant in `tenants` table — now supports Real Public ID (OPT-XXXXXXXX), username, email
+        $stmt = $conn->prepare("SELECT * FROM tenants WHERE username = ? OR email = ? OR public_id = ? LIMIT 1");
+        $stmt->bind_param("sss", $username, $username, $username);
         $stmt->execute();
         $resTenant = $stmt->get_result();
 
@@ -138,7 +140,7 @@ include dirname(__DIR__) . '/includes/header.php';
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 11.5 11.5 14 15.5 9.5"/></svg>
                 </span>
                 <h2 id="authCardTitle">Tenant &amp; Admin Sign In</h2>
-                <p>Enter your tenant username or email to access your dashboard.</p>
+                <p>Use your Account ID (OPT-XXXXXXXX), username or email to access your dashboard.</p>
             </header>
 
             <?php if ($notice): ?>
@@ -157,15 +159,19 @@ include dirname(__DIR__) . '/includes/header.php';
 
             <form method="POST" id="authForm" class="auth-form">
                 <div class="auth-field">
-                    <label for="username">Username or Email</label>
+                    <label for="username">Account ID / Username / Email</label>
                     <div class="auth-input-wrap">
                         <svg class="auth-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                        <input type="text" id="username" name="username" value="<?php echo htmlspecialchars($username); ?>" placeholder="e.g. abc_corporation or admin@abccorp.com" autocomplete="username" autofocus required>
+                        <input type="text" id="username" name="username" value="<?php echo htmlspecialchars($username); ?>" placeholder="e.g. OPT-8K2F9Q1A or abc_corporation or you@company.com" autocomplete="username" autofocus required>
                     </div>
+                    <small style="font-size:11px;color:#94a3b8;margin-top:5px;display:block;">You received your Real ID (OPT-XXXXXXXX) in your welcome email after quota approval.</small>
                 </div>
 
                 <div class="auth-field">
-                    <label for="password">Password</label>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <label for="password" style="margin:0;">Password</label>
+                        <a href="forgot-password.php" style="font-size:12px;color:#6366f1;text-decoration:none;font-weight:600;">Forgot password?</a>
+                    </div>
                     <div class="auth-input-wrap auth-has-toggle">
                         <svg class="auth-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                         <input type="password" id="password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
@@ -181,6 +187,10 @@ include dirname(__DIR__) . '/includes/header.php';
                     <span class="auth-spinner" aria-hidden="true"></span>
                 </button>
             </form>
+
+            <div style="margin-top:16px;padding:12px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.12);border-radius:10px;font-size:12.5px;color:#475569;line-height:1.5;">
+                <strong style="color:#4338ca;">New account?</strong> After your quota (QTE-XXXXXXXX) is approved, you'll get an email with your Real Account ID (OPT-XXXXXXXX) and a link to set your password. Check spam folder. <a href="forgot-password.php" style="color:#6366f1;font-weight:600;">Resend link</a>
+            </div>
 
             <footer class="auth-card-foot">
                 <a href="<?php echo $assetBase; ?>/">

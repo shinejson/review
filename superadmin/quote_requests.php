@@ -2,10 +2,8 @@
 /**
  * ============================================================
  *  Super Admin — Quote requests (sales pipeline)
+ *  With Real ID (QTE-XXXXXXXX) and Email Password Setup
  * ============================================================
- *  Inbound leads submitted from the public “Get started”
- *  wizard: review them, move them through the pipeline and
- *  convert them into tenants in one click.
  */
 
 require_once dirname(__DIR__) . '/includes/auth.php';
@@ -17,6 +15,8 @@ requireSuperAdminLogin();
 require_sa_permission('quotes');
 
 $has_quotes_table = sa_table_exists($conn, 'quote_requests');
+
+ensureRealIdSchema($conn);
 
 /* ---------- POST handlers ---------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -50,57 +50,128 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = sanitize($_POST['email'] ?? $quote['email']);
         $phone = sanitize($_POST['phone'] ?? $quote['phone']);
         $plan_id = (int) ($_POST['plan_id'] ?? ($quote['plan_id'] ?: 0));
-        $raw_pw = (string) ($_POST['password'] ?? '');
         $status = ($_POST['subscription_status'] ?? 'trial') === 'active' ? 'active' : 'trial';
         $months = max(0, (int) ($_POST['months'] ?? 1));
 
         if ($company === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             sa_flash('error', 'A company name and a valid email address are required.');
             redirect('quote_requests.php?id=' . $id);
-        } elseif (strlen($raw_pw) < 6) {
-            sa_flash('error', 'The tenant password must be at least 6 characters.');
-            redirect('quote_requests.php?id=' . $id);
-        } elseif ((int) sa_scalar($conn, "SELECT COUNT(*) FROM tenants WHERE email = '" . $conn->real_escape_string($email) . "'", 0, 'tenants') > 0) {
-            sa_flash('error', 'A tenant with that email address already exists.');
-            redirect('quote_requests.php?id=' . $id);
         } else {
+            // If tenant with this email already exists (auto-created from public form), link & resend setup instead of error
+            $existingTenant = sa_one($conn, "SELECT id, public_id, company_name, email, username FROM tenants WHERE email = '" . $conn->real_escape_string($email) . "' LIMIT 1", 'tenants');
+            if ($existingTenant) {
+                $tid = (int)$existingTenant['id'];
+                $new_token = generateSecureToken(32);
+                $new_exp = date('Y-m-d H:i:s', strtotime('+48 hours'));
+                $up = $conn->prepare("UPDATE tenants SET setup_token = ?, setup_token_expires = ?, company_name = ?, phone = ?, plan_id = ? WHERE id = ?");
+                if ($up) {
+                    $up->bind_param("ssssii", $new_token, $new_exp, $company, $phone, $plan_id, $tid);
+                    $up->execute();
+                    $up->close();
+                } else {
+                    @$conn->query("UPDATE tenants SET setup_token = '" . $conn->real_escape_string($new_token) . "', setup_token_expires = '" . $conn->real_escape_string($new_exp) . "', company_name = '" . $conn->real_escape_string($company) . "', phone = '" . $conn->real_escape_string($phone) . "', plan_id = " . (int)$plan_id . " WHERE id = " . $tid);
+                }
+
+                $q_upd = $conn->prepare("UPDATE quote_requests SET status = 'converted', converted_tenant_id = ?, setup_email_sent = 1 WHERE id = ?");
+                if ($q_upd) { $q_upd->bind_param("ii", $tid, $id); $q_upd->execute(); $q_upd->close(); }
+                else { @$conn->query("UPDATE quote_requests SET status = 'converted', converted_tenant_id = " . $tid . ", setup_email_sent = 1 WHERE id = " . $id); }
+
+                $mailRes = sendTenantSetupEmail($conn, $existingTenant, $new_token, true);
+                if ($mailRes['success']) {
+                    sa_flash('success', 'Quote linked to existing tenant ' . ($existingTenant['public_id'] ?? ('#'.$tid)) . ' (' . $existingTenant['company_name'] . '). Setup email resent to ' . $email . '.');
+                } else {
+                    sa_flash('warning', 'Quote linked to existing tenant ' . ($existingTenant['public_id'] ?? ('#'.$tid)) . ' but email failed: ' . $mailRes['message']);
+                }
+                redirect('quote_requests.php?id=' . $id);
+            }
             $plan = sa_one($conn, "SELECT price FROM subscription_plans WHERE id = " . $plan_id, 'subscription_plans');
             $price = $plan ? (float) $plan['price'] : 0.0;
             $username = sa_unique_username($conn, $company);
-            $hash = password_hash($raw_pw, PASSWORD_DEFAULT);
+            $placeholder_hash = password_hash(generateSecureToken(16), PASSWORD_DEFAULT);
+            $public_id = generateRealPublicId($conn, 'tenants', 'public_id', 'OPT-', 8);
+            $setup_token = generateSecureToken(32);
+            $setup_expires = date('Y-m-d H:i:s', strtotime('+48 hours'));
             $start = date('Y-m-d');
             $end = $months > 0 ? date('Y-m-d', strtotime('+' . $months . ' month')) : null;
 
             $stmt = $conn->prepare(
                 "INSERT INTO tenants
-                    (company_name, email, phone, username, password, plan_id,
+                    (public_id, setup_token, setup_token_expires, company_name, email, phone, username, password, plan_id,
                      subscription_status, subscription_price, subscription_start_date, subscription_end_date)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $end_ref = $end;
-            $stmt->bind_param(
-                "sssssisssd",
-                $company, $email, $phone, $username, $hash, $plan_id,
-                $status, $price, $start, $end_ref
-            );
-            $stmt->execute();
+            if ($stmt) {
+                $stmt->bind_param(
+                    "ssssssssissss",
+                    $public_id, $setup_token, $setup_expires, $company, $email, $phone, $username, $placeholder_hash, $plan_id,
+                    $status, $price, $start, $end_ref
+                );
+                $stmt->execute();
+            } else {
+                $stmt2 = $conn->prepare(
+                    "INSERT INTO tenants
+                        (company_name, email, phone, username, password, plan_id,
+                         subscription_status, subscription_price, subscription_start_date, subscription_end_date)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                );
+                $stmt2->bind_param(
+                    "sssssisssd",
+                    $company, $email, $phone, $username, $placeholder_hash, $plan_id,
+                    $status, $price, $start, $end_ref
+                );
+                $stmt2->execute();
+                $stmt = $stmt2;
+            }
 
             if ($stmt->error) {
                 sa_flash('error', 'Could not create the tenant: ' . $stmt->error);
             } else {
                 $new_id = (int) $conn->insert_id;
 
-                // Auto-create the tenant's own company profile in the customers table
+                if (empty($public_id) || strpos($public_id, 'OPT-') !== 0) {
+                    $public_id = generateRealPublicId($conn, 'tenants', 'public_id', 'OPT-', 8);
+                    @$conn->query("UPDATE tenants SET public_id = '" . $conn->real_escape_string($public_id) . "', setup_token = '" . $conn->real_escape_string($setup_token) . "', setup_token_expires = '" . $conn->real_escape_string($setup_expires) . "' WHERE id = " . $new_id);
+                }
+
                 $co_stmt = $conn->prepare(
                     "INSERT INTO customers (tenant_id, company_name, email, phone, created_at)
                      VALUES (?, ?, ?, ?, NOW())"
                 );
-                $co_stmt->bind_param("isss", $new_id, $company, $email, $phone);
-                $co_stmt->execute();
-                $co_stmt->close();
+                if ($co_stmt) {
+                    $co_stmt->bind_param("isss", $new_id, $company, $email, $phone);
+                    $co_stmt->execute();
+                    $co_stmt->close();
+                }
 
-                $conn->query("UPDATE quote_requests SET status = 'converted' WHERE id = " . $id);
-                sa_flash('success', $company . ' is now a tenant (login "' . $username . '") and the request was marked converted.');
+                $q_upd = $conn->prepare("UPDATE quote_requests SET status = 'converted', converted_tenant_id = ?, setup_email_sent = 1 WHERE id = ?");
+                if ($q_upd) {
+                    $q_upd->bind_param("ii", $new_id, $id);
+                    $q_upd->execute();
+                    $q_upd->close();
+                } else {
+                    $conn->query("UPDATE quote_requests SET status = 'converted' WHERE id = " . $id);
+                }
+
+                $tenantRow = [
+                    'id' => $new_id,
+                    'public_id' => $public_id,
+                    'company_name' => $company,
+                    'email' => $email,
+                    'username' => $username,
+                ];
+                $mailRes = ['success' => false, 'message' => 'Mailer unavailable'];
+                try {
+                    $mailRes = sendTenantSetupEmail($conn, $tenantRow, $setup_token, true);
+                } catch (Exception $e) {
+                    $mailRes = ['success' => false, 'message' => $e->getMessage()];
+                }
+
+                if ($mailRes['success']) {
+                    sa_flash('success', $company . ' is now a tenant with ID ' . $public_id . ' (login "' . $username . '"). Setup email sent to ' . $email . '.');
+                } else {
+                    sa_flash('warning', $company . ' is now a tenant with ID ' . $public_id . ' (login "' . $username . '"), but email failed: ' . $mailRes['message']);
+                }
             }
             $stmt->close();
         }
@@ -111,6 +182,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $conn->query("DELETE FROM quote_requests WHERE id = " . $id);
         sa_flash('success', 'Quote request deleted.');
         redirect('quote_requests.php');
+    }
+
+    if ($action === 'resend_setup' && $id) {
+        $quote = sa_one($conn, "SELECT * FROM quote_requests WHERE id = " . $id, 'quote_requests');
+        if (!$quote || empty($quote['converted_tenant_id'])) {
+            sa_flash('error', 'No tenant linked to this quote yet.');
+            redirect('quote_requests.php?id=' . $id);
+        }
+        $tid = (int)$quote['converted_tenant_id'];
+        $tenant = sa_one($conn, "SELECT * FROM tenants WHERE id = " . $tid, 'tenants');
+        if (!$tenant) {
+            sa_flash('error', 'Linked tenant not found.');
+            redirect('quote_requests.php?id=' . $id);
+        }
+        $new_token = generateSecureToken(32);
+        $new_exp = date('Y-m-d H:i:s', strtotime('+48 hours'));
+        $up = $conn->prepare("UPDATE tenants SET setup_token = ?, setup_token_expires = ? WHERE id = ?");
+        if ($up) { $up->bind_param("ssi", $new_token, $new_exp, $tid); $up->execute(); $up->close(); }
+        $mailRes = sendTenantSetupEmail($conn, $tenant, $new_token, true);
+        if ($mailRes['success']) {
+            sa_flash('success', 'Setup email resent to ' . $tenant['email'] . ' for tenant ' . ($tenant['public_id'] ?? ('#'.$tid)));
+        } else {
+            sa_flash('error', 'Failed to resend: ' . $mailRes['message']);
+        }
+        redirect('quote_requests.php?id=' . $id);
     }
 }
 
@@ -177,13 +273,13 @@ $conversion_rate = $status_counts['all'] > 0 ? sa_pct($status_counts['converted'
 $robots    = 'noindex, nofollow';
 $pageTitle = 'Quote requests';
 $pageHeading = 'Quote requests';
-$pageSubtitle = 'Inbound leads from the public website.';
+$pageSubtitle = 'Inbound leads from the public website — Real IDs + email onboarding.';
 $activePage = 'quotes';
 $BASE = '../';
 $extraCss = ['assets/css/superadmin.css'];
 $bodyClass    = 'sa-body';
 $searchTarget = $has_quotes_table ? '#quotesTable' : '';
-$searchPlaceholder = 'Filter requests…';
+$searchPlaceholder = 'Filter by Real ID, company, email…';
 
 include dirname(__DIR__) . '/includes/header.php';
 include __DIR__ . '/_shell.php';
@@ -196,10 +292,10 @@ include __DIR__ . '/_shell.php';
             <?php echo sa_icon('chevron-right'); ?>
             <span>Quote requests</span>
         </div>
-        <h2>Sales pipeline</h2>
+        <h2>Sales pipeline — Real IDs</h2>
         <p><?php echo sa_e(sa_num($status_counts['all'])); ?> requests &middot;
-           <?php echo sa_e(sa_num($status_counts['pending'])); ?> waiting for a reply &middot;
-           <?php echo sa_e(number_format($conversion_rate, 0)); ?>% converted</p>
+           <?php echo sa_e(sa_num($status_counts['pending'])); ?> waiting &middot;
+           <?php echo sa_e(number_format($conversion_rate, 0)); ?>% converted &middot; IDs like <span class="sa-mono" style="background:rgba(194,245,66,0.15);padding:2px 6px;border-radius:6px;">QTE-8K2F9Q1A</span></p>
     </div>
     <div class="sa-head-actions">
         <button type="button" class="sa-btn sa-btn-ghost" data-sa-export="#quotesTable" data-sa-export-name="optibiz-quote-requests">
@@ -215,9 +311,7 @@ include __DIR__ . '/_shell.php';
     <div class="sa-empty">
         <?php echo sa_icon('alert'); ?>
         <strong>The quote_requests table is missing</strong>
-        <p>This database was created before the public “Get started” wizard existed.
-           Run the <span class="sa-mono">quote_requests</span> block at the end of
-           <span class="sa-mono">database.sql</span> to enable the pipeline.</p>
+        <p>Run the <span class="sa-mono">quote_requests</span> block at the end of <span class="sa-mono">database.sql</span>.</p>
     </div>
 </section>
 <?php else: ?>
@@ -231,7 +325,6 @@ include __DIR__ . '/_shell.php';
         <div class="sa-kpi-value"><?php echo sa_e(sa_num($status_counts['pending'])); ?></div>
         <div class="sa-kpi-note">New leads that nobody has contacted yet</div>
     </article>
-
     <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-info);--kpi-soft:var(--sa-info-soft);--kpi-line:var(--sa-info-line)">
         <div class="sa-kpi-top">
             <span class="sa-kpi-label">In conversation</span>
@@ -240,16 +333,14 @@ include __DIR__ . '/_shell.php';
         <div class="sa-kpi-value"><?php echo sa_e(sa_num($status_counts['contacted'])); ?></div>
         <div class="sa-kpi-note">Contacted, not closed yet</div>
     </article>
-
     <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-success);--kpi-soft:var(--sa-success-soft);--kpi-line:var(--sa-success-line)">
         <div class="sa-kpi-top">
             <span class="sa-kpi-label">Converted</span>
             <span class="sa-kpi-icon"><?php echo sa_icon('check-circle'); ?></span>
         </div>
         <div class="sa-kpi-value"><?php echo sa_e(sa_num($status_counts['converted'])); ?></div>
-        <div class="sa-kpi-note"><?php echo sa_e(sa_money($converted_value)); ?> MRR won from the form</div>
+        <div class="sa-kpi-note"><?php echo sa_e(sa_money($converted_value)); ?> MRR won</div>
     </article>
-
     <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-danger);--kpi-soft:var(--sa-danger-soft);--kpi-line:var(--sa-danger-line)">
         <div class="sa-kpi-top">
             <span class="sa-kpi-label">Rejected</span>
@@ -280,29 +371,30 @@ include __DIR__ . '/_shell.php';
 <section class="sa-card">
     <div class="sa-card-head">
         <div>
-            <h3><?php echo sa_e(ucfirst($filter)); ?> requests</h3>
-            <p><?php echo sa_e(sa_num(count($quotes))); ?> result<?php echo count($quotes) === 1 ? '' : 's'; ?></p>
+            <h3><?php echo sa_e(ucfirst($filter)); ?> requests — Real IDs</h3>
+            <p><?php echo sa_e(sa_num(count($quotes))); ?> result<?php echo count($quotes) === 1 ? '' : 's'; ?> &middot; Showing <span class="sa-mono">QTE-XXXXXXXX</span> not DB id</p>
         </div>
     </div>
 
     <div class="sa-table-wrap">
         <table class="sa-table" id="quotesTable" data-sa-sortable-table>
-            <thead scope="col">
+            <thead>
                 <tr>
-                    <th data-sa-sort="0" scope="col" aria-sort="none">Company</th>
-                    <th data-sa-sort="1" scope="col" aria-sort="none">Contact</th>
-                    <th data-sa-sort="2" scope="col" aria-sort="none">Category</th>
-                    <th data-sa-sort="3" scope="col" aria-sort="none">Interested in</th>
-                    <th data-sa-sort="4" data-type="num" scope="col" aria-sort="none">Volume</th>
-                    <th data-sa-sort="5" scope="col" aria-sort="none">Status</th>
-                    <th data-sa-sort="6" data-type="date" scope="col" aria-sort="none">Received</th>
+                    <th data-sa-sort="0" scope="col">Real ID</th>
+                    <th data-sa-sort="1" scope="col">Company</th>
+                    <th data-sa-sort="2" scope="col">Contact</th>
+                    <th data-sa-sort="3" scope="col">Category</th>
+                    <th data-sa-sort="4" scope="col">Interested in</th>
+                    <th data-sa-sort="5" data-type="num" scope="col">Volume</th>
+                    <th data-sa-sort="6" scope="col">Status</th>
+                    <th data-sa-sort="7" data-type="date" scope="col">Received</th>
                     <th data-no-export scope="col"><span class="sa-sr-only">Actions</span></th>
                 </tr>
             </thead>
             <tbody>
 <?php if (!$quotes): ?>
                 <tr data-static>
-                    <td colspan="8">
+                    <td colspan="9">
                         <div class="sa-empty">
                             <?php echo sa_icon('inbox'); ?>
                             <strong>No quote requests</strong>
@@ -315,12 +407,17 @@ include __DIR__ . '/_shell.php';
 <?php else: ?>
 <?php foreach ($quotes as $q): ?>
 <?php
+    $realQuoteId = $q['public_id'] ?? ('QTE-' . str_pad((string)$q['id'], 6, '0', STR_PAD_LEFT));
     $search_blob = strtolower(implode(' ', [
+        $realQuoteId,
         $q['company_name'], $q['contact_person'], $q['email'], $q['phone'],
         $q['location'], $q['plan_name'], $q['category_name'], $q['status'],
     ]));
 ?>
                 <tr data-filterable data-search="<?php echo sa_e($search_blob); ?>">
+                    <td>
+                        <span class="sa-badge" style="font-family:monospace;background:rgba(194,245,66,0.15);color:#3f6212;border:1px solid rgba(132,204,22,0.3);font-weight:800;letter-spacing:0.8px;padding:4px 10px;border-radius:8px;"><?php echo sa_e($realQuoteId); ?></span>
+                    </td>
                     <td>
                         <div class="sa-cell-main">
                             <span class="sa-cell-avatar"><?php echo sa_e(sa_initials($q['company_name'])); ?></span>
@@ -361,7 +458,7 @@ include __DIR__ . '/_shell.php';
                                 <?php echo sa_icon('eye'); ?>
                             </a>
 <?php if ($q['status'] !== 'converted'): ?>
-                            <button type="button" class="sa-btn sa-btn-sm sa-btn-primary" title="Convert to tenant"
+                            <button type="button" class="sa-btn sa-btn-sm sa-btn-primary" title="Convert to tenant — will email password setup link"
                                     data-sa-convert
                                     data-id="<?php echo (int) $q['id']; ?>"
                                     data-company="<?php echo sa_e($q['company_name']); ?>"
@@ -395,12 +492,18 @@ include __DIR__ . '/_shell.php';
 </section>
 
 <?php if ($selected): ?>
-<!-- ============ DETAIL PANEL ============ -->
+<?php
+    $selRealId = $selected['public_id'] ?? ('QTE-' . str_pad((string)$selected['id'], 6, '0', STR_PAD_LEFT));
+    $selTenant = null;
+    if (!empty($selected['converted_tenant_id'])) {
+        $selTenant = sa_one($conn, "SELECT id, public_id, company_name, email FROM tenants WHERE id = " . (int)$selected['converted_tenant_id'], 'tenants');
+    }
+?>
 <div class="sa-grid sa-split-2-1 sa-mt">
     <section class="sa-card">
         <div class="sa-card-head">
             <div>
-                <h3><?php echo sa_e($selected['company_name']); ?></h3>
+                <h3><?php echo sa_e($selected['company_name']); ?> <span style="font-family:monospace;background:rgba(194,245,66,0.15);color:#3f6212;border:1px solid rgba(132,204,22,0.3);font-weight:800;letter-spacing:0.8px;padding:3px 10px;border-radius:8px;font-size:13px;margin-left:8px;"><?php echo sa_e($selRealId); ?></span></h3>
                 <p>Received <?php echo sa_e(sa_date($selected['created_at'], 'M d, Y H:i')); ?> &middot; <?php echo sa_time_ago($selected['created_at']); ?></p>
             </div>
             <div class="sa-card-head-actions">
@@ -410,6 +513,7 @@ include __DIR__ . '/_shell.php';
         </div>
         <div class="sa-card-pad">
             <dl class="sa-kv">
+                <div class="sa-kv-row"><dt>Real Quota ID</dt><dd><span class="sa-mono" style="font-weight:800;color:#65a30d;"><?php echo sa_e($selRealId); ?></span></dd></div>
                 <div class="sa-kv-row"><dt>Contact person</dt><dd><?php echo sa_e($selected['contact_person']); ?></dd></div>
                 <div class="sa-kv-row"><dt>Email</dt><dd><a href="mailto:<?php echo sa_e($selected['email']); ?>" style="color:var(--sa-accent);text-decoration:none"><?php echo sa_e($selected['email']); ?></a></dd></div>
                 <div class="sa-kv-row"><dt>Phone</dt><dd><?php echo sa_e($selected['phone'] ? $selected['phone'] : '—'); ?></dd></div>
@@ -419,6 +523,9 @@ include __DIR__ . '/_shell.php';
                 <div class="sa-kv-row"><dt>Plan of interest</dt><dd><?php echo sa_e($selected['plan_name'] ? $selected['plan_name'] : '—'); ?></dd></div>
                 <div class="sa-kv-row"><dt>Companies to list</dt><dd><?php echo sa_e(sa_num($selected['num_companies'])); ?></dd></div>
                 <div class="sa-kv-row"><dt>Expected ratings / month</dt><dd><?php echo sa_e(sa_num($selected['expected_ratings'])); ?></dd></div>
+<?php if ($selTenant): ?>
+                <div class="sa-kv-row"><dt>Converted to Tenant</dt><dd><span class="sa-mono" style="font-weight:800;color:#2563eb;"><?php echo sa_e($selTenant['public_id'] ?? ('#'.$selTenant['id'])); ?></span> — <?php echo sa_e($selTenant['company_name']); ?> (<?php echo sa_e($selTenant['email']); ?>)</dd></div>
+<?php endif; ?>
             </dl>
 
             <div class="sa-section-title" style="margin:20px 0 10px">Notes</div>
@@ -428,16 +535,19 @@ include __DIR__ . '/_shell.php';
         </div>
         <div class="sa-card-foot">
             <span>Pipeline value: <?php echo sa_e($selected['plan_name'] ? sa_money(sa_scalar($conn, "SELECT price FROM subscription_plans WHERE id = " . (int) $selected['plan_id'], 0, 'subscription_plans')) : '—'); ?> / month</span>
-            <a href="mailto:<?php echo sa_e($selected['email']); ?>?subject=<?php echo rawurlencode('Your Optibiz enquiry'); ?>" class="sa-btn sa-btn-sm sa-btn-ghost"><?php echo sa_icon('mail'); ?> Reply by email</a>
+            <a href="mailto:<?php echo sa_e($selected['email']); ?>?subject=<?php echo rawurlencode('Your Optibiz enquiry — Ref ' . $selRealId); ?>" class="sa-btn sa-btn-sm sa-btn-ghost"><?php echo sa_icon('mail'); ?> Reply by email</a>
         </div>
     </section>
 
     <section class="sa-card">
         <div class="sa-card-head">
-            <div><h3>Move it forward</h3><p>Convert or change the pipeline stage</p></div>
+            <div><h3>Move it forward</h3><p>Convert — tenant gets Real ID + setup email</p></div>
         </div>
         <div class="sa-card-pad sa-stack" style="gap:12px">
 <?php if ($selected['status'] !== 'converted'): ?>
+            <div style="padding:12px 14px;background:rgba(194,245,66,0.08);border:1px solid rgba(194,245,66,0.2);border-radius:10px;font-size:12.5px;line-height:1.5;color:#3f6212;">
+                <strong>New flow:</strong> When you convert, the tenant will receive a <strong>Real Account ID</strong> (e.g. OPT-8K2F9Q1A) and an email to set up their password. No manual password needed.
+            </div>
             <button type="button" class="sa-btn sa-btn-primary sa-btn-block"
                     data-sa-convert
                     data-id="<?php echo (int) $selected['id']; ?>"
@@ -445,13 +555,21 @@ include __DIR__ . '/_shell.php';
                     data-email="<?php echo sa_e($selected['email']); ?>"
                     data-phone="<?php echo sa_e($selected['phone']); ?>"
                     data-plan="<?php echo (int) $selected['plan_id']; ?>">
-                <?php echo sa_icon('zap'); ?> Convert to tenant
+                <?php echo sa_icon('zap'); ?> Convert to tenant & send setup email
             </button>
 <?php else: ?>
             <div class="sa-alert sa-alert-success" style="margin:0">
                 <?php echo sa_icon('check-circle'); ?>
-                <div><strong>Already converted</strong>This request has been turned into a tenant.</div>
+                <div><strong>Already converted</strong> This request (<?php echo sa_e($selRealId); ?>) has been turned into a tenant<?php echo $selTenant ? ' — ' . sa_e($selTenant['public_id'] ?? '') : ''; ?>.</div>
             </div>
+<?php if ($selTenant): ?>
+            <form method="POST" action="quote_requests.php" class="sa-form" style="gap:10px">
+                <?php echo sa_csrf_field(); ?>
+                <input type="hidden" name="action" value="resend_setup">
+                <input type="hidden" name="quote_id" value="<?php echo (int) $selected['id']; ?>">
+                <button type="submit" class="sa-btn sa-btn-ghost sa-btn-block"><?php echo sa_icon('mail'); ?> Resend password setup email</button>
+            </form>
+<?php endif; ?>
 <?php endif; ?>
 
             <form method="POST" action="quote_requests.php" class="sa-form" style="gap:10px">
@@ -490,18 +608,25 @@ include __DIR__ . '/_shell.php';
         <div class="sa-dialog-head">
             <div>
                 <h3 id="convertDialogTitle">Convert to a tenant</h3>
-                <p id="cv_subtitle">Creates the tenant login and marks this request converted.</p>
+                <p id="cv_subtitle">Creates the tenant with a Real ID and sends password setup email.</p>
             </div>
             <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>
         </div>
         <div class="sa-dialog-body">
+            <div style="margin-bottom:16px;padding:12px 14px;background:rgba(194,245,66,0.08);border:1px solid rgba(194,245,66,0.2);border-radius:10px;font-size:13px;line-height:1.5;color:#3f6212;">
+                <strong>What happens on convert:</strong><br>
+                • Generates Real Tenant ID (e.g. OPT-8K2F9Q1A) not database ID<br>
+                • Creates login username from company name<br>
+                • Sends email with secure link to set password (valid 48h)<br>
+                • Tenant can then sign in at /admin/login.php
+            </div>
             <div class="sa-form-grid">
                 <div class="sa-field">
                     <label for="cv_company">Company name *</label>
                     <input id="cv_company" type="text" name="company_name" required>
                 </div>
                 <div class="sa-field">
-                    <label for="cv_email">Email *</label>
+                    <label for="cv_email">Email * (will receive setup link)</label>
                     <input id="cv_email" type="email" name="email" required>
                 </div>
                 <div class="sa-field">
@@ -529,22 +654,18 @@ include __DIR__ . '/_shell.php';
                 <div class="sa-field">
                     <label for="cv_months">Length (months)</label>
                     <input id="cv_months" type="number" name="months" min="0" max="60" value="1">
-                </div>
-                <div class="sa-field" style="grid-column:1/-1">
-                    <label for="cv_password">Temporary password *</label>
-                    <input id="cv_password" type="text" name="password" minlength="6" placeholder="At least 6 characters" required>
+                    <span class="sa-hint">0 = no expiry. Email link always 48h.</span>
                 </div>
             </div>
         </div>
         <div class="sa-dialog-foot">
             <button type="button" class="sa-btn sa-btn-ghost" data-sa-close-dialog>Cancel</button>
-            <button type="submit" class="sa-btn sa-btn-primary"><?php echo sa_icon('zap'); ?> Create tenant</button>
+            <button type="submit" class="sa-btn sa-btn-primary"><?php echo sa_icon('mail'); ?> Create & email setup link</button>
         </div>
     </form>
 </dialog>
 
 <script>
-/* Prefill the conversion dialog (generic open/close lives in superadmin.js) */
 (function () {
     function open(sel) {
         var d = document.querySelector(sel);
@@ -561,7 +682,7 @@ include __DIR__ . '/_shell.php';
             document.getElementById('cv_phone').value = d.phone;
             document.getElementById('cv_plan').value = d.plan || '';
             document.getElementById('cv_subtitle').textContent =
-                'Converting request #' + d.id + ' — ' + d.company;
+                'Converting quote ' + (d.company || '') + ' — Real ID will be generated & setup email sent to ' + (d.email || '');
             open('#convertDialog');
         });
     });

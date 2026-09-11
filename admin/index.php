@@ -3,6 +3,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 requireLogin();
+ensureRealIdSchema($conn);
 $tenant_id = getTenantId();
 $is_tenant = isTenant();
 $tenant_info = null;
@@ -74,6 +75,17 @@ include __DIR__ . '/_shell.php';
       <p class="eyebrow">Good morning, <?php echo htmlspecialchars($is_tenant?($tenant_info['company_name']??'there'):($_SESSION['admin_username']??'Admin')); ?></p>
       <h1 style="margin:0;">Performance overview</h1>
       <p class="muted" style="margin-top:4px;">Track your customer feedback and business health in one place.</p>
+      <?php if ($is_tenant && !empty($tenant_info['public_id'])): ?>
+      <div style="margin-top:10px;display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#64748b;">Account ID</span>
+        <span style="font-family:monospace;background:rgba(99,102,241,0.12);color:#4338ca;border:1px solid rgba(99,102,241,0.25);font-weight:800;letter-spacing:1px;padding:5px 12px;border-radius:8px;font-size:14px;"><?php echo htmlspecialchars($tenant_info['public_id']); ?></span>
+        <?php if (!empty($tenant_info['email_verified_at'])): ?>
+          <span style="font-size:11px;background:#dcfce7;color:#166534;border:1px solid #86efac;padding:3px 8px;border-radius:99px;font-weight:700;">✓ Verified</span>
+        <?php elseif (!empty($tenant_info['setup_token'])): ?>
+          <span style="font-size:11px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:3px 8px;border-radius:99px;font-weight:700;">◷ Setup pending — check email</span>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <?php if ($is_tenant): ?>
