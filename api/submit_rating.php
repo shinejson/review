@@ -16,8 +16,10 @@ if ($company_id <= 0) {
 ensureBoosterColumns($conn);
 ensureRatingsServiceColumn($conn);
 
-// Fetch company details and booster configuration
-$c_stmt = $conn->prepare("SELECT company_name, google_store_url, booster_enabled, booster_min_stars FROM customers WHERE id = ?");
+// Fetch company details, booster configuration & social follow targets
+$c_stmt = $conn->prepare("SELECT tenant_id, company_name, website, google_store_url, booster_enabled, booster_min_stars,
+              facebook_url, instagram_url, twitter_url, linkedin_url, tiktok_url, youtube_url
+              FROM customers WHERE id = ?");
 $c_stmt->bind_param("i", $company_id);
 $c_stmt->execute();
 $c_res = $c_stmt->get_result()->fetch_assoc();
@@ -27,6 +29,41 @@ $company_name      = $c_res ? $c_res['company_name'] : 'the company';
 $google_store_url  = cleanGoogleReviewUrl($c_res['google_store_url'] ?? '');
 $booster_enabled   = isset($c_res['booster_enabled']) ? (int)$c_res['booster_enabled'] : 1;
 $booster_min_stars = isset($c_res['booster_min_stars']) ? (int)$c_res['booster_min_stars'] : 4;
+
+// ============================================================
+// Follow / Like targets for the post-signup "Get Verified Badge"
+// card: every social network the company published (+ website
+// fallback). After a customer signs up they follow + like to
+// earn the Verified Customer badge.
+// ============================================================
+$engage_icons   = ['facebook' => '📘', 'instagram' => '📸', 'twitter' => '𝕏', 'linkedin' => '💼', 'tiktok' => '🎵', 'youtube' => '▶️'];
+$engage_targets = [];
+foreach (getCompanySocialLinks($c_res ?: []) as $net_key => $net) {
+    if (empty($net['url'])) continue;
+    $engage_targets[] = [
+        'key'    => $net_key,
+        'label'  => $net['label'],
+        'url'    => $net['url'],
+        'bg'     => $net['bg'],
+        'color'  => $net['color'],
+        'icon'   => $engage_icons[$net_key] ?? '🌐',
+    ];
+}
+$engage_website = trim((string)($c_res['website'] ?? ''));
+if ($engage_website !== '' && !preg_match('~^https?://~i', $engage_website)) {
+    $engage_website = 'https://' . $engage_website;
+}
+if (empty($engage_targets) && $engage_website !== '') {
+    $engage_targets[] = [
+        'key'   => 'website',
+        'label' => 'Official Website',
+        'url'   => $engage_website,
+        'bg'    => '#f1f5f9',
+        'color' => '#0f172a',
+        'icon'  => '🌐',
+    ];
+}
+$engage_like_url = !empty($engage_targets) ? $engage_targets[0]['url'] : '';
 
 // ============================================================
 // BATCH MODE: The "Specific Reviews" form submits ALL question
@@ -177,6 +214,11 @@ $rating         = (int)($_POST['rating'] ?? 0);
 $customer_name  = is_string($_POST['customer_name'] ?? null) ? sanitize($_POST['customer_name']) : '';
 $customer_email = is_string($_POST['customer_email'] ?? null) ? sanitize($_POST['customer_email']) : '';
 $comment        = is_string($_POST['comment'] ?? null) ? sanitize($_POST['comment']) : '';
+// Optional phone / WhatsApp — stored on the customer signup record
+$customer_phone = is_string($_POST['customer_phone'] ?? null) ? trim((string)$_POST['customer_phone']) : '';
+if (strlen($customer_phone) > 30) {
+    $customer_phone = substr($customer_phone, 0, 30);
+}
 $question_id    = isset($_POST['question_id']) && !is_array($_POST['question_id']) && (int)$_POST['question_id'] > 0 ? (int)$_POST['question_id'] : null;
 $is_question    = ($question_id !== null);
 
@@ -280,6 +322,26 @@ if ($stmt->execute()) {
             $conn->query("UPDATE ratings SET photos = '$photo_json' WHERE id = $rating_id");
         }
     }
+
+    // ============================================================
+    // Signup: register / refresh this customer in the workspace's
+    // customer list (viewed at admin/customers.php) so the business
+    // can follow up and email them. Anonymous question/service
+    // reviews (no email) are skipped automatically.
+    // ============================================================
+    upsertSiteCustomer(
+        $conn,
+        (int)($c_res['tenant_id'] ?? 0),
+        $company_id,
+        $customer_name,
+        $customer_email,
+        $customer_phone,
+        $rating_id,
+        $rating,
+        $momo_ref,
+        $is_verified,
+        $verification_type
+    );
     ?>
     <!DOCTYPE html>
     <html lang="en">
@@ -502,6 +564,152 @@ if ($stmt->execute()) {
                         <span>✓</span> Verified Customer Badge Earned!
                     </div>
                 <?php endif; ?>
+            <?php endif; ?>
+
+            <?php if (!$is_verified && !$is_escalated): ?>
+            <!-- ============================================================
+                 GET VERIFIED BADGE — post-signup follow & like steps
+                 ============================================================ -->
+            <div id="engageCard" data-rating-id="<?php echo (int)$rating_id; ?>" data-company-id="<?php echo (int)$company_id; ?>"
+                 style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:16px;padding:22px 20px;margin-bottom:26px;text-align:left;">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+                    <div style="width:38px;height:38px;border-radius:10px;background:#dcfce7;border:1px solid #86efac;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:19px;">🛡️</div>
+                    <div>
+                        <strong style="font-size:14.5px;color:#091a27;display:block;">Get Your Verified Customer Badge</strong>
+                        <span style="font-size:12px;color:#64748b;">Earn the green ✓ badge on your review — two quick taps:</span>
+                    </div>
+                </div>
+
+                <?php if (!empty($engage_targets)): ?>
+                    <!-- STEP 1: FOLLOW -->
+                    <div id="engageStepFollow" style="border:1px solid #e2e8f0;background:#ffffff;border-radius:12px;padding:14px;margin-top:12px;transition:all .25s ease;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                            <div style="font-size:13px;color:#334155;font-weight:600;">
+                                <span style="display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#0f172a;color:#fff;font-size:11px;font-weight:800;margin-right:7px;">1</span>
+                                Follow <strong><?php echo htmlspecialchars($company_name); ?></strong>
+                            </div>
+                            <button type="button" id="engageFollowConfirm"
+                                    style="padding:8px 16px;border-radius:99px;border:1.5px solid #059669;background:#ffffff;color:#059669;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;transition:all .2s ease;">
+                                ✓ I have followed
+                            </button>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                            <?php foreach ($engage_targets as $t): ?>
+                            <a href="<?php echo htmlspecialchars($t['url']); ?>" target="_blank" rel="noopener noreferrer"
+                               onclick="engageMarkPlatform('<?php echo htmlspecialchars($t['key']); ?>')"
+                               style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:99px;background:<?php echo htmlspecialchars($t['bg']); ?>;color:<?php echo htmlspecialchars($t['color']); ?>;border:1px solid <?php echo htmlspecialchars($t['color']); ?>33;font-size:12px;font-weight:700;text-decoration:none;transition:transform .15s ease;">
+                                <span><?php echo $t['icon']; ?></span> <?php echo htmlspecialchars($t['label']); ?> ↗
+                            </a>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <!-- STEP 2: LIKE -->
+                    <div id="engageStepLike" style="border:1px solid #e2e8f0;background:#ffffff;border-radius:12px;padding:14px;margin-top:10px;transition:all .25s ease;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                            <div style="font-size:13px;color:#334155;font-weight:600;">
+                                <span style="display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#0f172a;color:#fff;font-size:11px;font-weight:800;margin-right:7px;">2</span>
+                                Like our latest post or page
+                            </div>
+                            <button type="button" id="engageLikeConfirm"
+                                    style="padding:8px 16px;border-radius:99px;border:1.5px solid #059669;background:#ffffff;color:#059669;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;transition:all .2s ease;">
+                                ♥ I have liked
+                            </button>
+                        </div>
+                        <div style="margin-top:10px;">
+                            <a href="<?php echo htmlspecialchars($engage_like_url); ?>" target="_blank" rel="noopener noreferrer"
+                               style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:99px;background:#fdf2f8;color:#be185d;border:1px solid #fbcfe8;font-size:12px;font-weight:700;text-decoration:none;">
+                                ♥ Open our page &amp; tap Like ↗
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Optional phone / WhatsApp for the customer list -->
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <label for="engagePhone" style="font-size:12px;color:#64748b;font-weight:600;">Your WhatsApp number (optional, for offers):</label>
+                        <input type="tel" id="engagePhone" placeholder="e.g. 024 123 4567"
+                               style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;width:190px;font-family:inherit;">
+                    </div>
+
+                    <!-- Success state (revealed once both steps are confirmed) -->
+                    <div id="engageSuccess" style="display:none;margin-top:14px;padding:16px;background:#dcfce7;border:1px solid #86efac;border-radius:12px;text-align:center;">
+                        <div style="font-size:28px;line-height:1;margin-bottom:8px;">🎉</div>
+                        <div class="badge-verified" style="margin:0 0 8px;"><span>✓</span> Verified Customer Badge Earned!</div>
+                        <p style="font-size:12.5px;color:#166534;margin:0;line-height:1.5;">Thank you for supporting <strong><?php echo htmlspecialchars($company_name); ?></strong> — your review now displays the official <strong>Verified Customer</strong> badge.</p>
+                    </div>
+                <?php else: ?>
+                    <p style="font-size:12.5px;color:#475569;margin:12px 0 0;line-height:1.55;">
+                        <?php echo htmlspecialchars($company_name); ?> has not published follow links yet. You can still earn the badge by adding your MoMo transaction reference on the review form.
+                    </p>
+                <?php endif; ?>
+            </div>
+            <script>
+            (function() {
+                var card = document.getElementById('engageCard');
+                if (!card) return;
+                var followedPlatform = '';
+                window.engageMarkPlatform = function(p) { followedPlatform = p; };
+
+                function markDone(stepId, btnId, label) {
+                    var step = document.getElementById(stepId);
+                    if (step) { step.style.borderColor = '#86efac'; step.style.background = '#f0fdf4'; }
+                    var btn = document.getElementById(btnId);
+                    if (btn) { btn.textContent = label; btn.style.background = '#059669'; btn.style.color = '#ffffff'; btn.style.borderColor = '#059669'; }
+                }
+
+                function confirmStep(step) {
+                    var btn = step === 'follow' ? document.getElementById('engageFollowConfirm') : document.getElementById('engageLikeConfirm');
+                    if (!btn || btn.disabled) return;
+                    btn.disabled = true;
+                    btn.textContent = 'Saving…';
+
+                    var fd = new FormData();
+                    fd.append('action', step);
+                    fd.append('rating_id', card.getAttribute('data-rating-id'));
+                    fd.append('company_id', card.getAttribute('data-company-id'));
+                    if (step === 'follow') {
+                        fd.append('platform', followedPlatform);
+                    }
+                    var phone = document.getElementById('engagePhone');
+                    if (phone && phone.value.trim() !== '') {
+                        fd.append('phone', phone.value.trim());
+                    }
+
+                    fetch('customer_engage.php', { method: 'POST', body: fd })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            if (!data.success) {
+                                btn.disabled = false;
+                                btn.textContent = step === 'follow' ? '✓ I have followed' : '♥ I have liked';
+                                alert(data.message || 'Could not save your step. Please try again.');
+                                return;
+                            }
+                            if (step === 'follow' && data.is_following) {
+                                markDone('engageStepFollow', 'engageFollowConfirm', '✓ Followed');
+                            }
+                            if (step === 'like' && data.is_liked) {
+                                markDone('engageStepLike', 'engageLikeConfirm', '✓ Liked');
+                            }
+                            if (data.is_verified) {
+                                var ok = document.getElementById('engageSuccess');
+                                if (ok) {
+                                    ok.style.display = 'block';
+                                    ok.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                }
+                            }
+                        })
+                        .catch(function() {
+                            btn.disabled = false;
+                            btn.textContent = step === 'follow' ? '✓ I have followed' : '♥ I have liked';
+                        });
+                }
+
+                var fBtn = document.getElementById('engageFollowConfirm');
+                if (fBtn) fBtn.addEventListener('click', function() { confirmStep('follow'); });
+                var lBtn = document.getElementById('engageLikeConfirm');
+                if (lBtn) lBtn.addEventListener('click', function() { confirmStep('like'); });
+            })();
+            </script>
             <?php endif; ?>
 
             <div class="btn-group">

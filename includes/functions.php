@@ -1192,6 +1192,276 @@ function deleteCommunityQuestion($conn, $question_id, $tenant_id) {
 
 /**
  * ============================================================
+ *  Signed-up Customers (site_customers)
+ * ============================================================
+ *  Every customer who submits a named general review on the
+ *  public rating portal "signs up" here. After signup they are
+ *  invited to Follow and Like the business on social media —
+ *  once BOTH are confirmed they earn the Verified Customer
+ *  badge (propagated onto their review). Workspace owners use
+ *  admin/customers.php to browse the list and email them.
+ */
+
+/**
+ * Ensure the site_customers table exists (auto-migration).
+ */
+function ensureSiteCustomersTable($conn) {
+    static $done = false;
+    if ($done || !is_object($conn) || !method_exists($conn, 'query')) {
+        return;
+    }
+    $done = true;
+
+    $conn->query("CREATE TABLE IF NOT EXISTS site_customers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT NOT NULL,
+        company_id INT NOT NULL,
+        customer_name VARCHAR(120) NOT NULL,
+        customer_email VARCHAR(120) NOT NULL,
+        customer_phone VARCHAR(30) NULL,
+        rating_id INT NULL,
+        rating_value TINYINT NULL,
+        is_following TINYINT(1) NOT NULL DEFAULT 0,
+        follow_platform VARCHAR(30) NULL,
+        is_liked TINYINT(1) NOT NULL DEFAULT 0,
+        is_verified TINYINT(1) NOT NULL DEFAULT 0,
+        verification_type VARCHAR(30) NULL,
+        momo_ref VARCHAR(100) NULL,
+        last_activity_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_sc_company_email (company_id, customer_email),
+        INDEX idx_sc_tenant (tenant_id),
+        INDEX idx_sc_company (company_id),
+        INDEX idx_sc_verified (company_id, is_verified)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+/**
+ * Create (or refresh) a signed-up customer record when a named
+ * general review is submitted. Never downgrades an existing
+ * verified state. Returns the row id (0 on failure).
+ */
+function upsertSiteCustomer($conn, $tenant_id, $company_id, $name, $email, $phone = '', $rating_id = 0, $rating_value = 0, $momo_ref = '', $is_verified = 0, $verification_type = null) {
+    if (!is_object($conn) || !method_exists($conn, 'prepare')) return 0;
+    ensureSiteCustomersTable($conn);
+
+    $tenant_id  = (int)$tenant_id;
+    $company_id = (int)$company_id;
+    $name       = trim((string)$name);
+    $email      = strtolower(trim((string)$email));
+    $phone      = trim((string)$phone);
+    $momo_ref   = trim((string)$momo_ref);
+
+    if ($company_id <= 0 || $name === '' || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return 0;
+    }
+
+    $rating_id    = (int)$rating_id;
+    $rating_value = (int)$rating_value;
+    $is_verified  = (int)$is_verified;
+    if (!$is_verified) {
+        $verification_type = null;
+    }
+
+    $stmt = $conn->prepare("SELECT id, is_verified, verification_type, customer_phone, momo_ref FROM site_customers WHERE company_id = ? AND customer_email = ? LIMIT 1");
+    if (!$stmt) return 0;
+    $stmt->bind_param("is", $company_id, $email);
+    $stmt->execute();
+    $row  = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    $now = date('Y-m-d H:i:s');
+
+    if (!$row) {
+        $vtype = $is_verified ? (string)$verification_type : null;
+        $ins = $conn->prepare("INSERT INTO site_customers
+                (tenant_id, company_id, customer_name, customer_email, customer_phone, rating_id, rating_value,
+                 is_following, is_liked, is_verified, verification_type, momo_ref, last_activity_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)");
+        if (!$ins) return 0;
+        $ins->bind_param("iiissiiisss", $tenant_id, $company_id, $name, $email, $phone, $rating_id, $rating_value, $is_verified, $vtype, $momo_ref, $now);
+        if (!$ins->execute()) return 0;
+        $cid = (int)$ins->insert_id;
+        $ins->close();
+        return $cid;
+    }
+
+    $cid           = (int)$row['id'];
+    $keep_verified = max((int)$row['is_verified'], $is_verified);
+    $vtype         = $row['verification_type'];
+    if ($keep_verified && empty($vtype)) {
+        $vtype = 'follow_like';
+    }
+    if ($is_verified && !empty($verification_type)) {
+        $vtype = (string)$verification_type;
+    }
+    $new_phone = ($phone !== '') ? $phone : (string)$row['customer_phone'];
+    $new_momo  = ($momo_ref !== '') ? $momo_ref : (string)$row['momo_ref'];
+
+    $upd = $conn->prepare("UPDATE site_customers
+            SET customer_name = ?, customer_phone = ?, rating_id = ?, rating_value = ?,
+                last_activity_at = ?, is_verified = ?, verification_type = ?, momo_ref = ?
+          WHERE id = ?");
+    if (!$upd) return 0;
+    $upd->bind_param("ssiisissi", $name, $new_phone, $rating_id, $rating_value, $now, $keep_verified, $vtype, $new_momo, $cid);
+    $upd->execute();
+    $upd->close();
+    return $cid;
+}
+
+/**
+ * Record a "follow" or "like" engagement confirmation for a
+ * signed-up customer (looked up via the review they submitted)
+ * and award the Verified Customer badge once BOTH steps are
+ * done. The badge is also propagated to the linked review row.
+ *
+ * @param string $type 'follow' | 'like'
+ * @return array|false Engagement state after the update
+ */
+function markCustomerEngagement($conn, $rating_id, $company_id, $type, $platform = '', $phone = '') {
+    if (!is_object($conn) || !method_exists($conn, 'prepare')) return false;
+    ensureSiteCustomersTable($conn);
+
+    $rating_id  = (int)$rating_id;
+    $company_id = (int)$company_id;
+    $type       = in_array($type, ['follow', 'like'], true) ? $type : '';
+    $platform   = trim((string)$platform);
+    $phone      = trim((string)$phone);
+
+    if ($rating_id <= 0 || $company_id <= 0 || $type === '') return false;
+
+    $stmt = $conn->prepare("SELECT * FROM site_customers WHERE rating_id = ? AND company_id = ? LIMIT 1");
+    if (!$stmt) return false;
+    $stmt->bind_param("ii", $rating_id, $company_id);
+    $stmt->execute();
+    $cust = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$cust) return false;
+
+    $cid          = (int)$cust['id'];
+    $is_following = (int)$cust['is_following'];
+    $is_liked     = (int)$cust['is_liked'];
+
+    if ($type === 'follow') {
+        $is_following = 1;
+    } else {
+        $is_liked = 1;
+    }
+
+    $new_platform = $cust['follow_platform'];
+    if ($is_following) {
+        $new_platform = ($platform !== '') ? $platform : $new_platform;
+    }
+
+    $now = date('Y-m-d H:i:s');
+    $upd = $conn->prepare("UPDATE site_customers
+            SET is_following = ?, is_liked = ?, follow_platform = ?,
+                customer_phone = IF(? = '', customer_phone, ?),
+                last_activity_at = ?
+          WHERE id = ?");
+    if (!$upd) return false;
+    $upd->bind_param("iissssi", $is_following, $is_liked, $new_platform, $phone, $phone, $now, $cid);
+    $upd->execute();
+    $upd->close();
+
+    $is_verified = (int)$cust['is_verified'];
+    $vtype       = $cust['verification_type'];
+
+    // Award the badge once follow AND like are both confirmed
+    if ($is_verified === 0 && $is_following && $is_liked) {
+        $is_verified = 1;
+        $vtype       = 'follow_like';
+
+        $vupd = $conn->prepare("UPDATE site_customers SET is_verified = ?, verification_type = ? WHERE id = ?");
+        if ($vupd) {
+            $vupd->bind_param("isi", 1, $vtype, $cid);
+            $vupd->execute();
+            $vupd->close();
+        }
+
+        // Propagate onto the linked review (keep MoMo/receipt verification if present)
+        $r = $conn->prepare("UPDATE ratings SET is_verified = 1, verification_type = 'follow_like' WHERE id = ? AND (is_verified = 0 OR is_verified IS NULL)");
+        if ($r) {
+            $r->bind_param("i", $rating_id);
+            $r->execute();
+            $r->close();
+        }
+    }
+
+    return [
+        'id'                => $cid,
+        'is_following'      => $is_following,
+        'is_liked'          => $is_liked,
+        'is_verified'       => $is_verified,
+        'verification_type' => $vtype,
+    ];
+}
+
+/**
+ * List signed-up customers for the admin console (scoped per tenant).
+ *
+ * @param string $filter all | verified | in_progress | following | no_email
+ */
+function getAdminSiteCustomers($conn, $tenant_id = 0, $filter = 'all', $search = '', $limit = 500) {
+    if (!is_object($conn) || !method_exists($conn, 'prepare')) return [];
+    ensureSiteCustomersTable($conn);
+
+    $where  = [];
+    $params = [];
+    $types  = '';
+
+    $tenant_id = (int)$tenant_id;
+    if ($tenant_id > 0) {
+        $where[] = "sc.tenant_id = ?";
+        $params[] = $tenant_id;
+        $types .= 'i';
+    }
+
+    switch ($filter) {
+        case 'verified':
+            $where[] = "sc.is_verified = 1";
+            break;
+        case 'in_progress':
+            $where[] = "sc.is_verified = 0";
+            break;
+        case 'following':
+            $where[] = "sc.is_following = 1";
+            break;
+        case 'no_email':
+            $where[] = "(sc.customer_email IS NULL OR TRIM(sc.customer_email) = '')";
+            break;
+    }
+
+    $search = trim((string)$search);
+    if ($search !== '') {
+        $where[] = "(sc.customer_name LIKE ? OR sc.customer_email LIKE ? OR sc.customer_phone LIKE ?)";
+        $like = '%' . $search . '%';
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+        $types .= 'sss';
+    }
+
+    $sql = "SELECT sc.*, c.company_name
+            FROM site_customers sc
+            LEFT JOIN customers c ON sc.company_id = c.id
+            WHERE " . (empty($where) ? "1=1" : implode(' AND ', $where)) . "
+            ORDER BY sc.created_at DESC
+            LIMIT " . max(1, (int)$limit);
+
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) return [];
+    if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+    }
+    $stmt->execute();
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return is_array($rows) ? $rows : [];
+}
+
+/**
+ * ============================================================
  *  Feature #6: Performance & Interaction Analytics Helpers
  * ============================================================
  */
@@ -2243,6 +2513,7 @@ if (!function_exists('teamPermissionLabels')) {
             'qa'           => 'Community Q&A',
             'analysis'     => 'Analysis',
             'ratings'      => 'Ratings & Reviews',
+            'customers'    => 'Customers',
             'services'     => 'Services',
             'ads'          => 'Ads & Funnels',
             'subscription' => 'Subscription',
@@ -2258,7 +2529,7 @@ if (!function_exists('teamRolePresets')) {
         $all = array_keys(teamPermissionLabels());
         return [
             'manager' => $all,
-            'reviews' => ['company', 'qr_stand', 'whatsapp', 'ratings'],
+            'reviews' => ['company', 'qr_stand', 'whatsapp', 'ratings', 'customers'],
             'social'  => ['company', 'social_card', 'social', 'qa'],
             'analyst' => ['analysis', 'ratings'],
             'staff'   => [],
