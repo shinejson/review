@@ -30,17 +30,10 @@ if ($tenant_id) {
     $t->close();
 }
 
-// Fetch primary company profile from customers table
-$company_profile = null;
-if ($tenant_id) {
-    $cp = $conn->prepare("SELECT c.*, cat.name AS category_name FROM customers c LEFT JOIN categories cat ON c.category_id=cat.id WHERE c.tenant_id=? ORDER BY c.id ASC LIMIT 1");
-    $cp->bind_param("i", $tenant_id);
-    $cp->execute();
-    $company_profile = $cp->get_result()->fetch_assoc();
-    $cp->close();
-}
+// Resolve active company/branch
+$company_id      = getActiveCompanyId($conn, $tenant_id);
+$company_profile = getActiveCompanyProfile($conn, $tenant_id);
 
-$company_id   = (int)($company_profile['id'] ?? 0);
 $brand_name   = !empty($company_profile['company_name']) ? $company_profile['company_name'] : ($tenant['company_name'] ?? 'Your Business');
 $brand_logo   = $tenant['logo'] ?? '';
 
@@ -59,7 +52,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
     $tkey   = sanitize($_POST['template_key'] ?? 'retail_service');
     $msg    = trim($_POST['message'] ?? '');
 
-    $ok = logReviewInvite($conn, $tenant_id, $cname, $cphone, $oref, $tkey, $msg);
+    $ok = logReviewInvite($conn, $tenant_id, $cname, $cphone, $oref, $tkey, $msg, $company_id);
 
     if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
         header('Content-Type: application/json');
@@ -72,12 +65,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
 
 // Stats
 $total_invites = 0;
-$inv_stat = $conn->prepare("SELECT COUNT(*) cnt FROM review_invites WHERE tenant_id=?");
-if ($inv_stat) {
-    $inv_stat->bind_param("i", $tenant_id);
-    $inv_stat->execute();
-    $total_invites = (int)($inv_stat->get_result()->fetch_assoc()['cnt'] ?? 0);
-    $inv_stat->close();
+if ($company_id > 0) {
+    $inv_stat = $conn->prepare("SELECT COUNT(*) cnt FROM review_invites WHERE tenant_id=? AND (company_id=? OR company_id IS NULL)");
+    if ($inv_stat) {
+        $inv_stat->bind_param("ii", $tenant_id, $company_id);
+        $inv_stat->execute();
+        $total_invites = (int)($inv_stat->get_result()->fetch_assoc()['cnt'] ?? 0);
+        $inv_stat->close();
+    }
+} else {
+    $inv_stat = $conn->prepare("SELECT COUNT(*) cnt FROM review_invites WHERE tenant_id=?");
+    if ($inv_stat) {
+        $inv_stat->bind_param("i", $tenant_id);
+        $inv_stat->execute();
+        $total_invites = (int)($inv_stat->get_result()->fetch_assoc()['cnt'] ?? 0);
+        $inv_stat->close();
+    }
 }
 
 $total_reviews = 0;
@@ -98,7 +101,7 @@ if ($company_id > 0) {
 
 // Load default templates
 $templates = getWhatsAppTemplates($brand_name, $base_url);
-$recent_invites = getRecentInvites($conn, $tenant_id, 10);
+$recent_invites = getRecentInvites($conn, $tenant_id, 10, $company_id);
 
 // Fetch incoming customer reviews (strictly immutable & read-only)
 $recent_reviews = [];
@@ -132,6 +135,11 @@ include __DIR__ . '/_shell.php';
         <p class="eyebrow">Customer Acquisition &middot; WhatsApp Review Invitations</p>
         <h1 style="margin:0;">"Ask for Reviews" WhatsApp Sender</h1>
         <p class="muted" style="margin-top:6px;">Send personalized WhatsApp review requests with 1 tap. Pre-fills customer name and order details for maximum response rates.</p>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span class="badge" style="background:rgba(99,102,241,0.12);color:#6366f1;border:1px solid rgba(99,102,241,0.25);font-size:12px;padding:4px 10px;border-radius:20px;font-weight:600;">
+                📍 Current Branch: <?php echo htmlspecialchars($brand_name); ?>
+            </span>
+        </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <a href="qr_stand.php" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;">

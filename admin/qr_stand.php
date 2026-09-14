@@ -27,14 +27,16 @@ if ($tenant_id) {
     $t->close();
 }
 
-// Fetch primary company profile from customers table
+// Multi-branch: Load the active company profile
 $company_profile = null;
 if ($tenant_id) {
-    $cp = $conn->prepare("SELECT c.*, cat.name AS category_name FROM customers c LEFT JOIN categories cat ON c.category_id=cat.id WHERE c.tenant_id=? ORDER BY c.id ASC LIMIT 1");
-    $cp->bind_param("i", $tenant_id);
-    $cp->execute();
-    $company_profile = $cp->get_result()->fetch_assoc();
-    $cp->close();
+    $active_company_id = getActiveCompanyId($conn, $tenant_id);
+    $company_profile   = getActiveCompanyProfile($conn, $tenant_id);
+    $company_id        = (int)($company_profile['id'] ?? $active_company_id);
+} else {
+    $c_res = $conn->query("SELECT * FROM customers ORDER BY id ASC LIMIT 1");
+    $company_profile = $c_res ? $c_res->fetch_assoc() : null;
+    $company_id = (int)($company_profile['id'] ?? 0);
 }
 
 // Rating statistics
@@ -85,6 +87,14 @@ include __DIR__ . '/_shell.php';
         <p class="eyebrow">Conversion &amp; Acquisition &middot; In-Store Reviews</p>
         <h1>Printable Counter QR Stand</h1>
         <p class="muted">Display this on your reception, checkout counter, or dining tables so customers can scan and leave a review in 30 seconds.</p>
+        <div style="margin-top:8px;display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700;background:rgba(194,245,66,0.18);color:var(--ink);border:1px solid rgba(194,245,66,0.4);">
+                <span>🏢</span> Current Branch: <strong><?php echo htmlspecialchars($brand_name); ?></strong>
+            </span>
+            <?php if (!empty($tenant_all_branches) && count($tenant_all_branches) > 1): ?>
+            <span class="muted" style="font-size:11.5px;">&middot; Stand &amp; QR link reflect this branch</span>
+            <?php endif; ?>
+        </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <a href="whatsapp_sender.php" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:11px 18px;text-decoration:none;font-weight:700;background:#dcfce7;color:#15803d;border:1px solid #86efac;">

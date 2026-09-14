@@ -20,20 +20,18 @@ $is_tenant = isTenant();
 
 ensureQaTable($conn);
 
-// Load primary company profile for this tenant
+// Load active company profile for this tenant
 $company_profile = null;
 if ($tenant_id) {
-    $cp = $conn->prepare("SELECT c.*, cat.name AS category_name FROM customers c LEFT JOIN categories cat ON c.category_id=cat.id WHERE c.tenant_id=? ORDER BY c.id ASC LIMIT 1");
-    $cp->bind_param("i", $tenant_id);
-    $cp->execute();
-    $company_profile = $cp->get_result()->fetch_assoc();
-    $cp->close();
+    $active_company_id = getActiveCompanyId($conn, $tenant_id);
+    $company_profile   = getActiveCompanyProfile($conn, $tenant_id);
+    $company_id        = (int)($company_profile['id'] ?? $active_company_id);
 } else {
     $c_res = $conn->query("SELECT * FROM customers ORDER BY id ASC LIMIT 1");
     $company_profile = $c_res ? $c_res->fetch_assoc() : null;
+    $company_id = (int)($company_profile['id'] ?? 1);
 }
 
-$company_id   = (int)($company_profile['id'] ?? 1);
 $brand_name   = !empty($company_profile['company_name']) ? $company_profile['company_name'] : 'Your Business';
 $brand_phone  = $company_profile['phone'] ?? ($company_profile['whatsapp_number'] ?? '');
 
@@ -127,8 +125,10 @@ $stat_sql = "SELECT
     SUM(CASE WHEN is_pinned = 1 THEN 1 ELSE 0 END) AS pinned_count,
     COALESCE(SUM(helpful_count), 0) AS total_helpful
 FROM community_questions WHERE 1=1";
-if ($tenant_id > 0) {
-    $stat_sql .= " AND (tenant_id = " . (int)$tenant_id . " OR company_id = " . (int)$company_id . ")";
+if ($company_id > 0) {
+    $stat_sql .= " AND company_id = " . (int)$company_id;
+} elseif ($tenant_id > 0) {
+    $stat_sql .= " AND tenant_id = " . (int)$tenant_id;
 }
 $stat_res = $conn->query($stat_sql);
 $stats = $stat_res ? $stat_res->fetch_assoc() : [];
@@ -143,7 +143,7 @@ $helpful_q    = (int)($stats['total_helpful'] ?? 0);
 $current_filter = $_GET['filter'] ?? 'all';
 $search_term    = trim($_GET['q'] ?? '');
 
-$questions = getAdminCommunityQuestions($conn, $tenant_id, $current_filter, $search_term);
+$questions = getAdminCommunityQuestions($conn, $tenant_id, $current_filter, $search_term, $company_id);
 
 // Public rating page link with tenant name
 if ($company_id > 0) {
@@ -373,6 +373,14 @@ include __DIR__ . '/_shell.php';
         <p class="eyebrow">Customer Conversion &middot; Pre-Purchase Trust</p>
         <h1 style="margin:0;">Community Q&amp;A Manager</h1>
         <p class="muted" style="margin-top:6px;">Answer customer pre-purchase questions, clarify pricing or services, and curate featured FAQs for <?php echo htmlspecialchars($brand_name); ?>.</p>
+        <div style="margin-top:8px;display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700;background:rgba(194,245,66,0.18);color:var(--ink);border:1px solid rgba(194,245,66,0.4);">
+                <span>🏢</span> Current Branch: <strong><?php echo htmlspecialchars($brand_name); ?></strong>
+            </span>
+            <?php if (!empty($tenant_all_branches) && count($tenant_all_branches) > 1): ?>
+            <span class="muted" style="font-size:11.5px;">&middot; Questions &amp; FAQs are scoped to this branch</span>
+            <?php endif; ?>
+        </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <button type="button" class="btn btn-primary" onclick="toggleFaqBox()" style="display:inline-flex;align-items:center;gap:6px;">

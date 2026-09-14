@@ -109,6 +109,161 @@ function whatsappDisplay($rawNumber) {
 }
 
 /**
+ * ============================================================
+ * Multi-Company / Multi-Branch Active Workspace Resolvers
+ * ============================================================
+ */
+
+/**
+ * Returns all company profiles/branches owned by this tenant.
+ *
+ * @param mysqli $conn
+ * @param int $tenant_id
+ * @return array
+ */
+function getTenantCompanies($conn, $tenant_id) {
+    if (!is_object($conn) || !method_exists($conn, 'prepare') || (int)$tenant_id <= 0) {
+        return [];
+    }
+    $stmt = $conn->prepare("SELECT c.*, cat.name AS category_name FROM customers c LEFT JOIN categories cat ON c.category_id=cat.id WHERE c.tenant_id=? ORDER BY c.id ASC");
+    if (!$stmt) return [];
+    $stmt->bind_param("i", $tenant_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $companies = [];
+    while ($row = $res->fetch_assoc()) {
+        $companies[] = $row;
+    }
+    $stmt->close();
+    return $companies;
+}
+
+/**
+ * Returns the currently active company/branch ID for this tenant session.
+ * Automatically validates ownership against $tenant_id and caches in $_SESSION['active_company_id'].
+ *
+ * @param mysqli $conn
+ * @param int $tenant_id
+ * @return int
+ */
+function getActiveCompanyId($conn, $tenant_id) {
+    $tenant_id = (int)$tenant_id;
+    if ($tenant_id <= 0) {
+        return 0;
+    }
+    
+    // Check if session already has a valid active company for this tenant
+    if (!empty($_SESSION['active_company_id']) && (int)$_SESSION['active_company_id'] > 0) {
+        $cand_id = (int)$_SESSION['active_company_id'];
+        $chk = $conn->prepare("SELECT id, company_name FROM customers WHERE id=? AND tenant_id=? LIMIT 1");
+        if ($chk) {
+            $chk->bind_param("ii", $cand_id, $tenant_id);
+            $chk->execute();
+            $row = $chk->get_result()->fetch_assoc();
+            $chk->close();
+            if ($row) {
+                $_SESSION['active_company_name'] = $row['company_name'];
+                return (int)$row['id'];
+            }
+        }
+    }
+    
+    // Fallback: pick the first registered company/branch under this tenant
+    $stmt = $conn->prepare("SELECT id, company_name FROM customers WHERE tenant_id=? ORDER BY id ASC LIMIT 1");
+    if ($stmt) {
+        $stmt->bind_param("i", $tenant_id);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if ($row) {
+            $_SESSION['active_company_id']   = (int)$row['id'];
+            $_SESSION['active_company_name'] = $row['company_name'];
+            return (int)$row['id'];
+        }
+    }
+    
+    return 0;
+}
+
+/**
+ * Sets the active company/branch in session after verifying tenant ownership.
+ *
+ * @param mysqli $conn
+ * @param int $tenant_id
+ * @param int $company_id
+ * @return bool
+ */
+function setActiveCompanyId($conn, $tenant_id, $company_id) {
+    $tenant_id  = (int)$tenant_id;
+    $company_id = (int)$company_id;
+    if ($tenant_id <= 0 || $company_id <= 0) {
+        return false;
+    }
+    $chk = $conn->prepare("SELECT id, company_name FROM customers WHERE id=? AND tenant_id=? LIMIT 1");
+    if (!$chk) return false;
+    $chk->bind_param("ii", $company_id, $tenant_id);
+    $chk->execute();
+    $row = $chk->get_result()->fetch_assoc();
+    $chk->close();
+    if ($row) {
+        $_SESSION['active_company_id']   = (int)$row['id'];
+        $_SESSION['active_company_name'] = $row['company_name'];
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Returns the full active company row (with category_name) for this tenant.
+ *
+ * @param mysqli $conn
+ * @param int $tenant_id
+ * @return array|null
+ */
+function getActiveCompanyProfile($conn, $tenant_id) {
+    $active_id = getActiveCompanyId($conn, $tenant_id);
+    if ($active_id <= 0) {
+        return null;
+    }
+    $stmt = $conn->prepare("SELECT c.*, cat.name AS category_name FROM customers c LEFT JOIN categories cat ON c.category_id=cat.id WHERE c.id=? AND c.tenant_id=? LIMIT 1");
+    if (!$stmt) return null;
+    $stmt->bind_param("ii", $active_id, $tenant_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $row ?: null;
+}
+
+/**
+ * Inspects incoming GET or POST for 'switch_company', sets the active branch,
+ * and performs a clean redirect back to the current URI without 'switch_company'.
+ *
+ * @param mysqli $conn
+ * @param int $tenant_id
+ * @return void
+ */
+function handleCompanySwitchRequest($conn, $tenant_id) {
+    $sw_id = 0;
+    if (isset($_GET['switch_company'])) {
+        $sw_id = (int)$_GET['switch_company'];
+    } elseif (isset($_POST['switch_company'])) {
+        $sw_id = (int)$_POST['switch_company'];
+    }
+    if ($sw_id > 0 && (int)$tenant_id > 0) {
+        setActiveCompanyId($conn, $tenant_id, $sw_id);
+        
+        // Build clean target URL by removing switch_company
+        $uri_parts = explode('?', $_SERVER['REQUEST_URI'] ?? '', 2);
+        $base_path = $uri_parts[0] ?: 'index.php';
+        $params = $_GET;
+        unset($params['switch_company']);
+        $qs = !empty($params) ? '?' . http_build_query($params) : '';
+        header('Location: ' . $base_path . $qs);
+        exit;
+    }
+}
+
+/**
  * Make sure customers.whatsapp_number exists, so installs created
  * before the WhatsApp feature keep working without a manual SQL
  * update (mirrors sa_ensure_user_schema()). Runs once per request
@@ -702,6 +857,7 @@ function ensureInviteTable($conn) {
     $sql = "CREATE TABLE IF NOT EXISTS review_invites (
         id INT AUTO_INCREMENT PRIMARY KEY,
         tenant_id INT NOT NULL,
+        company_id INT NULL DEFAULT NULL,
         customer_name VARCHAR(100) NOT NULL,
         customer_phone VARCHAR(30) NOT NULL,
         order_ref VARCHAR(100) NULL,
@@ -712,9 +868,31 @@ function ensureInviteTable($conn) {
         sent_at DATETIME NOT NULL,
         created_at DATETIME NOT NULL,
         INDEX idx_tenant (tenant_id),
+        INDEX idx_comp (company_id),
         INDEX idx_sent (sent_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     @$conn->query($sql);
+
+    // Self-heal: ensure company_id column exists
+    $chkCol = @$conn->query("SHOW COLUMNS FROM review_invites LIKE 'company_id'");
+    if ($chkCol && $chkCol->num_rows === 0) {
+        @$conn->query("ALTER TABLE review_invites ADD COLUMN company_id INT NULL DEFAULT NULL AFTER tenant_id, ADD INDEX idx_comp (company_id)");
+    }
+    if ($chkCol) $chkCol->close();
+}
+
+/**
+ * Ensure rating_questions table supports per-company assignment.
+ */
+function ensureRatingQuestionsCompanyColumn($conn) {
+    static $done = false;
+    if ($done || !is_object($conn) || !method_exists($conn, 'query')) return;
+    $done = true;
+    $chkCol = @$conn->query("SHOW COLUMNS FROM rating_questions LIKE 'company_id'");
+    if ($chkCol && $chkCol->num_rows === 0) {
+        @$conn->query("ALTER TABLE rating_questions ADD COLUMN company_id INT NULL DEFAULT NULL AFTER tenant_id, ADD INDEX idx_rq_comp (company_id)");
+    }
+    if ($chkCol) $chkCol->close();
 }
 
 /**
@@ -787,12 +965,13 @@ function getWhatsAppTemplates($business_name, $review_url, $customer_name = '', 
 /**
  * Records an invitation sent to a customer.
  */
-function logReviewInvite($conn, $tenant_id, $customer_name, $customer_phone, $order_ref, $template_key, $message) {
+function logReviewInvite($conn, $tenant_id, $customer_name, $customer_phone, $order_ref, $template_key, $message, $company_id = 0) {
     if (!is_object($conn) || !method_exists($conn, 'prepare')) {
         return false;
     }
     ensureInviteTable($conn);
-    $tenant_id = (int)$tenant_id;
+    $tenant_id  = (int)$tenant_id;
+    $company_id = (int)$company_id > 0 ? (int)$company_id : null;
     $cname = trim((string)$customer_name);
     $cphone = whatsappDigits($customer_phone) ?: trim((string)$customer_phone);
     $oref = trim((string)$order_ref);
@@ -800,28 +979,35 @@ function logReviewInvite($conn, $tenant_id, $customer_name, $customer_phone, $or
     $msg = trim((string)$message);
     $now = date('Y-m-d H:i:s');
 
-    $stmt = $conn->prepare("INSERT INTO review_invites (tenant_id, customer_name, customer_phone, order_ref, template_key, invite_message, channel, status, sent_at, created_at) VALUES (?, ?, ?, ?, ?, ?, 'whatsapp', 'sent', ?, ?)");
+    $stmt = $conn->prepare("INSERT INTO review_invites (tenant_id, company_id, customer_name, customer_phone, order_ref, template_key, invite_message, channel, status, sent_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'whatsapp', 'sent', ?, ?)");
     if (!$stmt) return false;
-    $stmt->bind_param("isssssss", $tenant_id, $cname, $cphone, $oref, $tkey, $msg, $now, $now);
+    $stmt->bind_param("iisssssss", $tenant_id, $company_id, $cname, $cphone, $oref, $tkey, $msg, $now, $now);
     $res = $stmt->execute();
     $stmt->close();
     return $res;
 }
 
 /**
- * Fetches recent review invitations sent by a tenant.
+ * Fetches recent review invitations sent by a tenant or branch.
  */
-function getRecentInvites($conn, $tenant_id, $limit = 10) {
+function getRecentInvites($conn, $tenant_id, $limit = 10, $company_id = 0) {
     if (!is_object($conn) || !method_exists($conn, 'prepare')) {
         return [];
     }
     ensureInviteTable($conn);
-    $tenant_id = (int)$tenant_id;
+    $tenant_id  = (int)$tenant_id;
+    $company_id = (int)$company_id;
     $limit = max(1, min(100, (int)$limit));
 
-    $stmt = $conn->prepare("SELECT * FROM review_invites WHERE tenant_id = ? ORDER BY sent_at DESC LIMIT ?");
-    if (!$stmt) return [];
-    $stmt->bind_param("ii", $tenant_id, $limit);
+    if ($company_id > 0) {
+        $stmt = $conn->prepare("SELECT * FROM review_invites WHERE tenant_id = ? AND (company_id = ? OR company_id IS NULL) ORDER BY sent_at DESC LIMIT ?");
+        if (!$stmt) return [];
+        $stmt->bind_param("iii", $tenant_id, $company_id, $limit);
+    } else {
+        $stmt = $conn->prepare("SELECT * FROM review_invites WHERE tenant_id = ? ORDER BY sent_at DESC LIMIT ?");
+        if (!$stmt) return [];
+        $stmt->bind_param("ii", $tenant_id, $limit);
+    }
     $stmt->execute();
     $res = $stmt->get_result();
     $invites = [];
@@ -1087,10 +1273,11 @@ function voteQuestionHelpful($conn, $question_id) {
 /**
  * Fetch questions for admin management console with filtering & search.
  */
-function getAdminCommunityQuestions($conn, $tenant_id, $filter = 'all', $search = '') {
+function getAdminCommunityQuestions($conn, $tenant_id, $filter = 'all', $search = '', $company_id = 0) {
     if (!is_object($conn) || !method_exists($conn, 'prepare')) return [];
     ensureQaTable($conn);
-    $tenant_id = (int)$tenant_id;
+    $tenant_id  = (int)$tenant_id;
+    $company_id = (int)$company_id;
     
     $sql = "SELECT q.*, c.company_name 
             FROM community_questions q 
@@ -1099,7 +1286,11 @@ function getAdminCommunityQuestions($conn, $tenant_id, $filter = 'all', $search 
     $params = [];
     $types = "";
 
-    if ($tenant_id > 0) {
+    if ($company_id > 0) {
+        $sql .= " AND q.company_id = ?";
+        $params[] = $company_id;
+        $types .= "i";
+    } elseif ($tenant_id > 0) {
         $sql .= " AND (q.tenant_id = ? OR c.tenant_id = ?)";
         $params[] = $tenant_id;
         $params[] = $tenant_id;

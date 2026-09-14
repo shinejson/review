@@ -24,8 +24,13 @@ $tenant_id = getTenantId();
 $is_tenant = isTenant();
 
 /* ---------- filters ---------- */
-$days       = admin_period_days($_GET['days'] ?? 90);
-$company_id = isset($_GET['company_id']) ? (int) $_GET['company_id'] : 0;
+$days              = admin_period_days($_GET['days'] ?? 90);
+$active_company_id = ($is_tenant && $tenant_id) ? getActiveCompanyId($conn, $tenant_id) : 0;
+if (isset($_GET['company_id'])) {
+    $company_id = ($_GET['company_id'] === 'all' || $_GET['company_id'] === '0') ? 0 : (int)$_GET['company_id'];
+} else {
+    $company_id = $active_company_id;
+}
 $active_tab = $_GET['tab'] ?? 'interactions';
 if (!in_array($active_tab, ['interactions', 'responses'])) {
     $active_tab = 'interactions';
@@ -138,10 +143,10 @@ include __DIR__ . '/_shell.php';
             <form method="GET" class="filter-form">
                 <input type="hidden" name="tab" value="<?php echo htmlspecialchars($active_tab); ?>">
                 <select name="company_id" onchange="this.form.submit()" aria-label="Filter by company">
-                    <option value="0">All companies</option>
+                    <option value="0">All companies (Consolidated)</option>
                     <?php foreach ($companies_list as $row): ?>
                         <option value="<?php echo (int) $row['id']; ?>" <?php echo $company_id === (int) $row['id'] ? 'selected' : ''; ?>>
-                            <?php echo sa_e($row['company_name']); ?>
+                            <?php echo sa_e($row['company_name']); ?><?php echo ($is_tenant && (int)$row['id'] === $active_company_id) ? ' (Active Branch)' : ''; ?>
                         </option>
                     <?php endforeach; ?>
                 </select>

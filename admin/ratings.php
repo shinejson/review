@@ -21,6 +21,7 @@ if ($resCol && $resCol->num_rows === 0) {
 
 // Auto-ensure Google review booster & sentiment routing columns exist
 ensureBoosterColumns($conn);
+ensureRatingQuestionsCompanyColumn($conn);
 
 // ============================================================
 // POST Request Handlers (CRUD Operations)
@@ -244,12 +245,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $question_text = sanitize($_POST['question_text'] ?? '');
         $target_tenant_id = (int)($tenant_id ?: ($_SESSION['tenant_id'] ?? 1));
         $is_active = isset($_POST['is_active']) ? 1 : 1;
+        $q_company_id = !empty($_POST['company_id']) ? (int)$_POST['company_id'] : null;
 
         if (empty($question_text)) {
             $error = "Question text is required.";
         } else {
-            $stmt = $conn->prepare("INSERT INTO rating_questions (tenant_id, question_text, is_active) VALUES (?, ?, ?)");
-            $stmt->bind_param("isi", $target_tenant_id, $question_text, $is_active);
+            $stmt = $conn->prepare("INSERT INTO rating_questions (tenant_id, company_id, question_text, is_active) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("iisi", $target_tenant_id, $q_company_id, $question_text, $is_active);
             if ($stmt->execute()) {
                 $success = "Rating question created successfully!";
             } else {
@@ -263,6 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $question_id = (int)($_POST['question_id'] ?? 0);
         $question_text = sanitize($_POST['question_text'] ?? '');
         $is_active = isset($_POST['is_active']) ? 1 : 0;
+        $q_company_id = !empty($_POST['company_id']) ? (int)$_POST['company_id'] : null;
 
         if ($question_id <= 0 || empty($question_text)) {
             $error = "Invalid question or missing text.";
@@ -279,8 +282,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             if ($valid) {
-                $stmt = $conn->prepare("UPDATE rating_questions SET question_text = ?, is_active = ? WHERE id = ?");
-                $stmt->bind_param("sii", $question_text, $is_active, $question_id);
+                $stmt = $conn->prepare("UPDATE rating_questions SET question_text = ?, company_id = ?, is_active = ? WHERE id = ?");
+                $stmt->bind_param("siii", $question_text, $q_company_id, $is_active, $question_id);
                 if ($stmt->execute()) {
                     $success = "Question updated successfully!";
                 } else {
@@ -338,8 +341,20 @@ while ($c = $companies_list->fetch_assoc()) {
     $companies_cache[] = $c;
 }
 
+$active_company_id = ($is_tenant && $tenant_id) ? getActiveCompanyId($conn, $tenant_id) : 0;
+
 $default_company_id   = !empty($companies_cache) ? (int)$companies_cache[0]['id'] : 1;
 $default_company_name = !empty($companies_cache) ? $companies_cache[0]['company_name'] : 'Tech Solutions Inc';
+
+if ($active_company_id > 0) {
+    foreach ($companies_cache as $c_item) {
+        if ((int)$c_item['id'] === $active_company_id) {
+            $default_company_id   = $active_company_id;
+            $default_company_name = $c_item['company_name'];
+            break;
+        }
+    }
+}
 
 if (!empty($_GET['company'])) {
     $req_cid = (int)$_GET['company'];
@@ -357,8 +372,13 @@ if (!empty($_GET['company'])) {
 // ============================================================
 $current_tenant_id = (int)($tenant_id ?: ($_SESSION['tenant_id'] ?? 1));
 
-// Fetch Rating Questions for current tenant
-$questions_query = $conn->prepare("SELECT rq.*, t.company_name as tenant_name FROM rating_questions rq JOIN tenants t ON rq.tenant_id = t.id WHERE rq.tenant_id = ? ORDER BY rq.created_at DESC");
+// Fetch Rating Questions for current tenant (with branch name)
+$questions_query = $conn->prepare("SELECT rq.*, t.company_name as tenant_name, c.company_name as branch_name 
+    FROM rating_questions rq 
+    JOIN tenants t ON rq.tenant_id = t.id 
+    LEFT JOIN customers c ON rq.company_id = c.id 
+    WHERE rq.tenant_id = ? 
+    ORDER BY rq.created_at DESC");
 $questions_query->bind_param("i", $current_tenant_id);
 $questions_query->execute();
 $rating_questions = $questions_query->get_result();
@@ -374,7 +394,22 @@ if ($rating_questions) {
 // ============================================================
 // Filtering parameters
 // ============================================================
-$company_filter    = isset($_GET['company_id']) ? (int)$_GET['company_id'] : 0;
+if (isset($_GET['company_id'])) {
+    if ($_GET['company_id'] === 'all' || $_GET['company_id'] === '0') {
+        $company_filter = 0; // View all companies/branches
+    } else {
+        $company_filter = (int)$_GET['company_id'];
+    }
+} elseif (isset($_GET['company'])) {
+    if ($_GET['company'] === 'all' || $_GET['company'] === '0') {
+        $company_filter = 0;
+    } else {
+        $company_filter = (int)$_GET['company'];
+    }
+} else {
+    // Default to the active company/branch in session
+    $company_filter = $active_company_id;
+}
 $service_filter    = isset($_GET['service_id']) ? (int)$_GET['service_id'] : 0;
 $star_filter       = isset($_GET['star']) ? (int)$_GET['star'] : 0;
 $escalation_filter = isset($_GET['escalation']) ? trim($_GET['escalation']) : '';
@@ -699,11 +734,13 @@ include __DIR__ . '/_shell.php';
     <!-- Filters & Action Bar -->
     <div class="admin-toolbar">
         <form method="GET" action="ratings.php" class="filter-form" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-            <select name="company_id" onchange="this.form.submit()" style="padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;">
-                <option value="0">All Companies (<?php echo count($companies_cache); ?>)</option>
-                <?php foreach ($companies_cache as $c): ?>
+            <select name="company_id" onchange="this.form.submit()" style="padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;font-weight:600;">
+                <option value="all" <?php echo $company_filter === 0 ? 'selected' : ''; ?>>All Branches (Consolidated - <?php echo count($companies_cache); ?>)</option>
+                <?php foreach ($companies_cache as $c): 
+                    $is_act = ((int)$c['id'] === (int)$active_company_id);
+                ?>
                     <option value="<?php echo (int)$c['id']; ?>" <?php echo $company_filter === (int)$c['id'] ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($c['company_name']); ?>
+                        🏢 <?php echo htmlspecialchars($c['company_name']); ?><?php echo $is_act ? ' (Active Branch)' : ''; ?>
                     </option>
                 <?php endforeach; ?>
             </select>
@@ -1262,8 +1299,22 @@ include __DIR__ . '/_shell.php';
             <div class="form-group">
                 <label>Question Text *</label>
                 <input type="text" name="question_text" id="questionText" placeholder="e.g., How satisfied are you with our customer service responsiveness?" required maxlength="500">
-                <small class="muted">This question is general and will appear on the public rating page for all your customers.</small>
+                <small class="muted">This question will appear on the public rating page when customers submit a rating.</small>
             </div>
+            <?php if ($is_tenant && !empty($companies_cache)): ?>
+            <div class="form-group">
+                <label>Assigned Branch / Location</label>
+                <select name="company_id" id="questionCompanyId" style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;background:var(--bg);color:var(--ink);">
+                    <option value="0">All Branches (Global)</option>
+                    <?php foreach ($companies_cache as $c): ?>
+                        <option value="<?php echo (int)$c['id']; ?>" <?php echo (int)$c['id'] === (int)$active_company_id ? 'selected' : ''; ?>>
+                            🏢 <?php echo htmlspecialchars($c['company_name']); ?><?php echo (int)$c['id'] === (int)$active_company_id ? ' (Active)' : ''; ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="muted">Assign to a specific branch or leave as "All Branches" to display across all locations.</small>
+            </div>
+            <?php endif; ?>
             <div class="form-group">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                     <input type="checkbox" name="is_active" id="questionIsActive" checked style="width:auto;">
@@ -1284,6 +1335,7 @@ include __DIR__ . '/_shell.php';
             <thead>
                 <tr>
                     <th>Rating Question</th>
+                    <th style="width:140px;">Branch Scope</th>
                     <th style="width:110px;">Status</th>
                     <th style="width:130px;">Created Date</th>
                     <th style="text-align:right;width:130px;">Actions</th>
@@ -1294,6 +1346,13 @@ include __DIR__ . '/_shell.php';
                     <?php foreach ($questions_array as $q): ?>
                         <tr>
                             <td class="table-title"><?php echo htmlspecialchars($q['question_text']); ?></td>
+                            <td>
+                                <?php if (!empty($q['branch_name'])): ?>
+                                    <span style="font-size:11.5px;font-weight:700;color:var(--ink);">🏢 <?php echo htmlspecialchars($q['branch_name']); ?></span>
+                                <?php else: ?>
+                                    <span class="muted" style="font-size:11.5px;">All Branches</span>
+                                <?php endif; ?>
+                            </td>
                             <td>
                                 <?php if ($q['is_active']): ?>
                                     <span class="status-badge-replied">● Active</span>
@@ -1439,6 +1498,8 @@ function openQuestionModal() {
     document.getElementById('questionIsActive').checked = true;
     var tId = document.getElementById('questionTenantId');
     if (tId) tId.value = '<?php echo (int)$current_tenant_id; ?>';
+    var cId = document.getElementById('questionCompanyId');
+    if (cId) cId.value = '<?php echo (int)$active_company_id; ?>';
 
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -1462,6 +1523,8 @@ function populateQuestionEdit(data) {
     document.getElementById('questionIsActive').checked = data.is_active == 1;
     var tId = document.getElementById('questionTenantId');
     if (tId) tId.value = data.tenant_id || '<?php echo (int)$current_tenant_id; ?>';
+    var cId = document.getElementById('questionCompanyId');
+    if (cId) cId.value = data.company_id || '0';
 
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }

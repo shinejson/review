@@ -25,9 +25,14 @@ $is_tenant = isTenant();
 admin_ensure_schema($conn);
 
 /* ---------- Filters & Routing ---------- */
-$days       = admin_period_days($_GET['days'] ?? 30);
-$company_id = isset($_GET['company_id']) ? (int)$_GET['company_id'] : 0;
-$active_tab = $_GET['tab'] ?? 'funnel';
+$days              = admin_period_days($_GET['days'] ?? 30);
+$active_company_id = ($is_tenant && $tenant_id) ? getActiveCompanyId($conn, $tenant_id) : 0;
+if (isset($_GET['company_id'])) {
+    $company_id = (int)$_GET['company_id'];
+} else {
+    $company_id = $active_company_id;
+}
+$active_tab   = $_GET['tab'] ?? 'funnel';
 $allowed_tabs = ['funnel', 'pixels', 'creatives', 'attribution'];
 if (!in_array($active_tab, $allowed_tabs)) {
     $active_tab = 'funnel';
@@ -42,8 +47,8 @@ foreach ($companies_list as $row) {
     }
 }
 if (!$valid_company && count($companies_list) > 0) {
-    // Default to first company if not explicitly selected
-    $company_id = (int)$companies_list[0]['id'];
+    // Default to active company or first company
+    $company_id = ($active_company_id > 0) ? $active_company_id : (int)$companies_list[0]['id'];
 }
 
 $ad_config = getTenantAdConfig($conn, $tenant_id, $company_id);
@@ -223,7 +228,7 @@ include __DIR__ . '/_shell.php';
         <select name="company_id" onchange="this.form.submit()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:12px;font-weight:600;">
             <?php foreach ($companies_list as $comp): ?>
             <option value="<?php echo (int)$comp['id']; ?>" <?php echo $company_id === (int)$comp['id'] ? 'selected' : ''; ?>>
-                <?php echo htmlspecialchars($comp['company_name']); ?>
+                <?php echo htmlspecialchars($comp['company_name']); ?><?php echo ($is_tenant && (int)$comp['id'] === $active_company_id) ? ' (Active Branch)' : ''; ?>
             </option>
             <?php endforeach; ?>
         </select>

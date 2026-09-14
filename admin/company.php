@@ -41,16 +41,48 @@ if ($tenant_id) {
     $primary_company_id = (int)($company_profiles[0]['id'] ?? 0);
 }
 
+// Handle explicit set_active request
+if (isset($_GET['set_active']) && $tenant_id > 0) {
+    $act_id = (int)$_GET['set_active'];
+    if ($act_id > 0) {
+        setActiveCompanyId($conn, $tenant_id, $act_id);
+        $_SESSION['success'] = 'Active workspace branch updated!';
+        header('Location: company.php?company=' . $act_id);
+        exit;
+    }
+}
+
+// Active workspace company
+$active_workspace_company_id = getActiveCompanyId($conn, $tenant_id);
+
 // Which profile is being edited? ?company=<id> must be owned by this tenant.
 // ?new=1 starts a brand-new company profile (uses the INSERT branch on save).
 $is_new_profile  = isset($_GET['new']);
 $sel_company_id  = (int)($_GET['company'] ?? 0);
+
+// If a company is explicitly selected in GET, also sync it as active in session
+if ($sel_company_id > 0 && $tenant_id > 0) {
+    setActiveCompanyId($conn, $tenant_id, $sel_company_id);
+    $active_workspace_company_id = $sel_company_id;
+}
+
 $company_profile = null;
 if (!$is_new_profile) {
-    foreach ($company_profiles as $cp_row) {
-        if ($sel_company_id > 0 && (int)$cp_row['id'] === $sel_company_id) {
-            $company_profile = $cp_row;
-            break;
+    if ($sel_company_id > 0) {
+        foreach ($company_profiles as $cp_row) {
+            if ((int)$cp_row['id'] === $sel_company_id) {
+                $company_profile = $cp_row;
+                break;
+            }
+        }
+    }
+    // If none selected, default to the active workspace company
+    if (!$company_profile && $active_workspace_company_id > 0) {
+        foreach ($company_profiles as $cp_row) {
+            if ((int)$cp_row['id'] === $active_workspace_company_id) {
+                $company_profile = $cp_row;
+                break;
+            }
         }
     }
     if (!$company_profile) {
@@ -126,6 +158,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
             $upd->execute();
             $upd->close();
             $saved_id = $edit_company_id;
+            setActiveCompanyId($conn, $tenant_id, $saved_id);
             $_SESSION['success'] = 'Company profile saved successfully!';
 
             // Keep the tenant brand name in sync when the primary profile is updated.
@@ -155,6 +188,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                 $ins->execute();
                 $saved_id = (int)($conn->insert_id ?: 0);
                 $ins->close();
+                setActiveCompanyId($conn, $tenant_id, $saved_id);
                 $_SESSION['success'] = 'New company profile created successfully!';
 
                 // Sync the tenant brand name only when this is the very first profile.
@@ -293,19 +327,25 @@ include __DIR__ . '/_shell.php';
 
     <div style="display:flex;flex-wrap:wrap;gap:10px;">
         <?php foreach ($company_profiles as $cp_row):
-            $cp_active = $company_profile && (int)$company_profile['id'] === (int)$cp_row['id'];
+            $cp_editing  = $company_profile && (int)$company_profile['id'] === (int)$cp_row['id'];
+            $is_active_ws = ((int)$cp_row['id'] === (int)$active_workspace_company_id);
         ?>
         <a href="company.php?company=<?php echo (int)$cp_row['id']; ?>"
            style="display:inline-flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;
-                  border:1px solid <?php echo $cp_active ? 'var(--lime)' : 'var(--line)'; ?>;
-                  background:<?php echo $cp_active ? 'rgba(194,245,66,0.14)' : 'var(--bg, #f8fafc)'; ?>;
+                  border:1px solid <?php echo $cp_editing ? 'var(--lime)' : ($is_active_ws ? '#86efac' : 'var(--line)'); ?>;
+                  background:<?php echo $cp_editing ? 'rgba(194,245,66,0.14)' : ($is_active_ws ? 'rgba(34,197,94,0.08)' : 'var(--bg, #f8fafc)'); ?>;
                   text-decoration:none;transition:all .15s ease;">
-            <span style="width:34px;height:34px;border-radius:9px;background:<?php echo $cp_active ? 'var(--lime)' : 'var(--primary-dark)'; ?>;color:<?php echo $cp_active ? 'var(--ink)' : '#fff'; ?>;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;">
+            <span style="width:34px;height:34px;border-radius:9px;background:<?php echo $cp_editing ? 'var(--lime)' : ($is_active_ws ? '#22c55e' : 'var(--primary-dark)'); ?>;color:<?php echo $cp_editing ? 'var(--ink)' : '#fff'; ?>;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;">
                 <?php echo htmlspecialchars(strtoupper(mb_substr($cp_row['company_name'], 0, 1))); ?>
             </span>
             <span>
-                <strong style="font-size:13px;color:var(--ink);display:block;"><?php echo htmlspecialchars($cp_row['company_name']); ?></strong>
-                <small class="muted" style="font-size:11px;">#<?php echo (int)$cp_row['id']; ?><?php echo $cp_active ? ' · Editing now' : ''; ?></small>
+                <strong style="font-size:13px;color:var(--ink);display:flex;align-items:center;gap:6px;">
+                    <?php echo htmlspecialchars($cp_row['company_name']); ?>
+                    <?php if ($is_active_ws): ?>
+                    <span style="font-size:9.5px;font-weight:800;color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:1px 6px;border-radius:99px;">Active Branch</span>
+                    <?php endif; ?>
+                </strong>
+                <small class="muted" style="font-size:11px;">#<?php echo (int)$cp_row['id']; ?><?php echo $cp_editing ? ' · Editing now' : ''; ?></small>
             </span>
         </a>
         <?php endforeach; ?>
@@ -362,9 +402,17 @@ include __DIR__ . '/_shell.php';
                     <?php echo $company_profile ? 'Edit your company details below.' : 'Complete your company profile to activate your public rating page.'; ?>
                 </p>
             </div>
-            <?php echo $company_profile
-                ? '<span class="status-badge-replied" style="font-size:11px;">● Profile active</span>'
-                : '<span class="status-badge-pending" style="font-size:11px;">● Incomplete</span>'; ?>
+            <div>
+                <?php if ($company_profile): ?>
+                    <?php if ((int)$company_profile['id'] === (int)$active_workspace_company_id): ?>
+                    <span class="status-badge-replied" style="font-size:11px;background:#dcfce7;color:#15803d;border:1px solid #86efac;">✓ Active Workspace Branch</span>
+                    <?php else: ?>
+                    <a href="company.php?set_active=<?php echo (int)$company_profile['id']; ?>" class="btn btn-secondary" style="font-size:11.5px;padding:4px 10px;text-decoration:none;">Set as Active Branch</a>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <span class="status-badge-pending" style="font-size:11px;">● New Profile</span>
+                <?php endif; ?>
+            </div>
         </div>
 
         <form method="POST" action="company.php">

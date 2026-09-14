@@ -2,29 +2,47 @@
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 
+if (session_status() === PHP_SESSION_NONE) {
+    @session_start();
+}
+
 // Resolve company identifier:
 // Supports:
 // 1. ?company=4&tenant=airport-west-hotel
 // 2. ?company=4-airport-west-hotel (composite ID + slug)
 // 3. ?company=4 (legacy numeric)
 // 4. ?company=airport-west-hotel (slug lookup)
-// 5. ?tenant=3 or ?tenant=airport-west-hotel (tenant lookup & canonical redirect)
+// 5. ?company_id=4 or ?branch_id=4
+// 6. Session fallback for logged in tenants/admins previewing
+// 7. ?tenant=3 or ?tenant=airport-west-hotel (tenant lookup & canonical redirect)
 $company_id   = 0;
 $company_slug = '';
 
+// 1. Direct company parameter (?company=4, ?company=4-slug, ?company=slug)
 if (isset($_GET['company'])) {
     $raw_comp = trim((string)$_GET['company']);
-    if (ctype_digit($raw_comp)) {
+    if (ctype_digit($raw_comp) && (int)$raw_comp > 0) {
         $company_id = (int)$raw_comp;
     } elseif (preg_match('/^(\d+)[-_](.*)$/', $raw_comp, $m)) {
         $company_id   = (int)$m[1];
         $company_slug = $m[2];
-    } else {
+    } elseif ($raw_comp !== '') {
         $company_slug = $raw_comp;
     }
 }
 
-// If company ID was not numeric but passed as slug, resolve via database
+// 2. Direct company_id or branch_id parameter
+if ($company_id <= 0) {
+    if (isset($_GET['company_id']) && ctype_digit(trim((string)$_GET['company_id'])) && (int)$_GET['company_id'] > 0) {
+        $company_id = (int)$_GET['company_id'];
+    } elseif (isset($_GET['branch_id']) && ctype_digit(trim((string)$_GET['branch_id'])) && (int)$_GET['branch_id'] > 0) {
+        $company_id = (int)$_GET['branch_id'];
+    } elseif (isset($_GET['branch']) && ctype_digit(trim((string)$_GET['branch'])) && (int)$_GET['branch'] > 0) {
+        $company_id = (int)$_GET['branch'];
+    }
+}
+
+// 3. If company ID was not numeric but passed as slug, resolve via database
 if ($company_id <= 0 && $company_slug !== '') {
     $slug_clean = strtolower($company_slug);
     $s_stmt = $conn->prepare("SELECT id FROM customers WHERE LOWER(REPLACE(REPLACE(REPLACE(company_name, ' ', '-'), '&', ''), '--', '-')) = ? OR LOWER(company_name) = ? LIMIT 1");
@@ -39,7 +57,20 @@ if ($company_id <= 0 && $company_slug !== '') {
     }
 }
 
-// Fallback: If company_id is still unknown, support ?tenant= routing
+// 4. Session fallback: If logged-in tenant or admin is testing or visiting ?company with empty param
+if ($company_id <= 0) {
+    if (!empty($_SESSION['active_company_id']) && (int)$_SESSION['active_company_id'] > 0) {
+        $sess_comp_id = (int)$_SESSION['active_company_id'];
+        $chk = $conn->query("SELECT id FROM customers WHERE id = " . $sess_comp_id . " LIMIT 1");
+        if ($chk && $chk->num_rows > 0) {
+            $company_id = $sess_comp_id;
+        }
+    } elseif (!empty($_SESSION['tenant_id']) && (int)$_SESSION['tenant_id'] > 0) {
+        $company_id = getActiveCompanyId($conn, (int)$_SESSION['tenant_id']);
+    }
+}
+
+// 5. Fallback: If company_id is still unknown, support ?tenant= routing
 if ($company_id <= 0 && isset($_GET['tenant']) && trim((string)$_GET['tenant']) !== '') {
     $tenant_param = trim((string)$_GET['tenant']);
     if (ctype_digit($tenant_param) && (int)$tenant_param > 0) {
@@ -191,12 +222,13 @@ for ($i = 5; $i >= 1; $i--) {
     $rating_dist[$i] = ['count' => $count, 'percentage' => $percentage];
 }
 
-// Fetch ALL active rating questions created by admin/tenant
+// Fetch active rating questions created for this branch or tenant
 $tenant_id = (int)($company['tenant_id'] ?? 0);
 $questions = [];
 if ($tenant_id > 0) {
-    $q_stmt = $conn->prepare("SELECT * FROM rating_questions WHERE tenant_id = ? AND is_active = 1 ORDER BY id ASC");
-    $q_stmt->bind_param("i", $tenant_id);
+    ensureRatingQuestionsCompanyColumn($conn);
+    $q_stmt = $conn->prepare("SELECT * FROM rating_questions WHERE tenant_id = ? AND (company_id = ? OR company_id IS NULL OR company_id = 0) AND is_active = 1 ORDER BY id ASC");
+    $q_stmt->bind_param("ii", $tenant_id, $company_id);
     $q_stmt->execute();
     $q_res = $q_stmt->get_result();
     while ($qr = $q_res->fetch_assoc()) {
@@ -277,10 +309,24 @@ if ($tenant_id > 0) {
     $t_stmt->execute();
     $tenant_info = $t_stmt->get_result()->fetch_assoc();
 }
-$brand_name   = !empty($tenant_info['company_name']) ? $tenant_info['company_name'] : $company['company_name'];
-$brand_logo   = $tenant_info['logo'] ?? '';
-$brand_banner = $tenant_info['banner'] ?? ($company['banner'] ?? '');
+$branch_name    = $company['company_name'];
+$brand_name     = !empty($company['company_name']) ? $company['company_name'] : (!empty($tenant_info['company_name']) ? $tenant_info['company_name'] : 'Business');
+$parent_brand   = !empty($tenant_info['company_name']) ? $tenant_info['company_name'] : '';
+$brand_logo     = !empty($tenant_info['logo']) ? $tenant_info['logo'] : '';
+$brand_banner   = !empty($tenant_info['banner']) ? $tenant_info['banner'] : '';
 $brand_initials = strtoupper(substr($brand_name, 0, 2));
+
+// Fetch sibling branches for this tenant to provide a multi-branch location switcher
+$sibling_branches = [];
+if ($tenant_id > 0) {
+    $sb_stmt = $conn->prepare("SELECT id, company_name, address FROM customers WHERE tenant_id = ? AND id != ? ORDER BY company_name ASC");
+    if ($sb_stmt) {
+        $sb_stmt->bind_param("ii", $tenant_id, $company_id);
+        $sb_stmt->execute();
+        $sibling_branches = $sb_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $sb_stmt->close();
+    }
+}
 
 // Tenant public page customisation (layout, colors, visibility)
 $public_page_settings = getTenantPublicPageSettings($conn, $tenant_id);
@@ -630,12 +676,11 @@ if ($total_ratings > 0) {
         .rt-company-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             border-bottom: 1px solid #f1f5f9;
             padding-bottom: 24px;
             margin-bottom: 36px;
-            flex-wrap: wrap;
-            gap: 16px;
+            gap: 24px;
         }
         .rt-company-header h1 {
             font-size: 28px;
@@ -647,8 +692,10 @@ if ($total_ratings > 0) {
         }
         .rt-brand-wrap {
             display: flex;
-            align-items: center;
-            gap: 14px;
+            align-items: flex-start;
+            gap: 16px;
+            flex: 1 1 auto;
+            min-width: 0;
         }
         .rt-brand-logo {
             width: 56px;
@@ -676,13 +723,32 @@ if ($total_ratings > 0) {
             background: #dcfce7;
             color: #15803d;
             font-weight: 700;
+            display: inline-flex;
+            align-items: center;
         }
-        /* WhatsApp click-to-chat */
+        /* Header actions pinned to right side */
         .rt-header-actions {
             display: flex;
             flex-direction: column;
             align-items: flex-end;
-            gap: 12px;
+            justify-content: flex-start;
+            flex-shrink: 0;
+            gap: 10px;
+            margin-left: auto;
+            text-align: right;
+        }
+        .rt-header-actions-row {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .rt-header-wa-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
         }
         .rt-whatsapp-btn {
             display: inline-flex;
@@ -1596,10 +1662,31 @@ if ($total_ratings > 0) {
             fill: currentColor;
             flex-shrink: 0;
         }
+        @media (max-width: 768px) {
+            .rt-company-header {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 16px !important;
+            }
+            .rt-header-actions {
+                align-items: stretch !important;
+                margin-left: 0 !important;
+                text-align: left !important;
+            }
+            .rt-header-actions-row {
+                justify-content: flex-start !important;
+            }
+            .rt-header-wa-wrap {
+                align-items: stretch !important;
+            }
+            .rt-whatsapp-btn {
+                justify-content: center !important;
+            }
+            .rt-whatsapp-note {
+                text-align: center !important;
+            }
+        }
         @media (max-width: 640px) {
-            .rt-header-actions { align-items: stretch; }
-            .rt-whatsapp-btn { justify-content: center; }
-            .rt-whatsapp-note { text-align: center; }
             .rt-floating-wa span { display: none; }
             .rt-floating-wa {
                 padding: 14px;
@@ -2318,39 +2405,65 @@ if ($total_ratings > 0) {
                 <p class="rt-subtext" style="margin-bottom:0;">
                     Official client review and rating portal &middot; <?php echo htmlspecialchars($company['category_name'] ?? 'Verified Business'); ?>
                 </p>
+                <?php if (!empty($company['address']) || !empty($sibling_branches)): ?>
+                <div class="rt-branch-location-bar" style="margin-top:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;">
+                    <?php if (!empty($company['address'])): ?>
+                    <span style="color:var(--rt-muted, #64748b);display:inline-flex;align-items:center;gap:4px;">
+                        <i class="fa-solid fa-location-dot" style="color:var(--rt-primary, #10b981);"></i> <?php echo htmlspecialchars($company['address']); ?>
+                    </span>
+                    <?php endif; ?>
+                    <?php if (!empty($sibling_branches)): ?>
+                    <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(99,102,241,0.08);color:#4338ca;padding:3px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);font-weight:600;font-size:11.5px;">
+                        <span>Locations (<?php echo count($sibling_branches) + 1; ?>):</span>
+                        <select onchange="if(this.value) window.location.href=this.value;" style="background:transparent;border:none;color:inherit;font-weight:700;font-size:11.5px;cursor:pointer;outline:none;" aria-label="Select location or branch">
+                            <option value="" selected><?php echo htmlspecialchars($brand_name); ?> (This Branch)</option>
+                            <?php foreach ($sibling_branches as $sb): ?>
+                            <option value="?company=<?php echo (int)$sb['id']; ?>&tenant=<?php echo urlencode(slugify($sb['company_name'])); ?>">
+                                <?php echo htmlspecialchars($sb['company_name']); ?><?php if (!empty($sb['address'])): ?> — <?php echo htmlspecialchars($sb['address']); ?><?php endif; ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
         <div class="rt-header-actions">
-            <a href="#generalRatingForm" class="rt-jump-review-btn">
-                <i class="fa-solid fa-pen-to-square"></i> Leave a Review
-            </a>
-            <?php if (!empty($public_page_settings['show_verified_badge'])): ?>
-            <span class="rt-badge">✓ Verified Rating Channel</span>
-            <?php endif; ?>
-            <?php
-            $company_website = trim((string)($company['website'] ?? ''));
-            $company_gstore  = trim((string)($company['google_store_url'] ?? ''));
-            ?>
-            <?php if ($company_website !== ''): ?>
-            <a class="rt-link-btn" href="<?php echo htmlspecialchars($company_website); ?>" target="_blank" rel="noopener noreferrer" title="Visit <?php echo htmlspecialchars($brand_name); ?> website">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                Visit Website
-            </a>
-            <?php endif; ?>
-            <?php if ($company_gstore !== '' && !empty($public_page_settings['show_gstore'])): ?>
-            <a class="rt-link-btn rt-gstore-btn" href="<?php echo htmlspecialchars($company_gstore); ?>" target="_blank" rel="noopener noreferrer" title="<?php echo htmlspecialchars($brand_name); ?> on Google Store">
-                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 20.5V3.5c0-.6.34-1.1.84-1.35L13.7 12 3.84 21.85c-.5-.25-.84-.75-.84-1.35zm13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27zm3.35-4.31c.34.27.59.68.59 1.19s-.22.9-.57 1.18l-2.29 1.32-2.5-2.5 2.5-2.5 2.27 1.31zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/></svg>
-                Google Store
-            </a>
-            <?php endif; ?>
+            <div class="rt-header-actions-row">
+                <a href="#generalRatingForm" class="rt-jump-review-btn">
+                    <i class="fa-solid fa-pen-to-square"></i> Leave a Review
+                </a>
+                <?php if (!empty($public_page_settings['show_verified_badge'])): ?>
+                <span class="rt-badge">✓ Verified Rating Channel</span>
+                <?php endif; ?>
+                <?php
+                $company_website = trim((string)($company['website'] ?? ''));
+                $company_gstore  = trim((string)($company['google_store_url'] ?? ''));
+                ?>
+                <?php if ($company_website !== ''): ?>
+                <a class="rt-link-btn" href="<?php echo htmlspecialchars($company_website); ?>" target="_blank" rel="noopener noreferrer" title="Visit <?php echo htmlspecialchars($brand_name); ?> website">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    Visit Website
+                </a>
+                <?php endif; ?>
+                <?php if ($company_gstore !== '' && !empty($public_page_settings['show_gstore'])): ?>
+                <a class="rt-link-btn rt-gstore-btn" href="<?php echo htmlspecialchars($company_gstore); ?>" target="_blank" rel="noopener noreferrer" title="<?php echo htmlspecialchars($brand_name); ?> on Google Store">
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 20.5V3.5c0-.6.34-1.1.84-1.35L13.7 12 3.84 21.85c-.5-.25-.84-.75-.84-1.35zm13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27zm3.35-4.31c.34.27.59.68.59 1.19s-.22.9-.57 1.18l-2.29 1.32-2.5-2.5 2.5-2.5 2.27 1.31zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/></svg>
+                    Google Store
+                </a>
+                <?php endif; ?>
+            </div>
             <?php if ($whatsapp_url !== '' && !empty($public_page_settings['show_whatsapp'])): ?>
             <!-- WhatsApp click-to-chat: shown only when the business published a number -->
-            <a class="rt-whatsapp-btn" href="<?php echo htmlspecialchars($whatsapp_url); ?>"
-               target="_blank" rel="noopener noreferrer">
-                <svg viewBox="0 0 448 512" aria-hidden="true" focusable="false"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7 .9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/></svg>
-                Chat on WhatsApp
-            </a>
-            <span class="rt-whatsapp-note">Questions or orders? Message <?php echo htmlspecialchars($brand_name); ?> directly.</span>
+            <div class="rt-header-wa-wrap">
+                <a class="rt-whatsapp-btn" href="<?php echo htmlspecialchars($whatsapp_url); ?>"
+                   target="_blank" rel="noopener noreferrer">
+                    <svg viewBox="0 0 448 512" aria-hidden="true" focusable="false"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7 .9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/></svg>
+                    Chat on WhatsApp
+                </a>
+                <span class="rt-whatsapp-note">Questions or orders? Message <?php echo htmlspecialchars($brand_name); ?> directly.</span>
+            </div>
             <?php endif; ?>
         </div>
     </header>

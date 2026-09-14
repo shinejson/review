@@ -7,31 +7,61 @@ ensureRealIdSchema($conn);
 $tenant_id = getTenantId();
 $is_tenant = isTenant();
 $tenant_info = null;
+$active_company_id = ($is_tenant && $tenant_id) ? getActiveCompanyId($conn, $tenant_id) : 0;
+$active_company_profile = ($is_tenant && $tenant_id) ? getActiveCompanyProfile($conn, $tenant_id) : null;
+$active_company_name = !empty($active_company_profile['company_name']) ? $active_company_profile['company_name'] : '';
+$view_mode = $_GET['view'] ?? '';
+
 if ($is_tenant && $tenant_id) {
     $stmt = $conn->prepare("SELECT t.*, p.plan_name, p.max_ratings, p.max_customers FROM tenants t LEFT JOIN subscription_plans p ON t.plan_id=p.id WHERE t.id=?");
     $stmt->bind_param('i', $tenant_id); $stmt->execute(); $tenant_info = $stmt->get_result()->fetch_assoc();
     $stmt = $conn->prepare("SELECT COUNT(*) count FROM customers WHERE tenant_id=?"); $stmt->bind_param('i',$tenant_id); $stmt->execute(); $total_customers=$stmt->get_result()->fetch_assoc()['count'] ?? 0;
-    $stmt = $conn->prepare("SELECT COUNT(*) count, AVG(r.rating) avg_rating FROM ratings r JOIN customers c ON r.company_id=c.id WHERE c.tenant_id=?"); $stmt->bind_param('i',$tenant_id); $stmt->execute(); $rr=$stmt->get_result()->fetch_assoc();
-    $total_ratings=$rr['count']??0; $avg_rating=round($rr['avg_rating']??0,1);
-    $stmt = $conn->prepare("SELECT r.*,c.company_name FROM ratings r JOIN customers c ON r.company_id=c.id WHERE c.tenant_id=? ORDER BY r.created_at DESC LIMIT 5"); $stmt->bind_param('i',$tenant_id); $stmt->execute(); $recent_ratings=$stmt->get_result();
-    $stmt = $conn->prepare("SELECT id,company_name FROM customers WHERE tenant_id=? ORDER BY company_name"); $stmt->bind_param('i',$tenant_id); $stmt->execute(); $tenant_companies=$stmt->get_result();
-    
-    // Rating distribution for score breakdown chart
-    $stmt = $conn->prepare("SELECT r.rating, COUNT(*) as count FROM ratings r JOIN customers c ON r.company_id=c.id WHERE c.tenant_id=? GROUP BY r.rating ORDER BY r.rating DESC");
-    $stmt->bind_param('i',$tenant_id); $stmt->execute(); $rating_dist_result=$stmt->get_result();
-    
-    // Monthly ratings trend for last 7 months
-    $stmt = $conn->prepare("SELECT DATE_FORMAT(r.created_at, '%Y-%m') as month, COUNT(*) as count, AVG(r.rating) as avg_rating FROM ratings r JOIN customers c ON r.company_id=c.id WHERE c.tenant_id=? AND r.created_at >= DATE_SUB(NOW(), INTERVAL 7 MONTH) GROUP BY month ORDER BY month ASC");
-    $stmt->bind_param('i',$tenant_id); $stmt->execute(); $monthly_trend=$stmt->get_result();
+
+    if ($view_mode !== 'all' && $active_company_id > 0) {
+        // Scoped to active branch
+        $stmt = $conn->prepare("SELECT COUNT(*) count, AVG(r.rating) avg_rating FROM ratings r WHERE r.company_id=?");
+        $stmt->bind_param('i', $active_company_id); $stmt->execute(); $rr=$stmt->get_result()->fetch_assoc();
+        $total_ratings=$rr['count']??0; $avg_rating=round($rr['avg_rating']??0,1);
+
+        $stmt = $conn->prepare("SELECT r.*,c.company_name FROM ratings r JOIN customers c ON r.company_id=c.id WHERE r.company_id=? ORDER BY r.created_at DESC LIMIT 5");
+        $stmt->bind_param('i', $active_company_id); $stmt->execute(); $recent_ratings=$stmt->get_result();
+
+        // Rating distribution for score breakdown chart
+        $stmt = $conn->prepare("SELECT r.rating, COUNT(*) as count FROM ratings r WHERE r.company_id=? GROUP BY r.rating ORDER BY r.rating DESC");
+        $stmt->bind_param('i', $active_company_id); $stmt->execute(); $rating_dist_result=$stmt->get_result();
+
+        // Monthly ratings trend for last 7 months
+        $stmt = $conn->prepare("SELECT DATE_FORMAT(r.created_at, '%Y-%m') as month, COUNT(*) as count, AVG(r.rating) as avg_rating FROM ratings r WHERE r.company_id=? AND r.created_at >= DATE_SUB(NOW(), INTERVAL 7 MONTH) GROUP BY month ORDER BY month ASC");
+        $stmt->bind_param('i', $active_company_id); $stmt->execute(); $monthly_trend=$stmt->get_result();
+    } else {
+        // Consolidated view across all tenant branches
+        $stmt = $conn->prepare("SELECT COUNT(*) count, AVG(r.rating) avg_rating FROM ratings r JOIN customers c ON r.company_id=c.id WHERE c.tenant_id=?");
+        $stmt->bind_param('i',$tenant_id); $stmt->execute(); $rr=$stmt->get_result()->fetch_assoc();
+        $total_ratings=$rr['count']??0; $avg_rating=round($rr['avg_rating']??0,1);
+
+        $stmt = $conn->prepare("SELECT r.*,c.company_name FROM ratings r JOIN customers c ON r.company_id=c.id WHERE c.tenant_id=? ORDER BY r.created_at DESC LIMIT 5");
+        $stmt->bind_param('i',$tenant_id); $stmt->execute(); $recent_ratings=$stmt->get_result();
+
+        // Rating distribution for score breakdown chart
+        $stmt = $conn->prepare("SELECT r.rating, COUNT(*) as count FROM ratings r JOIN customers c ON r.company_id=c.id WHERE c.tenant_id=? GROUP BY r.rating ORDER BY r.rating DESC");
+        $stmt->bind_param('i',$tenant_id); $stmt->execute(); $rating_dist_result=$stmt->get_result();
+
+        // Monthly ratings trend for last 7 months
+        $stmt = $conn->prepare("SELECT DATE_FORMAT(r.created_at, '%Y-%m') as month, COUNT(*) as count, AVG(r.rating) as avg_rating FROM ratings r JOIN customers c ON r.company_id=c.id WHERE c.tenant_id=? AND r.created_at >= DATE_SUB(NOW(), INTERVAL 7 MONTH) GROUP BY month ORDER BY month ASC");
+        $stmt->bind_param('i',$tenant_id); $stmt->execute(); $monthly_trend=$stmt->get_result();
+    }
+
+    $stmt = $conn->prepare("SELECT id,company_name FROM customers WHERE tenant_id=? ORDER BY (id=?) DESC, company_name ASC");
+    $stmt->bind_param('ii', $tenant_id, $active_company_id); $stmt->execute(); $tenant_companies=$stmt->get_result();
 } else {
     $total_customers=$conn->query('SELECT COUNT(*) count FROM customers')->fetch_assoc()['count']??0;
     $rr=$conn->query('SELECT COUNT(*) count,AVG(rating) avg_rating FROM ratings')->fetch_assoc(); $total_ratings=$rr['count']??0; $avg_rating=round($rr['avg_rating']??0,1);
     $recent_ratings=$conn->query('SELECT r.*,c.company_name FROM ratings r JOIN customers c ON r.company_id=c.id ORDER BY r.created_at DESC LIMIT 5');
     $tenant_companies=$conn->query('SELECT id,company_name FROM customers ORDER BY company_name');
-    
+
     // Rating distribution for score breakdown chart
     $rating_dist_result=$conn->query("SELECT rating, COUNT(*) as count FROM ratings GROUP BY rating ORDER BY rating DESC");
-    
+
     // Monthly ratings trend for last 7 months
     $monthly_trend=$conn->query("SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count, AVG(rating) as avg_rating FROM ratings WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 MONTH) GROUP BY month ORDER BY month ASC");
 }
@@ -86,6 +116,27 @@ include __DIR__ . '/_shell.php';
           <span style="font-size:11px;background:#dcfce7;color:#166534;border:1px solid #86efac;padding:3px 8px;border-radius:99px;font-weight:700;">✓ Verified</span>
         <?php elseif (!empty($tenant_info['setup_token'])): ?>
           <span style="font-size:11px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:3px 8px;border-radius:99px;font-weight:700;">◷ Setup pending — check email</span>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
+      <?php if ($is_tenant && $active_company_id > 0): ?>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <?php if ($view_mode === 'all'): ?>
+          <span class="badge" style="background:rgba(16,185,129,0.12);color:#059669;border:1px solid rgba(16,185,129,0.25);font-size:12px;padding:4px 10px;border-radius:20px;font-weight:600;">
+            🌐 Viewing All Branches (Consolidated)
+          </span>
+          <a href="index.php" class="btn btn-secondary" style="font-size:11.5px;padding:3px 10px;text-decoration:none;border-radius:20px;">
+            Filter to <?php echo htmlspecialchars($active_company_name ?: 'Active Branch'); ?> →
+          </a>
+        <?php else: ?>
+          <span class="badge" style="background:rgba(99,102,241,0.12);color:#6366f1;border:1px solid rgba(99,102,241,0.25);font-size:12px;padding:4px 10px;border-radius:20px;font-weight:600;">
+            📍 Active Branch: <?php echo htmlspecialchars($active_company_name ?: 'Main Branch'); ?>
+          </span>
+          <?php if (($total_customers ?? 0) > 1): ?>
+          <a href="?view=all" class="btn btn-secondary" style="font-size:11.5px;padding:3px 10px;text-decoration:none;border-radius:20px;">
+            View All Branches (Consolidated) →
+          </a>
+          <?php endif; ?>
         <?php endif; ?>
       </div>
       <?php endif; ?>
@@ -255,7 +306,7 @@ include __DIR__ . '/_shell.php';
 
   <div class="metric-grid">
    <div class="metric-card"><div class="metric-icon lime">⌂</div><span>Total companies</span><strong><?php echo number_format($total_customers); ?></strong><small>Active locations</small></div>
-   <div class="metric-card"><div class="metric-icon purple">☆</div><span>Total reviews</span><strong><?php echo number_format($total_ratings); ?></strong><small>All-time feedback</small></div>
+   <div class="metric-card"><div class="metric-icon purple">☆</div><span>Total reviews</span><strong><?php echo number_format($total_ratings); ?></strong><small><?php echo ($view_mode === 'all' || !$is_tenant) ? 'All-time feedback' : htmlspecialchars($active_company_name ?: 'Active branch'); ?></small></div>
    <div class="metric-card"><div class="metric-icon amber">★</div><span>Average score</span><strong><?php echo $avg_rating; ?><i>/ 5.0</i></strong><small class="positive">↑ Customer satisfaction</small></div>
    <div class="metric-card"><div class="metric-icon green">✓</div><span>Account status</span><strong class="active-text"><?php echo htmlspecialchars($tenant_info['subscription_status']??'Active'); ?></strong><small><?php echo $is_tenant?'Subscription is healthy':'Platform administrator'; ?></small></div>
   </div>
@@ -310,6 +361,6 @@ include __DIR__ . '/_shell.php';
    ?><div class="score-row"><span><?php echo $star; ?> star<?php echo $star>1?'s':''; ?></span><div><i style="width:<?php echo $percentage; ?>%;background:<?php echo $bar_colors[5-$star]; ?>"></i></div><b><?php echo $percentage; ?>%</b></div><?php endfor; ?><a class="panel-link" href="ratings.php">View all reviews →</a></section>
   </div>
   <div class="bottom-grid"><section class="panel recent-panel"><div class="panel-head"><div><h2>Recent reviews</h2><p class="muted">The latest feedback from your customers</p></div><a class="panel-link" href="ratings.php">View all →</a></div><?php if($recent_ratings && $recent_ratings->num_rows): while($r=$recent_ratings->fetch_assoc()): ?><div class="review-row"><div class="review-avatar"><?php echo htmlspecialchars(strtoupper(substr($r['customer_name']??'C',0,1))); ?></div><div class="review-body"><strong><?php echo htmlspecialchars($r['customer_name']); ?></strong><small><?php echo htmlspecialchars($r['company_name']); ?> · <?php echo date('M d, Y',strtotime($r['created_at'])); ?></small><p><?php echo htmlspecialchars($r['comment']?:'No comment provided.'); ?></p></div><span class="review-stars"><?php echo str_repeat('★',(int)$r['rating']); ?> <b><?php echo $r['rating']; ?>.0</b></span></div><?php endwhile; else: ?><div class="empty-state">No reviews received yet.</div><?php endif; ?></section>
-   <section class="panel links-panel"><div class="panel-head"><div><h2>Public rating links</h2><p class="muted">Share and collect feedback</p></div><?php if ($is_tenant): ?><a class="panel-link" href="qr_stand.php" style="font-weight:700;">◫ Print QR Stand →</a><?php endif; ?></div><?php if($tenant_companies && $tenant_companies->num_rows): $shown=0; while($c=$tenant_companies->fetch_assoc()): if($shown++>=4) break; $url=getCompanyPublicRatingUrl($c['id'], $c['company_name']); ?><div class="link-row"><span class="link-icon">↗</span><div><strong><?php echo htmlspecialchars($c['company_name']); ?></strong><small><?php echo htmlspecialchars($url); ?></small></div><a href="<?php echo $url; ?>" target="_blank">View</a></div><?php endwhile; else: ?><div class="empty-state">Add a company to create rating links.</div><?php endif; ?></section>
+   <section class="panel links-panel"><div class="panel-head"><div><h2>Public rating links</h2><p class="muted">Share and collect feedback</p></div><?php if ($is_tenant): ?><a class="panel-link" href="qr_stand.php" style="font-weight:700;">◫ Print QR Stand →</a><?php endif; ?></div><?php if($tenant_companies && $tenant_companies->num_rows): $shown=0; while($c=$tenant_companies->fetch_assoc()): if($shown++>=4) break; $url=getCompanyPublicRatingUrl($c['id'], $c['company_name']); ?><div class="link-row"><span class="link-icon">↗</span><div><strong><?php echo htmlspecialchars($c['company_name']); ?><?php if($is_tenant && (int)$c['id']===$active_company_id): ?> <span style="font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(99,102,241,0.15);color:#6366f1;font-weight:700;margin-left:4px;">Active</span><?php endif; ?></strong><small><?php echo htmlspecialchars($url); ?></small></div><a href="<?php echo $url; ?>" target="_blank">View</a></div><?php endwhile; else: ?><div class="empty-state">Add a company to create rating links.</div><?php endif; ?></section>
   </div>
 <?php include __DIR__ . '/_shell_footer.php'; ?>
