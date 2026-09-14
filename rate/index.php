@@ -2567,6 +2567,11 @@ if ($total_ratings > 0) {
                     </div>
                 </div>
                 
+                <div style="margin-bottom:16px;">
+                    <label class="rt-review-form-label">Phone / WhatsApp <span style="color:#94a3b8;font-weight:500;">(optional — so <?php echo htmlspecialchars($brand_name); ?> can reach you for offers)</span></label>
+                    <input type="tel" name="customer_phone" class="rt-form-input" placeholder="e.g. 024 123 4567" value="">
+                </div>
+
                 <label class="rt-review-form-label">Write Your Review *</label>
                 <textarea name="comment" class="rt-form-textarea" placeholder="Share your experience working with <?php echo htmlspecialchars($brand_name); ?>..." required></textarea>
 

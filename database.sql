@@ -215,6 +215,32 @@ INSERT INTO ratings (company_id, question_id, rating, customer_name, customer_em
 (2, NULL, 5, 'Bob Johnson', 'bob@example.com', 'Outstanding care!'),
 (3, NULL, 3, 'Alice Brown', 'alice@example.com', 'Good but could be better.');
 
+-- Signed-up customers: every named review submission "signs up" the
+-- customer. After signup they confirm Follow + Like (social) to earn
+-- the Verified Customer badge. Viewed / emailed from admin/customers.php.
+CREATE TABLE IF NOT EXISTS site_customers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    company_id INT NOT NULL,
+    customer_name VARCHAR(120) NOT NULL,
+    customer_email VARCHAR(120) NOT NULL,
+    customer_phone VARCHAR(30) NULL,
+    rating_id INT NULL,
+    rating_value TINYINT NULL,
+    is_following TINYINT(1) NOT NULL DEFAULT 0,
+    follow_platform VARCHAR(30) NULL,
+    is_liked TINYINT(1) NOT NULL DEFAULT 0,
+    is_verified TINYINT(1) NOT NULL DEFAULT 0,
+    verification_type VARCHAR(30) NULL,
+    momo_ref VARCHAR(100) NULL,
+    last_activity_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_sc_company_email (company_id, customer_email),
+    INDEX idx_sc_tenant (tenant_id),
+    INDEX idx_sc_company (company_id),
+    INDEX idx_sc_verified (company_id, is_verified)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Settings table
 CREATE TABLE IF NOT EXISTS settings (
     id INT AUTO_INCREMENT PRIMARY KEY,
