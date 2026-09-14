@@ -14,6 +14,7 @@ require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/admin_helpers.php';
 
 requireLogin();
+requireTeamAccess('services');
 
 $tenant_id     = getTenantId();
 $is_tenant     = isTenant();
@@ -214,7 +215,7 @@ include __DIR__ . '/_shell.php';
 <?php foreach ($icons as $icon_class => $icon_label): ?>
                         <button type="button" class="icon-option" data-icon="<?php echo htmlspecialchars($icon_class); ?>"
                                 title="<?php echo htmlspecialchars($icon_label); ?>"
-                                style="width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:#fff;cursor:pointer;display:grid;place-items:center;font-size:18px;color:var(--ink);">
+                                style="width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);cursor:pointer;display:grid;place-items:center;font-size:18px;color:var(--ink);transition:all 0.2s ease;">
                             <i class="<?php echo htmlspecialchars($icon_class); ?>"></i>
                         </button>
 <?php endforeach; ?>
@@ -312,6 +313,7 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <style>
+.icon-option:hover { border-color: var(--lime); background: var(--bg); transform: translateY(-1px); }
 .icon-option.is-selected { border-color: var(--lime) !important; background: rgba(194,245,66,.15) !important; box-shadow: 0 0 0 2px rgba(194,245,66,.35); }
 #iconPicker::-webkit-scrollbar { width: 6px; }
 #iconPicker::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }

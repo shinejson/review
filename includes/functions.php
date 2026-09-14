@@ -1846,15 +1846,11 @@ if (!function_exists('slugify')) {
     }
 }
 
-if (!function_exists('getCompanyPublicRatingUrl')) {
+if (!function_exists('getAppWebRoot')) {
     /**
-     * Generate the complete public rating URL for a company with the tenant name included.
-     * e.g. http://localhost/rate/rate/index.php?company=4&tenant=airport-west-hotel
+     * Get the web root path of the application relative to the domain (e.g. '/rate' or '' if domain root).
      */
-    function getCompanyPublicRatingUrl($company_id, $company_name = '', $extra_params = []) {
-        $scheme  = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-        $host    = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        
+    function getAppWebRoot() {
         $appWebRoot = '';
         if (!empty($_SERVER['DOCUMENT_ROOT'])) {
             $docRoot = str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT']) ?: $_SERVER['DOCUMENT_ROOT']);
@@ -1871,7 +1867,27 @@ if (!function_exists('getCompanyPublicRatingUrl')) {
         }
         $appWebRoot = '/' . trim($appWebRoot, '/');
         if ($appWebRoot === '/') $appWebRoot = '';
+        return $appWebRoot;
+    }
+}
 
+if (!function_exists('getAppBaseUrl')) {
+    /**
+     * Get the full base URL of the application including scheme and host (e.g. 'http://localhost/rate').
+     */
+    function getAppBaseUrl() {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        return $scheme . '://' . $host . getAppWebRoot();
+    }
+}
+
+if (!function_exists('getCompanyPublicRatingUrl')) {
+    /**
+     * Generate the complete public rating URL for a company with the tenant name included.
+     * e.g. http://localhost/rate/rate/index.php?company=4&tenant=airport-west-hotel
+     */
+    function getCompanyPublicRatingUrl($company_id, $company_name = '', $extra_params = []) {
         $params = [];
         if ((int)$company_id > 0) {
             $params['company'] = (int)$company_id;
@@ -1885,7 +1901,158 @@ if (!function_exists('getCompanyPublicRatingUrl')) {
             }
         }
         $query = !empty($params) ? ('?' . http_build_query($params)) : '';
-        return $scheme . '://' . $host . $appWebRoot . '/rate/index.php' . $query;
+        return getAppBaseUrl() . '/rate/index.php' . $query;
+    }
+}
+
+if (!function_exists('ensurePublicPageSettingsColumn')) {
+    /**
+     * Ensure public_page_settings column exists in tenants table.
+     */
+    function ensurePublicPageSettingsColumn($conn) {
+        if (!is_object($conn)) return;
+        static $checked = false;
+        if ($checked) return;
+        $checked = true;
+        $chk = @$conn->query("SHOW COLUMNS FROM tenants LIKE 'public_page_settings'");
+        if ($chk && $chk->num_rows === 0) {
+            @$conn->query("ALTER TABLE tenants ADD COLUMN public_page_settings LONGTEXT NULL AFTER banner");
+        }
+    }
+}
+
+if (!function_exists('getDefaultPublicPageSettings')) {
+    /**
+     * Get the default public page layout and color customisation settings.
+     */
+    function getDefaultPublicPageSettings() {
+        return [
+            // Color Palette
+            'primary_color'       => '#10b981', // emerald action color
+            'secondary_color'     => '#059669', // hover / secondary accent
+            'star_color'          => '#f59e0b', // star ratings
+            'page_bg'             => '#f8fafc', // outer body background
+            'card_bg'             => '#ffffff', // container background
+            'card_border'         => '#e2e8f0', // container border
+            'text_color'          => '#0f172a', // primary text
+            'muted_color'         => '#64748b', // muted text
+            // Layout & Presentation
+            'layout_style'        => 'modern_boxed', // modern_boxed | wide_compact | minimal_clean | full_width
+            'header_layout'       => 'standard',     // standard | centered | compact
+            'review_layout'       => 'tabs',         // tabs | stacked | card_grid
+            'border_radius'       => 'rounded',      // rounded (20px) | subtle (8px) | pill (28px) | sharp (4px)
+            'theme_mode'          => 'light',        // light | dark | midnight | warm
+            // Component Visibility Flags (1 = visible, 0 = hidden)
+            'show_banner'         => 1,
+            'show_breadcrumb'     => 1,
+            'show_verified_badge' => 1,
+            'show_rating_dist'    => 1,
+            'show_services'       => 1,
+            'show_qa'             => 1,
+            'show_whatsapp'       => 1,
+            'show_gstore'         => 1,
+            'show_map'            => 1,
+            // Custom CSS
+            'custom_css'          => '',
+        ];
+    }
+}
+
+if (!function_exists('getTenantPublicPageSettings')) {
+    /**
+     * Fetch public page customisation settings for a tenant, merged with defaults.
+     */
+    function getTenantPublicPageSettings($conn, $tenant_id = 0) {
+        $defaults = getDefaultPublicPageSettings();
+        if (!is_object($conn)) return $defaults;
+
+        ensurePublicPageSettingsColumn($conn);
+
+        $saved = null;
+        $tenant_id = (int)$tenant_id;
+        if ($tenant_id > 0) {
+            $stmt = @$conn->prepare("SELECT public_page_settings FROM tenants WHERE id = ? LIMIT 1");
+            if ($stmt) {
+                $stmt->bind_param("i", $tenant_id);
+                $stmt->execute();
+                $row = $stmt->get_result()->fetch_assoc();
+                $stmt->close();
+                if (!empty($row['public_page_settings'])) {
+                    $decoded = json_decode($row['public_page_settings'], true);
+                    if (is_array($decoded)) {
+                        $saved = $decoded;
+                    }
+                }
+            }
+        }
+
+        // If no tenant-specific settings found, check settings table for system default
+        if ($saved === null) {
+            $s_res = @$conn->query("SELECT setting_value FROM settings WHERE setting_key = 'default_public_page_settings' LIMIT 1");
+            if ($s_res && ($s_row = $s_res->fetch_assoc())) {
+                $decoded = json_decode($s_row['setting_value'] ?? '', true);
+                if (is_array($decoded)) {
+                    $saved = $decoded;
+                }
+                $s_res->close();
+            }
+        }
+
+        if (is_array($saved)) {
+            return array_merge($defaults, $saved);
+        }
+
+        return $defaults;
+    }
+}
+
+if (!function_exists('saveTenantPublicPageSettings')) {
+    /**
+     * Save public page customisation settings for a tenant or global defaults.
+     */
+    function saveTenantPublicPageSettings($conn, $tenant_id, array $settings) {
+        if (!is_object($conn)) return false;
+        ensurePublicPageSettingsColumn($conn);
+
+        $defaults = getDefaultPublicPageSettings();
+        $clean = [];
+        foreach ($defaults as $k => $defVal) {
+            if (isset($settings[$k])) {
+                if (is_int($defVal)) {
+                    $clean[$k] = (int)$settings[$k];
+                } elseif ($k === 'custom_css') {
+                    $clean[$k] = trim((string)$settings[$k]);
+                } else {
+                    $clean[$k] = strip_tags(trim((string)$settings[$k]));
+                }
+            } else {
+                $clean[$k] = is_int($defVal) ? 0 : $defVal;
+            }
+        }
+
+        $json = json_encode($clean, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $tenant_id = (int)$tenant_id;
+
+        if ($tenant_id > 0) {
+            $stmt = $conn->prepare("UPDATE tenants SET public_page_settings = ? WHERE id = ?");
+            if ($stmt) {
+                $stmt->bind_param("si", $json, $tenant_id);
+                $ok = $stmt->execute();
+                $stmt->close();
+                return $ok;
+            }
+            return false;
+        } else {
+            // Global admin default
+            $stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('default_public_page_settings', ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+            if ($stmt) {
+                $stmt->bind_param("s", $json);
+                $ok = $stmt->execute();
+                $stmt->close();
+                return $ok;
+            }
+            return false;
+        }
     }
 }
 
@@ -2031,5 +2198,127 @@ function sendTenantWelcomeAfterSetup($conn, $tenant) {
     $fullHtml = function_exists('sa_render_email_template') ? sa_render_email_template($subject, $bodyHtml, $site_name, $loginUrl, 'Go to Dashboard') : $bodyHtml;
     return function_exists('sa_send_mail') ? sa_send_mail($email, $subject, $fullHtml, $conn) : ['success'=>false,'message'=>'Mailer not available'];
 }
-?>
 
+/* ============================================================
+   Team members — tenant-created staff accounts with module access
+   ============================================================ */
+
+if (!function_exists('ensureTeamSchema')) {
+    /** Create the team_members table on demand (idempotent). */
+    function ensureTeamSchema($conn) {
+        static $done = false;
+        if ($done || !is_object($conn) || !method_exists($conn, 'query')) return;
+        $done = true;
+        $chk = @$conn->query("SHOW TABLES LIKE 'team_members'");
+        if ($chk && $chk->num_rows > 0) { $chk->close(); return; }
+        if ($chk) $chk->close();
+        @$conn->query("CREATE TABLE IF NOT EXISTS team_members (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            tenant_id INT NOT NULL,
+            full_name VARCHAR(100) NOT NULL,
+            username VARCHAR(50) NOT NULL,
+            email VARCHAR(100) NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            role VARCHAR(50) NOT NULL DEFAULT 'staff',
+            permissions VARCHAR(1000) NOT NULL DEFAULT '',
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            last_login_at DATETIME NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_team_username (username),
+            UNIQUE KEY uniq_team_email (email),
+            KEY idx_team_tenant (tenant_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
+}
+
+if (!function_exists('teamPermissionLabels')) {
+    /** Module keys -> human readable labels for the access checklists. */
+    function teamPermissionLabels() {
+        return [
+            'company'      => 'Company Profiles',
+            'qr_stand'     => 'Counter QR Stand',
+            'whatsapp'     => 'Ask for Reviews (WhatsApp)',
+            'social_card'  => 'Social Proof Cards',
+            'social'       => 'Social Accounts',
+            'qa'           => 'Community Q&A',
+            'analysis'     => 'Analysis',
+            'ratings'      => 'Ratings & Reviews',
+            'services'     => 'Services',
+            'ads'          => 'Ads & Funnels',
+            'subscription' => 'Subscription',
+            'settings'     => 'Workspace Settings',
+            'team'         => 'Team Management',
+        ];
+    }
+}
+
+if (!function_exists('teamRolePresets')) {
+    /** Role presets: which permission keys each role starts with. */
+    function teamRolePresets() {
+        $all = array_keys(teamPermissionLabels());
+        return [
+            'manager' => $all,
+            'reviews' => ['company', 'qr_stand', 'whatsapp', 'ratings'],
+            'social'  => ['company', 'social_card', 'social', 'qa'],
+            'analyst' => ['analysis', 'ratings'],
+            'staff'   => [],
+        ];
+    }
+}
+
+if (!function_exists('teamRoleLabel')) {
+    /** Human readable label for a role key. */
+    function teamRoleLabel($role) {
+        $roles = [
+            'manager' => 'Manager',
+            'reviews' => 'Reviews Team',
+            'social'  => 'Social Team',
+            'analyst' => 'Analyst',
+            'staff'   => 'Staff',
+        ];
+        return $roles[$role] ?? ucfirst((string)$role);
+    }
+}
+
+if (!function_exists('teamMemberParsePerms')) {
+    /** Normalise a stored/selected permission set into a clean array. */
+    function teamMemberParsePerms($raw) {
+        $list = is_array($raw) ? $raw : explode(',', (string)$raw);
+        $all  = teamPermissionLabels();
+        $out  = [];
+        foreach ($list as $k) {
+            $k = trim((string)$k);
+            if ($k !== '' && isset($all[$k])) $out[] = $k;
+        }
+        return array_values($out);
+    }
+}
+
+if (!function_exists('teamHasAccess')) {
+    /**
+     * Does the current session have access to a module?
+     * - Tenant owners and legacy platform admins always do.
+     * - Team members must have the key in their assigned permissions.
+     */
+    function teamHasAccess($key) {
+        $kind = $_SESSION['user_kind'] ?? '';
+        if ($kind === 'team' && !empty($_SESSION['team_member_id'])) {
+            $perms = $_SESSION['team_permissions'] ?? [];
+            if (!is_array($perms)) $perms = [];
+            return in_array($key, $perms, true);
+        }
+        return true;
+    }
+}
+
+if (!function_exists('requireTeamAccess')) {
+    /** Redirect a session that cannot access a module back to the dashboard. */
+    function requireTeamAccess($key) {
+        if (!teamHasAccess($key)) {
+            $_SESSION['flash_error'] = "You don't have permission to access that module. Contact your workspace owner.";
+            header('Location: index.php');
+            exit;
+        }
+    }
+}
+?>

@@ -18,6 +18,7 @@ require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/admin_helpers.php';
 
 requireLogin();
+requireTeamAccess('analysis');
 
 $tenant_id = getTenantId();
 $is_tenant = isTenant();
@@ -195,29 +196,42 @@ include __DIR__ . '/_shell.php';
         </div>
 
         <div class="chart-grid">
-            <section class="panel performance-panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>Growth over the last 12 months</h2>
-                        <p class="muted">Response volume against the average score customers give you</p>
+            <section class="collapsible-card panel performance-panel">
+                <div class="collapsible-header" onclick="toggleAnalysisSection(this)" style="cursor:pointer;">
+                    <div class="panel-head">
+                        <div>
+                            <h2>Growth over the last 12 months</h2>
+                            <p class="muted">Response volume against the average score customers give you</p>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <span class="admin-chip"><?php echo sa_e(sa_num($lifetime_responses)); ?> lifetime responses</span>
+                            <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
+                        </div>
                     </div>
-                    <span class="admin-chip"><?php echo sa_e(sa_num($lifetime_responses)); ?> lifetime responses</span>
                 </div>
-                <div class="chart-legend">
-                    <span><i class="legend-line lime"></i> Responses</span>
-                    <span><i class="legend-line blue-line"></i> Average score</span>
+                <div class="collapsible-content">
+                    <div class="chart-legend">
+                        <span><i class="legend-line lime"></i> Responses</span>
+                        <span><i class="legend-line blue-line"></i> Average score</span>
+                    </div>
+                    <?php echo admin_trend_chart($trend); ?>
                 </div>
-                <?php echo admin_trend_chart($trend); ?>
             </section>
 
-            <section class="panel score-panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>Score breakdown</h2>
-                        <p class="muted">Last <?php echo (int) $days; ?> days</p>
+            <section class="collapsible-card panel score-panel">
+                <div class="collapsible-header" onclick="toggleAnalysisSection(this)" style="cursor:pointer;">
+                    <div class="panel-head">
+                        <div>
+                            <h2>Score breakdown</h2>
+                            <p class="muted">Last <?php echo (int) $days; ?> days</p>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <span class="total-score"><?php echo $current['avg_rating'] > 0 ? number_format($current['avg_rating'], 1) : '0.0'; ?> <b>★</b></span>
+                            <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
+                        </div>
                     </div>
-                    <span class="total-score"><?php echo $current['avg_rating'] > 0 ? number_format($current['avg_rating'], 1) : '0.0'; ?> <b>★</b></span>
                 </div>
+                <div class="collapsible-content">
                 <?php
                 $bar_colors = [5 => '#c2f542', 4 => '#7dd3fc', 3 => '#fbbf24', 2 => '#fb923c', 1 => '#f87171'];
                 foreach ($stars as $star => $count):
@@ -235,16 +249,25 @@ include __DIR__ . '/_shell.php';
                     <div><span>Per week</span><strong><?php echo number_format($per_week, 1); ?></strong></div>
                 </div>
                 <a class="panel-link" href="ratings.php">Open every review →</a>
+                </div>
             </section>
         </div>
 
-        <section class="panel" style="margin-bottom:20px;">
-            <div class="panel-head">
-                <div>
-                    <h2>Company growth &amp; progress</h2>
-                    <p class="muted">Each company compared with the previous <?php echo (int) $days; ?> days</p>
+        <section class="collapsible-card panel" style="margin-bottom:20px;">
+            <div class="collapsible-header" onclick="toggleAnalysisSection(this)" style="cursor:pointer;">
+                <div class="panel-head">
+                    <div>
+                        <h2>Company growth &amp; progress</h2>
+                        <p class="muted">Each company compared with the previous <?php echo (int) $days; ?> days</p>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span class="admin-chip"><?php echo sa_e(sa_num($active_companies)); ?> active of <?php echo sa_e(sa_num(count($perform))); ?></span>
+                        <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
+                    </div>
                 </div>
-                <span class="admin-chip"><?php echo sa_e(sa_num($active_companies)); ?> active of <?php echo sa_e(sa_num(count($perform))); ?></span>
+            </div>
+
+            <div class="collapsible-content">
             </div>
 
             <div class="admin-table-wrap">
@@ -297,16 +320,22 @@ include __DIR__ . '/_shell.php';
                     </tbody>
                 </table>
             </div>
+            </div>
         </section>
 
         <div class="bottom-grid">
-            <section class="panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>What customers are talking about</h2>
-                        <p class="muted">Words that repeat across <?php echo sa_e(sa_num(count($comments))); ?> written responses</p>
+            <section class="collapsible-card panel">
+                <div class="collapsible-header" onclick="toggleAnalysisSection(this)" style="cursor:pointer;">
+                    <div class="panel-head">
+                        <div>
+                            <h2>What customers are talking about</h2>
+                            <p class="muted">Words that repeat across <?php echo sa_e(sa_num(count($comments))); ?> written responses</p>
+                        </div>
+                        <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
                     </div>
                 </div>
+
+                <div class="collapsible-content">
 
                 <?php if (!empty($keywords['praise']) || !empty($keywords['problems'])): ?>
                     <div class="admin-keyword-block">
@@ -359,15 +388,21 @@ include __DIR__ . '/_shell.php';
                 <?php else: ?>
                     <div class="empty-state">No 1 or 2 star responses in this period.</div>
                 <?php endif; ?>
+                </div>
             </section>
 
-            <section class="panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>What to do next</h2>
-                        <p class="muted">Generated from the numbers above</p>
+            <section class="collapsible-card panel">
+                <div class="collapsible-header" onclick="toggleAnalysisSection(this)" style="cursor:pointer;">
+                    <div class="panel-head">
+                        <div>
+                            <h2>What to do next</h2>
+                            <p class="muted">Generated from the numbers above</p>
+                        </div>
+                        <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
                     </div>
                 </div>
+
+                <div class="collapsible-content">
 
                 <?php if ($insights): ?>
                     <?php foreach ($insights as $insight): ?>
@@ -384,6 +419,7 @@ include __DIR__ . '/_shell.php';
                 <?php endif; ?>
 
                 <a class="btn btn-primary" style="margin-top:8px;" href="social.php">Turn good reviews into posts</a>
+                </div>
             </section>
         </div>
 
@@ -410,7 +446,7 @@ include __DIR__ . '/_shell.php';
                 <strong><?php echo number_format($views); ?></strong>
                 <small><?php echo number_format($uniques); ?> unique visitors</small>
             </div>
-            <div class="metric-card" style="border:1.5px solid #86efac;background:#f0fdf4;">
+            <div class="metric-card" style="border:1.5px solid #86efac;background:var(--card);">
                 <div class="metric-icon green">💬</div>
                 <span>WhatsApp Leads</span>
                 <strong style="color:#15803d;"><?php echo number_format($wa); ?></strong>
@@ -431,20 +467,27 @@ include __DIR__ . '/_shell.php';
         </div>
 
         <!-- Conversion Funnel Section -->
-        <section class="panel" style="margin-bottom:24px;padding:26px;">
-            <div class="panel-head" style="margin-bottom:20px;">
-                <div>
-                    <h2 style="font-size:18px;margin:0 0 4px;">Visitor-to-Customer Conversion Funnel</h2>
-                    <p class="muted" style="margin:0;font-size:13px;">Track customer drop-off across each stage of your rating and inquiry journey over the last <?php echo (int)$days; ?> days.</p>
+        <section class="collapsible-card panel" style="margin-bottom:24px;padding:26px;">
+            <div class="collapsible-header" onclick="toggleAnalysisSection(this)" style="cursor:pointer;">
+                <div class="panel-head" style="margin-bottom:20px;">
+                    <div>
+                        <h2 style="font-size:18px;margin:0 0 4px;">Visitor-to-Customer Conversion Funnel</h2>
+                        <p class="muted" style="margin:0;font-size:13px;">Track customer drop-off across each stage of your rating and inquiry journey over the last <?php echo (int)$days; ?> days.</p>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span class="admin-chip" style="background:rgba(187,247,208,0.2);color:#15803d;border:1px solid #bbf7d0;">
+                            <?php echo number_format($ctr, 1); ?>% WhatsApp Lead Rate
+                        </span>
+                        <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
+                    </div>
                 </div>
-                <span class="admin-chip" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;">
-                    <?php echo number_format($ctr, 1); ?>% WhatsApp Lead Rate
-                </span>
             </div>
+
+            <div class="collapsible-content">
 
             <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px;">
                 <!-- Funnel Step 1 -->
-                <div style="background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:18px;">
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                         <span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;">1. Page Visits</span>
                         <span style="font-size:11.5px;font-weight:700;color:#2563eb;background:#eff6ff;padding:2px 8px;border-radius:99px;">100%</span>
@@ -460,7 +503,7 @@ include __DIR__ . '/_shell.php';
                 <?php 
                     $start_pct = $views > 0 ? round(($starts / $views) * 100, 1) : 0;
                 ?>
-                <div style="background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:18px;">
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                         <span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;">2. Form Interacted</span>
                         <span style="font-size:11.5px;font-weight:700;color:#0891b2;background:#ecfeff;padding:2px 8px;border-radius:99px;"><?php echo $start_pct; ?>%</span>
@@ -476,10 +519,10 @@ include __DIR__ . '/_shell.php';
                 <?php 
                     $sub_pct = $views > 0 ? round(($submits / $views) * 100, 1) : 0;
                 ?>
-                <div style="background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:18px;">
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                         <span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;">3. Reviews Submitted</span>
-                        <span style="font-size:11.5px;font-weight:700;color:#d97706;background:#fffbeb;padding:2px 8px;border-radius:99px;"><?php echo $sub_pct; ?>%</span>
+                        <span style="font-size:11.5px;font-weight:700;color:#d97706;background:rgba(255,251,235,0.2);padding:2px 8px;border-radius:99px;"><?php echo $sub_pct; ?>%</span>
                     </div>
                     <div style="font-size:26px;font-weight:800;color:var(--ink);margin-bottom:10px;"><?php echo number_format($submits); ?></div>
                     <div style="width:100%;height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;">
@@ -489,7 +532,7 @@ include __DIR__ . '/_shell.php';
                 </div>
 
                 <!-- Funnel Step 4 -->
-                <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:18px;">
+                <div style="background:rgba(240,253,244,0.1);border:1px solid #bbf7d0;border-radius:14px;padding:18px;">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                         <span style="font-size:12px;font-weight:700;color:#15803d;text-transform:uppercase;">4. WhatsApp Leads</span>
                         <span style="font-size:11.5px;font-weight:700;color:#15803d;background:#dcfce7;padding:2px 8px;border-radius:99px;"><?php echo $ctr; ?>%</span>
@@ -501,20 +544,28 @@ include __DIR__ . '/_shell.php';
                     <small style="display:block;margin-top:8px;font-size:11.5px;color:#166534;font-weight:600;">Started 1-on-1 chat</small>
                 </div>
             </div>
+            </div>
         </section>
 
         <!-- Two-Column Breakdown -->
         <div class="grid-2col" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:24px;margin-bottom:24px;">
             
             <!-- WhatsApp Leads by Placement -->
-            <section class="panel" style="padding:24px;">
-                <div class="panel-head" style="margin-bottom:16px;">
-                    <div>
-                        <h2 style="font-size:16px;margin:0 0 4px;">WhatsApp Leads by Placement</h2>
-                        <p class="muted" style="margin:0;font-size:12.5px;">Which buttons are prompting customers to reach out on WhatsApp?</p>
+            <section class="collapsible-card panel" style="padding:24px;">
+                <div class="collapsible-header" onclick="toggleAnalysisSection(this)" style="cursor:pointer;">
+                    <div class="panel-head" style="margin-bottom:16px;">
+                        <div>
+                            <h2 style="font-size:16px;margin:0 0 4px;">WhatsApp Leads by Placement</h2>
+                            <p class="muted" style="margin:0;font-size:12.5px;">Which buttons are prompting customers to reach out on WhatsApp?</p>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span class="admin-chip"><?php echo number_format($wa); ?> total</span>
+                            <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
+                        </div>
                     </div>
-                    <span class="admin-chip"><?php echo number_format($wa); ?> total</span>
                 </div>
+
+                <div class="collapsible-content">
 
                 <?php if (!empty($wa_breakdown)): ?>
                     <div style="display:flex;flex-direction:column;gap:14px;">
@@ -536,7 +587,7 @@ include __DIR__ . '/_shell.php';
                                 $icon  = '💡';
                             }
                         ?>
-                            <div style="background:#f8fafc;padding:12px 14px;border-radius:10px;border:1px solid var(--line);">
+                            <div style="background:var(--card);padding:12px 14px;border-radius:10px;border:1px solid var(--line);">
                                 <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:700;margin-bottom:6px;">
                                     <span><?php echo $icon . ' ' . htmlspecialchars($label); ?></span>
                                     <span><?php echo number_format($cnt); ?> <small class="muted" style="font-weight:normal;">(<?php echo $pct; ?>%)</small></span>
@@ -554,17 +605,25 @@ include __DIR__ . '/_shell.php';
                 <div style="margin-top:16px;background:#ecfdf5;border:1px solid #a7f3d0;padding:12px 14px;border-radius:10px;font-size:12px;color:#065f46;line-height:1.5;">
                     💡 <strong>Conversion Insight:</strong> Review-level inquiry buttons generate the highest qualified leads because customers are reaching out with direct buying intent after reading verified experiences.
                 </div>
+                </div>
             </section>
 
             <!-- Traffic Channels & Devices -->
-            <section class="panel" style="padding:24px;">
-                <div class="panel-head" style="margin-bottom:16px;">
-                    <div>
-                        <h2 style="font-size:16px;margin:0 0 4px;">Inbound Traffic Channels &amp; Devices</h2>
-                        <p class="muted" style="margin:0;font-size:12.5px;">Where are your page visitors coming from?</p>
+            <section class="collapsible-card panel" style="padding:24px;">
+                <div class="collapsible-header" onclick="toggleAnalysisSection(this)" style="cursor:pointer;">
+                    <div class="panel-head" style="margin-bottom:16px;">
+                        <div>
+                            <h2 style="font-size:16px;margin:0 0 4px;">Inbound Traffic Channels &amp; Devices</h2>
+                            <p class="muted" style="margin:0;font-size:12.5px;">Where are your page visitors coming from?</p>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span class="admin-chip"><?php echo number_format($views); ?> views</span>
+                            <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
+                        </div>
                     </div>
-                    <span class="admin-chip"><?php echo number_format($views); ?> views</span>
                 </div>
+
+                <div class="collapsible-content">
 
                 <h4 style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:0 0 10px;">Traffic Channels</h4>
                 <?php if (!empty($source_breakdown)): ?>
@@ -594,7 +653,7 @@ include __DIR__ . '/_shell.php';
                                 </span>
                                 <span style="font-weight:700;color:var(--ink);"><?php echo number_format($sCnt); ?> <small class="muted" style="font-weight:normal;">(<?php echo $sPct; ?>%)</small></span>
                             </div>
-                            <div style="width:100%;height:5px;background:#f1f5f9;border-radius:99px;overflow:hidden;margin-bottom:4px;">
+                            <div style="width:100%;height:5px;background:var(--line);border-radius:99px;overflow:hidden;margin-bottom:4px;">
                                 <div style="width:<?php echo $sPct; ?>%;height:100%;background:#6366f1;border-radius:99px;"></div>
                             </div>
                         <?php endforeach; ?>
@@ -611,38 +670,44 @@ include __DIR__ . '/_shell.php';
                             $dev_counts[$db['device']] = $db['count'];
                         }
                     ?>
-                    <div style="background:#f8fafc;padding:12px;border-radius:10px;text-align:center;border:1px solid var(--line);">
+                    <div style="background:var(--card);padding:12px;border-radius:10px;text-align:center;border:1px solid var(--line);">
                         <div style="font-size:20px;margin-bottom:2px;">📱</div>
                         <strong style="font-size:14px;color:var(--ink);display:block;"><?php echo number_format($dev_counts['mobile']); ?></strong>
                         <span style="font-size:11px;color:var(--muted);">Mobile</span>
                     </div>
-                    <div style="background:#f8fafc;padding:12px;border-radius:10px;text-align:center;border:1px solid var(--line);">
+                    <div style="background:var(--card);padding:12px;border-radius:10px;text-align:center;border:1px solid var(--line);">
                         <div style="font-size:20px;margin-bottom:2px;">💻</div>
                         <strong style="font-size:14px;color:var(--ink);display:block;"><?php echo number_format($dev_counts['desktop']); ?></strong>
                         <span style="font-size:11px;color:var(--muted);">Desktop</span>
                     </div>
-                    <div style="background:#f8fafc;padding:12px;border-radius:10px;text-align:center;border:1px solid var(--line);">
+                    <div style="background:var(--card);padding:12px;border-radius:10px;text-align:center;border:1px solid var(--line);">
                         <div style="font-size:20px;margin-bottom:2px;">📟</div>
                         <strong style="font-size:14px;color:var(--ink);display:block;"><?php echo number_format($dev_counts['tablet']); ?></strong>
                         <span style="font-size:11px;color:var(--muted);">Tablet</span>
                     </div>
+                </div>
                 </div>
             </section>
 
         </div>
 
         <!-- Daily Trend Timeline -->
-        <section class="panel" style="padding:26px;margin-bottom:24px;">
-            <div class="panel-head" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
-                <div>
-                    <h2 style="font-size:18px;margin:0 0 4px;">Daily Activity Timeline</h2>
-                    <p class="muted" style="margin:0;font-size:13px;">Daily Page Views vs. WhatsApp Conversations initiated over the last <?php echo min(30, (int)$days); ?> days.</p>
-                </div>
-                <div style="display:flex;align-items:center;gap:14px;font-size:12px;font-weight:700;">
-                    <span style="display:inline-flex;align-items:center;gap:6px;color:#2563eb;"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#3b82f6;"></i> Page Views</span>
-                    <span style="display:inline-flex;align-items:center;gap:6px;color:#15803d;"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#10b981;"></i> WhatsApp Leads</span>
+        <section class="collapsible-card panel" style="padding:26px;margin-bottom:24px;">
+            <div class="collapsible-header" onclick="toggleAnalysisSection(this)" style="cursor:pointer;">
+                <div class="panel-head" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+                    <div>
+                        <h2 style="font-size:18px;margin:0 0 4px;">Daily Activity Timeline</h2>
+                        <p class="muted" style="margin:0;font-size:13px;">Daily Page Views vs. WhatsApp Conversations initiated over the last <?php echo min(30, (int)$days); ?> days.</p>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:14px;font-size:12px;font-weight:700;">
+                        <span style="display:inline-flex;align-items:center;gap:6px;color:#2563eb;"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#3b82f6;"></i> Page Views</span>
+                        <span style="display:inline-flex;align-items:center;gap:6px;color:#15803d;"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#10b981;"></i> WhatsApp Leads</span>
+                        <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
+                    </div>
                 </div>
             </div>
+
+            <div class="collapsible-content">
 
             <?php 
                 $max_views = 1;
@@ -664,7 +729,56 @@ include __DIR__ . '/_shell.php';
                     </div>
                 <?php endforeach; ?>
             </div>
+            </div>
         </section>
         <?php endif; ?>
+
+<script>
+// Collapsible analysis section accordion
+function toggleAnalysisSection(header) {
+    const card = header.closest('.collapsible-card');
+    const content = card.querySelector('.collapsible-content');
+    const icon = header.querySelector('.collapse-icon');
+    const isOpen = content.style.maxHeight && content.style.maxHeight !== '0px';
+    
+    // Close all other sections
+    document.querySelectorAll('.collapsible-card').forEach(otherCard => {
+        if (otherCard !== card) {
+            const otherContent = otherCard.querySelector('.collapsible-content');
+            const otherIcon = otherCard.querySelector('.collapse-icon');
+            if (otherContent && otherIcon) {
+                otherContent.style.maxHeight = '0';
+                otherContent.style.opacity = '0';
+                otherContent.style.marginTop = '0';
+                otherIcon.style.transform = 'rotate(0deg)';
+            }
+        }
+    });
+    
+    // Toggle current section
+    if (isOpen) {
+        content.style.maxHeight = '0';
+        content.style.opacity = '0';
+        content.style.marginTop = '0';
+        icon.style.transform = 'rotate(0deg)';
+    } else {
+        content.style.maxHeight = content.scrollHeight + 'px';
+        content.style.opacity = '1';
+        content.style.marginTop = '14px';
+        icon.style.transform = 'rotate(180deg)';
+    }
+}
+
+// Initialize all sections as collapsed on page load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.collapsible-content').forEach(content => {
+        content.style.maxHeight = '0';
+        content.style.opacity = '0';
+        content.style.overflow = 'hidden';
+        content.style.transition = 'max-height 0.4s ease, opacity 0.3s ease, margin-top 0.3s ease';
+        content.style.marginTop = '0';
+    });
+});
+</script>
 
 <?php include __DIR__ . '/_shell_footer.php'; ?>

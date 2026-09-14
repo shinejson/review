@@ -4,6 +4,7 @@ require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 
 requireLogin();
+requireTeamAccess('ratings');
 
 $tenant_id = getTenantId();
 $is_tenant = isTenant();
@@ -30,6 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // 1. CREATE RATING & REVIEW
     if ($action === 'create_rating') {
         $company_id     = (int)($_POST['company_id'] ?? 0);
+        $service_id     = !empty($_POST['service_id']) ? (int)$_POST['service_id'] : null;
         $rating_score   = max(1, min(5, (int)($_POST['rating'] ?? 5)));
         $customer_name  = sanitize($_POST['customer_name'] ?? '');
         $customer_email = sanitize($_POST['customer_email'] ?? '');
@@ -67,8 +69,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             if ($valid) {
                 $is_verified = !empty($_POST['is_verified']) ? 1 : 0;
-                $stmt = $conn->prepare("INSERT INTO ratings (company_id, question_id, rating, customer_name, customer_email, comment, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
-                $stmt->bind_param("iiisssi", $company_id, $question_id, $rating_score, $customer_name, $customer_email, $comment, $is_verified);
+                $stmt = $conn->prepare("INSERT INTO ratings (company_id, service_id, question_id, rating, customer_name, customer_email, comment, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+                $stmt->bind_param("iiisssssi", $company_id, $service_id, $question_id, $rating_score, $customer_name, $customer_email, $comment, $is_verified);
                 if ($stmt->execute()) {
                     $success = "New rating & review created successfully!";
                 } else {
@@ -78,42 +80,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 
-    // 2. UPDATE RATING & REVIEW
+    // 2. UPDATE RATING & REVIEW (DISABLED: Reviews & reviewer names are strictly non-editable)
     elseif ($action === 'update_rating') {
-        $rating_id      = (int)($_POST['rating_id'] ?? 0);
-        $company_id     = (int)($_POST['company_id'] ?? 0);
-        $rating_score   = max(1, min(5, (int)($_POST['rating'] ?? 5)));
-        $customer_name  = sanitize($_POST['customer_name'] ?? '');
-        $customer_email = sanitize($_POST['customer_email'] ?? '');
-        $comment        = sanitize($_POST['comment'] ?? '');
-        $question_id    = !empty($_POST['question_id']) ? (int)$_POST['question_id'] : null;
-        $is_verified    = !empty($_POST['is_verified']) ? 1 : 0;
-
-        if ($rating_id <= 0 || $company_id <= 0 || empty($customer_name)) {
-            $error = "Invalid rating record or missing required fields.";
-        } else {
-            // Verify tenant ownership of this rating
-            $valid = true;
-            if ($is_tenant) {
-                $chk = $conn->prepare("SELECT r.id FROM ratings r JOIN customers c ON r.company_id = c.id WHERE r.id = ? AND c.tenant_id = ?");
-                $chk->bind_param("ii", $rating_id, $tenant_id);
-                $chk->execute();
-                if ($chk->get_result()->num_rows === 0) {
-                    $valid = false;
-                    $error = "Unauthorized: You do not have permission to modify this rating.";
-                }
-            }
-
-            if ($valid) {
-                $stmt = $conn->prepare("UPDATE ratings SET company_id = ?, question_id = ?, rating = ?, customer_name = ?, customer_email = ?, comment = ?, is_verified = ? WHERE id = ?");
-                $stmt->bind_param("iiisssii", $company_id, $question_id, $rating_score, $customer_name, $customer_email, $comment, $is_verified, $rating_id);
-                if ($stmt->execute()) {
-                    $success = "Rating #$rating_id updated successfully!";
-                } else {
-                    $error = "Failed to update rating: " . $conn->error;
-                }
-            }
-        }
+        $error = "Customer reviews, reviewer names, and submitted ratings are permanently locked to preserve review authenticity and prevent tampering.";
     }
 
     // TOGGLE VERIFICATION STATUS (Verified Customer Badge)
@@ -406,9 +375,52 @@ if ($rating_questions) {
 // Filtering parameters
 // ============================================================
 $company_filter    = isset($_GET['company_id']) ? (int)$_GET['company_id'] : 0;
+$service_filter    = isset($_GET['service_id']) ? (int)$_GET['service_id'] : 0;
 $star_filter       = isset($_GET['star']) ? (int)$_GET['star'] : 0;
 $escalation_filter = isset($_GET['escalation']) ? trim($_GET['escalation']) : '';
 $search_query      = isset($_GET['q']) ? trim($_GET['q']) : '';
+$date_from         = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
+$date_to           = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
+$date_preset       = isset($_GET['date_preset']) ? trim($_GET['date_preset']) : '';
+
+// Handle date presets
+if ($date_preset) {
+    $today = date('Y-m-d');
+    switch ($date_preset) {
+        case 'today':
+            $date_from = $today;
+            $date_to = $today;
+            break;
+        case 'yesterday':
+            $date_from = date('Y-m-d', strtotime('-1 day'));
+            $date_to = date('Y-m-d', strtotime('-1 day'));
+            break;
+        case 'this_week':
+            $date_from = date('Y-m-d', strtotime('monday this week'));
+            $date_to = $today;
+            break;
+        case 'last_week':
+            $date_from = date('Y-m-d', strtotime('monday last week'));
+            $date_to = date('Y-m-d', strtotime('sunday last week'));
+            break;
+        case 'this_month':
+            $date_from = date('Y-m-01');
+            $date_to = $today;
+            break;
+        case 'last_month':
+            $date_from = date('Y-m-01', strtotime('first day of last month'));
+            $date_to = date('Y-m-t', strtotime('last day of last month'));
+            break;
+        case 'last_30_days':
+            $date_from = date('Y-m-d', strtotime('-30 days'));
+            $date_to = $today;
+            break;
+        case 'last_90_days':
+            $date_from = date('Y-m-d', strtotime('-90 days'));
+            $date_to = $today;
+            break;
+    }
+}
 
 // Build Query
 $where_clauses = [];
@@ -448,6 +460,19 @@ if (!empty($search_query)) {
     $param_vals[]    = $like_q;
     $param_vals[]    = $like_q;
     $param_vals[]    = $like_q;
+}
+
+// Date range filtering
+if (!empty($date_from)) {
+    $where_clauses[] = "DATE(r.created_at) >= ?";
+    $param_types    .= "s";
+    $param_vals[]    = $date_from;
+}
+
+if (!empty($date_to)) {
+    $where_clauses[] = "DATE(r.created_at) <= ?";
+    $param_types    .= "s";
+    $param_vals[]    = $date_to;
 }
 
 $sql = "SELECT r.*, c.company_name, rq.question_text 
@@ -605,6 +630,8 @@ include __DIR__ . '/_shell.php';
             <input type="hidden" name="action" id="formAction" value="create_rating">
             <input type="hidden" name="rating_id" id="formRatingId" value="0">
             <input type="hidden" name="rating" id="formRatingScore" value="5">
+            <input type="hidden" name="service_id" id="formServiceId" value="0">
+
             <input type="hidden" name="company_id" id="formCompanyId" value="<?php echo (int)$default_company_id; ?>">
 
             <div class="form-grid" style="grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:18px;margin-bottom:18px;">
@@ -702,7 +729,16 @@ include __DIR__ . '/_shell.php';
                 <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--muted);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </div>
 
-            <?php if ($company_filter || $star_filter || !empty($escalation_filter) || $search_query): ?>
+            <!-- Date Range Filters -->
+            <div style="display:flex;gap:8px;align-items:center;padding:6px 12px;border-radius:8px;background:rgba(194,245,66,.08);border:1px solid rgba(194,245,66,.3);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <input type="date" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>" placeholder="From" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;width:140px;">
+                <span style="color:var(--muted);font-size:12px;">to</span>
+                <input type="date" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>" placeholder="To" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;width:140px;">
+                <button type="submit" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;">Apply</button>
+            </div>
+
+            <?php if ($company_filter || $star_filter || !empty($escalation_filter) || $search_query || $date_from || $date_to || $date_preset): ?>
                 <a href="ratings.php" class="btn btn-secondary" style="padding:9px 14px;font-size:12px;">Reset Filters</a>
             <?php endif; ?>
         </form>
@@ -710,6 +746,43 @@ include __DIR__ . '/_shell.php';
         <span class="muted" style="font-size:13px;">
             Showing <strong><?php echo $total_count; ?></strong> review record(s)
         </span>
+    </div>
+
+    <!-- Quick Date Filter Buttons -->
+    <div style="display:flex;gap:8px;align-items:center;margin:16px 0;flex-wrap:wrap;">
+        <span style="font-size:13px;color:var(--muted);font-weight:600;">Quick Filters:</span>
+        <a href="?date_preset=today<?php echo $company_filter ? '&company_id='.$company_filter : ''; ?><?php echo $star_filter ? '&star='.$star_filter : ''; ?><?php echo $escalation_filter ? '&escalation='.$escalation_filter : ''; ?><?php echo $search_query ? '&q='.urlencode($search_query) : ''; ?>" 
+           class="btn btn-secondary" 
+           style="padding:6px 14px;font-size:12px;<?php echo $date_preset === 'today' ? 'background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;' : ''; ?>">
+            Today
+        </a>
+        <a href="?date_preset=this_week<?php echo $company_filter ? '&company_id='.$company_filter : ''; ?><?php echo $star_filter ? '&star='.$star_filter : ''; ?><?php echo $escalation_filter ? '&escalation='.$escalation_filter : ''; ?><?php echo $search_query ? '&q='.urlencode($search_query) : ''; ?>" 
+           class="btn btn-secondary" 
+           style="padding:6px 14px;font-size:12px;<?php echo $date_preset === 'this_week' ? 'background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;' : ''; ?>">
+            This Week
+        </a>
+        <a href="?date_preset=this_month<?php echo $company_filter ? '&company_id='.$company_filter : ''; ?><?php echo $star_filter ? '&star='.$star_filter : ''; ?><?php echo $escalation_filter ? '&escalation='.$escalation_filter : ''; ?><?php echo $search_query ? '&q='.urlencode($search_query) : ''; ?>" 
+           class="btn btn-secondary" 
+           style="padding:6px 14px;font-size:12px;<?php echo $date_preset === 'this_month' ? 'background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;' : ''; ?>">
+            This Month
+        </a>
+        <a href="?date_preset=last_30_days<?php echo $company_filter ? '&company_id='.$company_filter : ''; ?><?php echo $star_filter ? '&star='.$star_filter : ''; ?><?php echo $escalation_filter ? '&escalation='.$escalation_filter : ''; ?><?php echo $search_query ? '&q='.urlencode($search_query) : ''; ?>" 
+           class="btn btn-secondary" 
+           style="padding:6px 14px;font-size:12px;<?php echo $date_preset === 'last_30_days' ? 'background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;' : ''; ?>">
+            Last 30 Days
+        </a>
+        <a href="?date_preset=last_90_days<?php echo $company_filter ? '&company_id='.$company_filter : ''; ?><?php echo $star_filter ? '&star='.$star_filter : ''; ?><?php echo $escalation_filter ? '&escalation='.$escalation_filter : ''; ?><?php echo $search_query ? '&q='.urlencode($search_query) : ''; ?>" 
+           class="btn btn-secondary" 
+           style="padding:6px 14px;font-size:12px;<?php echo $date_preset === 'last_90_days' ? 'background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;' : ''; ?>">
+            Last 90 Days
+        </a>
+        <?php if ($date_from || $date_to || $date_preset): ?>
+            <a href="?<?php echo $company_filter ? 'company_id='.$company_filter.'&' : ''; ?><?php echo $star_filter ? 'star='.$star_filter.'&' : ''; ?><?php echo $escalation_filter ? 'escalation='.$escalation_filter.'&' : ''; ?><?php echo $search_query ? 'q='.urlencode($search_query) : ''; ?>" 
+               class="btn btn-secondary" 
+               style="padding:6px 14px;font-size:12px;background:#fee;color:#b91c1c;border-color:#fca5a5;">
+                Clear Date Filter
+            </a>
+        <?php endif; ?>
     </div>
 
     <!-- Data Table Card -->
@@ -737,7 +810,13 @@ include __DIR__ . '/_shell.php';
                             </td>
                             <td class="table-subtitle" style="max-width:180px;">
                                 <?php if (!empty($r['question_text'])): ?>
-                                    <span style="color:var(--lime);font-size:12px;"><?php echo htmlspecialchars($r['question_text']); ?></span>
+                                    <?php 
+                                    $q_num = $r['question_id'] ?? 'N/A';
+                                    $q_concat = 'Q' . $q_num . ': ' . mb_substr($r['question_text'], 0, 30) . (mb_strlen($r['question_text']) > 30 ? '...' : '');
+                                    ?>
+                                    <span style="color:var(--ink);font-size:12px;cursor:pointer;text-decoration:underline;" onclick="showQuestionModal('<?php echo htmlspecialchars($r['question_text'], ENT_QUOTES); ?>', <?php echo $q_num; ?>)">
+                                        <?php echo htmlspecialchars($q_concat); ?>
+                                    </span>
                                 <?php else: ?>
                                     <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:rgba(56,189,248,.12);color:#0284c7;">General review</span>
                                 <?php endif; ?>
@@ -771,8 +850,23 @@ include __DIR__ . '/_shell.php';
                                     </div>
                                 <?php endif; ?>
                             </td>
-                            <td class="table-text">
-                                <?php echo htmlspecialchars($r['comment'] ?: 'No written comment.'); ?>
+                            <td class="table-text" style="max-width:250px;">
+                                <?php 
+                                $feedback = $r['comment'] ?: 'No written comment.';
+                                $feedback_short = mb_strlen($feedback) > 80 ? mb_substr($feedback, 0, 80) . '...' : $feedback;
+                                $has_more = mb_strlen($feedback) > 80;
+                                ?>
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <span style="flex:1;min-width:0;"><?php echo htmlspecialchars($feedback_short); ?></span>
+                                    <?php if ($has_more): ?>
+                                        <button type="button" 
+                                                onclick="showReviewModal('<?php echo htmlspecialchars($r['customer_name'], ENT_QUOTES); ?>', <?php echo (int)$r['rating']; ?>, '<?php echo htmlspecialchars($feedback, ENT_QUOTES); ?>', '<?php echo htmlspecialchars(date('M d, Y, g:i A', strtotime($r['created_at'])), ENT_QUOTES); ?>')" 
+                                                class="btn-view-review"
+                                                style="flex-shrink:0;padding:4px 10px;font-size:11px;font-weight:600;background:var(--bg);border:1px solid var(--line);border-radius:6px;cursor:pointer;color:#0284c7;white-space:nowrap;">
+                                            View
+                                        </button>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                             <td>
                                 <?php if (!empty($r['is_escalated'])): ?>
@@ -799,48 +893,44 @@ include __DIR__ . '/_shell.php';
                                 <?php echo date('M d, Y, g:i A', strtotime($r['created_at'])); ?>
                             </td>
                             <td style="text-align:right;">
-                                <div class="admin-table-actions" style="justify-content:flex-end;">
-                                    <?php if (!empty($r['is_escalated'])): ?>
-                                        <form method="POST" action="ratings.php" style="display:inline;margin:0;">
-                                            <input type="hidden" name="action" value="toggle_escalation">
+                                <div class="admin-table-actions" style="justify-content:flex-end;position:relative;">
+                                    <!-- Dropdown Toggle Button -->
+                                    <button type="button" class="admin-sm-btn actions-dropdown-toggle" onclick="toggleActionsDropdown(this)" style="padding:6px 12px;display:inline-flex;align-items:center;gap:6px;">
+                                        Actions <span style="font-size:10px;">▼</span>
+                                    </button>
+                                    
+                                    <!-- Dropdown Menu -->
+                                    <div class="actions-dropdown-menu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#ffffff;border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);min-width:180px;z-index:1000;">
+                                        <?php if (!empty($r['is_escalated'])): ?>
+                                            <form method="POST" action="ratings.php" style="margin:0;">
+                                                <input type="hidden" name="action" value="toggle_escalation">
+                                                <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
+                                                <button type="submit" class="dropdown-action-btn" style="<?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? 'color:#15803d;' : 'color:#b45309;'; ?>">
+                                                    <?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? '↺ Reopen Issue' : '✓ Mark Resolved'; ?>
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
+                                        
+                                        <form method="POST" action="ratings.php" style="margin:0;">
+                                            <input type="hidden" name="action" value="toggle_verification">
                                             <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
-                                            <button type="submit" class="admin-sm-btn" title="<?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? 'Reopen as unresolved complaint' : 'Mark issue as resolved'; ?>" style="<?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? 'color:#15803d;border-color:rgba(21,128,61,0.4);' : 'color:#b45309;border-color:rgba(217,119,6,0.4);background:#fffbeb;'; ?>">
-                                                <?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? '↺ Reopen' : '✓ Resolve'; ?>
+                                            <button type="submit" class="dropdown-action-btn" style="<?php echo !empty($r['is_verified']) ? 'color:#16a34a;' : 'color:#64748b;'; ?>">
+                                                <?php echo !empty($r['is_verified']) ? '✓ Remove Verification' : '○ Mark as Verified'; ?>
                                             </button>
                                         </form>
-                                    <?php endif; ?>
-                                    <form method="POST" action="ratings.php" style="display:inline;margin:0;">
-                                        <input type="hidden" name="action" value="toggle_verification">
-                                        <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
-                                        <button type="submit" class="admin-sm-btn" title="<?php echo !empty($r['is_verified']) ? 'Remove Verified Badge' : 'Mark as Verified Customer'; ?>" style="<?php echo !empty($r['is_verified']) ? 'color:#16a34a;border-color:rgba(22,163,74,0.4);' : ''; ?>">
-                                            <?php echo !empty($r['is_verified']) ? '✓ Unverify' : '○ Verify'; ?>
+                                        
+                                        <?php if ((int)$r['rating'] >= 4 && !empty($r['comment'])): ?>
+                                            <a href="social_card.php?rating_id=<?php echo (int)$r['id']; ?>" class="dropdown-action-btn" style="text-decoration:none;color:#0284c7;">
+                                                🎨 Generate Social Card
+                                            </a>
+                                        <?php endif; ?>
+                                        
+                                        <button type="button" class="dropdown-action-btn" 
+                                                onclick="showReviewModal('<?php echo htmlspecialchars($r['customer_name'], ENT_QUOTES); ?>', <?php echo (int)$r['rating']; ?>, '<?php echo htmlspecialchars($r['comment'] ?: 'No written comment.', ENT_QUOTES); ?>', '<?php echo htmlspecialchars(date('M d, Y, g:i A', strtotime($r['created_at'])), ENT_QUOTES); ?>'); closeAllDropdowns();"
+                                                style="color:#0284c7;">
+                                            👁 View Full Review
                                         </button>
-                                    </form>
-                                    <?php if ((int)$r['rating'] >= 4 && !empty($r['comment'])): ?>
-                                        <a href="social_card.php?rating_id=<?php echo (int)$r['id']; ?>" class="admin-sm-btn" title="Generate graphic card for WhatsApp Status or IG" style="color:#0284c7;border-color:rgba(2,132,199,0.3);text-decoration:none;">
-                                            🎨 Card
-                                        </a>
-                                    <?php endif; ?>
-                                    <button type="button" class="admin-sm-btn" title="Edit this review"
-                                            onclick='populateEditRating(<?php echo json_encode([
-                                                "id" => (int)$r["id"],
-                                                "company_id" => (int)$r["company_id"],
-                                                "question_id" => $r["question_id"] ? (int)$r["question_id"] : null,
-                                                "rating" => (int)$r["rating"],
-                                                "customer_name" => $r["customer_name"],
-                                                "customer_email" => $r["customer_email"],
-                                                "comment" => $r["comment"],
-                                                "is_verified" => (int)($r["is_verified"] ?? 0),
-                                            ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>)'>
-                                        ✎ Edit
-                                    </button>
-                                    <form method="POST" action="ratings.php" onsubmit="return confirm('Are you sure you want to delete rating #<?php echo (int)$r['id']; ?>? This cannot be undone.');" style="display:inline;">
-                                        <input type="hidden" name="action" value="delete_rating">
-                                        <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
-                                        <button type="submit" class="admin-sm-btn is-danger" title="Delete review">
-                                            ✕ Delete
-                                        </button>
-                                    </form>
+                                    </div>
                                 </div>
                             </td>
                         </tr>
@@ -896,22 +986,96 @@ include __DIR__ . '/_shell.php';
     </div>
 
     <!-- Filter Pills for Live Stream -->
-    <div class="admin-toolbar" style="padding:14px 18px;background:var(--bg);border:1px solid var(--line);border-radius:12px;">
-        <div class="admin-filter-pills">
-            <span class="muted" style="font-size:12.5px;font-weight:700;margin-right:6px;">Filter by Score:</span>
-            <a href="ratings.php<?php echo $company_filter ? '?company_id='.$company_filter : ''; ?>#tab=responses" class="admin-pill-btn <?php echo $star_filter === 0 ? 'is-active' : ''; ?>">
-                All (<?php echo $total_count; ?>)
-            </a>
-            <?php for ($s = 5; $s >= 1; $s--): ?>
-                <a href="ratings.php?star=<?php echo $s; ?><?php echo $company_filter ? '&company_id='.$company_filter : ''; ?>#tab=responses" class="admin-pill-btn <?php echo $star_filter === $s ? 'is-active' : ''; ?>">
-                    ★ <?php echo $s; ?> (<?php echo $star_counts[$s]; ?>)
+    <div class="admin-toolbar" style="padding:14px 18px;background:var(--bg);border:1px solid var(--line);border-radius:12px;margin-bottom:16px;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;width:100%;">
+            <div class="admin-filter-pills" style="flex:1;min-width:300px;">
+                <span class="muted" style="font-size:12.5px;font-weight:700;margin-right:6px;">Filter by Score:</span>
+                <a href="ratings.php<?php echo $company_filter ? '?company_id='.$company_filter : ''; ?><?php echo $date_from ? (strpos($_SERVER['QUERY_STRING'], '?') !== false ? '&' : '?').'date_from='.$date_from : ''; ?><?php echo $date_to ? '&date_to='.$date_to : ''; ?><?php echo $date_preset ? '&date_preset='.$date_preset : ''; ?>#tab=responses" class="admin-pill-btn <?php echo $star_filter === 0 ? 'is-active' : ''; ?>">
+                    All (<?php echo $total_count; ?>)
                 </a>
-            <?php endfor; ?>
-        </div>
+                <?php for ($s = 5; $s >= 1; $s--): ?>
+                    <a href="ratings.php?star=<?php echo $s; ?><?php echo $company_filter ? '&company_id='.$company_filter : ''; ?><?php echo $date_from ? '&date_from='.$date_from : ''; ?><?php echo $date_to ? '&date_to='.$date_to : ''; ?><?php echo $date_preset ? '&date_preset='.$date_preset : ''; ?>#tab=responses" class="admin-pill-btn <?php echo $star_filter === $s ? 'is-active' : ''; ?>">
+                        ★ <?php echo $s; ?> (<?php echo $star_counts[$s]; ?>)
+                    </a>
+                <?php endfor; ?>
+            </div>
 
-        <div style="display:flex;align-items:center;gap:10px;">
-            <span class="status-dot">● Real-time feedback</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span class="status-dot">● Real-time feedback</span>
+            </div>
         </div>
+    </div>
+
+    <!-- Date Range Filters for Tab 2 -->
+    <div class="admin-toolbar" style="padding:14px 18px;background:var(--bg);border:1px solid var(--line);border-radius:12px;margin-bottom:16px;">
+        <div style="margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--line);">
+            <span style="font-size:13px;font-weight:700;color:var(--ink);">📅 Date Range Filters</span>
+        </div>
+        <form method="GET" action="ratings.php#tab=responses" class="filter-form" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <input type="hidden" name="star" value="<?php echo $star_filter; ?>">
+            <input type="hidden" name="company_id" value="<?php echo $company_filter; ?>">
+            <input type="hidden" name="escalation" value="<?php echo htmlspecialchars($escalation_filter); ?>">
+            <input type="hidden" name="q" value="<?php echo htmlspecialchars($search_query); ?>">
+            
+            <select name="company_id" onchange="this.form.submit()" style="padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;">
+                <option value="0">All Companies (<?php echo count($companies_cache); ?>)</option>
+                <?php foreach ($companies_cache as $c): ?>
+                    <option value="<?php echo (int)$c['id']; ?>" <?php echo $company_filter === (int)$c['id'] ? 'selected' : ''; ?>>
+                        <?php echo htmlspecialchars($c['company_name']); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+
+            <!-- Date Range Filters -->
+            <div style="display:flex;gap:8px;align-items:center;padding:6px 12px;border-radius:8px;background:rgba(194,245,66,.08);border:1px solid rgba(194,245,66,.3);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <input type="date" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>" placeholder="From" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;width:140px;">
+                <span style="color:var(--muted);font-size:12px;">to</span>
+                <input type="date" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>" placeholder="To" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;width:140px;">
+                <button type="submit" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;">Apply</button>
+            </div>
+
+            <?php if ($company_filter || $date_from || $date_to || $date_preset): ?>
+                <a href="ratings.php#tab=responses" class="btn btn-secondary" style="padding:9px 14px;font-size:12px;">Reset Filters</a>
+            <?php endif; ?>
+        </form>
+    </div>
+
+    <!-- Quick Date Filter Buttons for Tab 2 -->
+    <div style="display:flex;gap:8px;align-items:center;margin:16px 0;flex-wrap:wrap;">
+        <span style="font-size:13px;color:var(--muted);font-weight:600;">Quick Filters:</span>
+        <a href="?date_preset=today<?php echo $company_filter ? '&company_id='.$company_filter : ''; ?><?php echo $star_filter ? '&star='.$star_filter : ''; ?>#tab=responses" 
+           class="btn btn-secondary" 
+           style="padding:6px 14px;font-size:12px;<?php echo $date_preset === 'today' ? 'background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;' : ''; ?>">
+            Today
+        </a>
+        <a href="?date_preset=this_week<?php echo $company_filter ? '&company_id='.$company_filter : ''; ?><?php echo $star_filter ? '&star='.$star_filter : ''; ?>#tab=responses" 
+           class="btn btn-secondary" 
+           style="padding:6px 14px;font-size:12px;<?php echo $date_preset === 'this_week' ? 'background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;' : ''; ?>">
+            This Week
+        </a>
+        <a href="?date_preset=this_month<?php echo $company_filter ? '&company_id='.$company_filter : ''; ?><?php echo $star_filter ? '&star='.$star_filter : ''; ?>#tab=responses" 
+           class="btn btn-secondary" 
+           style="padding:6px 14px;font-size:12px;<?php echo $date_preset === 'this_month' ? 'background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;' : ''; ?>">
+            This Month
+        </a>
+        <a href="?date_preset=last_30_days<?php echo $company_filter ? '&company_id='.$company_filter : ''; ?><?php echo $star_filter ? '&star='.$star_filter : ''; ?>#tab=responses" 
+           class="btn btn-secondary" 
+           style="padding:6px 14px;font-size:12px;<?php echo $date_preset === 'last_30_days' ? 'background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;' : ''; ?>">
+            Last 30 Days
+        </a>
+        <a href="?date_preset=last_90_days<?php echo $company_filter ? '&company_id='.$company_filter : ''; ?><?php echo $star_filter ? '&star='.$star_filter : ''; ?>#tab=responses" 
+           class="btn btn-secondary" 
+           style="padding:6px 14px;font-size:12px;<?php echo $date_preset === 'last_90_days' ? 'background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;' : ''; ?>">
+            Last 90 Days
+        </a>
+        <?php if ($date_from || $date_to || $date_preset): ?>
+            <a href="?<?php echo $company_filter ? 'company_id='.$company_filter.'&' : ''; ?><?php echo $star_filter ? 'star='.$star_filter.'&' : ''; ?>#tab=responses" 
+               class="btn btn-secondary" 
+               style="padding:6px 14px;font-size:12px;background:#fee;color:#b91c1c;border-color:#fca5a5;">
+                Clear Date Filter
+            </a>
+        <?php endif; ?>
     </div>
 
     <!-- Customer Response Cards Stream -->
@@ -922,51 +1086,50 @@ include __DIR__ . '/_shell.php';
                 $score = (int)$r['rating'];
                 $has_reply = !empty($r['admin_reply']);
             ?>
-                <article class="admin-response-item" id="response-card-<?php echo (int)$r['id']; ?>">
-                    <header class="admin-response-head">
-                        <div class="admin-response-user">
-                            <div class="mini-avatar" style="width:40px;height:40px;font-size:15px;background:linear-gradient(135deg,var(--lime),#a8e030);color:var(--navy);">
-                                <?php echo htmlspecialchars($initial); ?>
+                <article class="collapsible-card admin-response-item" id="response-card-<?php echo (int)$r['id']; ?>">
+                    <div class="collapsible-header" onclick="toggleResponseCard(this)" style="cursor:pointer;">
+                        <header class="admin-response-head">
+                            <div class="admin-response-user">
+                                <div class="mini-avatar" style="width:40px;height:40px;font-size:15px;background:linear-gradient(135deg,var(--lime),#a8e030);color:var(--navy);">
+                                    <?php echo htmlspecialchars($initial); ?>
+                                </div>
+                                <div style="flex:1;">
+                                    <strong style="font-size:15px;display:flex;align-items:center;gap:8px;color:var(--ink);flex-wrap:wrap;">
+                                        <?php echo htmlspecialchars($r['customer_name']); ?>
+                                        <?php if (!empty($r['is_verified'])): ?>
+                                            <span style="font-size:11px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.12);padding:1px 7px;border-radius:99px;">✓ Verified</span>
+                                        <?php endif; ?>
+                                    </strong>
+                                    <span class="muted" style="font-size:12px;"><?php echo htmlspecialchars($r['customer_email'] ?: 'Anonymous customer'); ?></span>
+                                </div>
                             </div>
-                            <div>
-                                <strong style="font-size:15px;display:flex;align-items:center;gap:8px;color:var(--ink);flex-wrap:wrap;">
-                                    <?php echo htmlspecialchars($r['customer_name']); ?>
-                                    <?php if (!empty($r['is_verified'])): ?>
-                                        <span style="font-size:11px;font-weight:700;color:#16a34a;background:rgba(22,163,74,0.12);padding:1px 7px;border-radius:99px;">✓ Verified</span>
-                                    <?php endif; ?>
-                                </strong>
-                                <span class="muted" style="font-size:12px;"><?php echo htmlspecialchars($r['customer_email'] ?: 'Anonymous customer'); ?></span>
-                                <?php if (!empty($r['momo_ref'])): ?>
-                                    <span style="font-size:11.5px;color:var(--muted);margin-left:6px;">&middot; MoMo: <code style="background:var(--bg);color:var(--ink);padding:1px 5px;border-radius:4px;"><?php echo htmlspecialchars($r['momo_ref']); ?></code></span>
-                                <?php endif; ?>
-                                <?php if (!empty($r['receipt_photo'])): ?>
-                                    <span style="font-size:11.5px;margin-left:6px;"><a href="../<?php echo htmlspecialchars($r['receipt_photo']); ?>" target="_blank" rel="noopener" style="color:#0284c7;text-decoration:underline;font-weight:600;">📎 Receipt / Invoice</a></span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
 
-                        <div class="admin-response-meta">
-                            <?php if (!empty($r['is_escalated'])): ?>
-                                <?php if (($r['escalation_status'] ?? 'pending') === 'resolved'): ?>
-                                    <span style="font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:3px 8px;border-radius:99px;">✓ Resolved</span>
-                                <?php else: ?>
-                                    <span style="font-size:11px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fde68a;padding:3px 8px;border-radius:99px;" title="Gated negative review">⚠️ Needs Resolution</span>
+                            <div class="admin-response-meta">
+                                <?php if (!empty($r['is_escalated'])): ?>
+                                    <?php if (($r['escalation_status'] ?? 'pending') === 'resolved'): ?>
+                                        <span style="font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:3px 8px;border-radius:99px;">✓ Resolved</span>
+                                    <?php else: ?>
+                                        <span style="font-size:11px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fde68a;padding:3px 8px;border-radius:99px;" title="Gated negative review">⚠️ Needs Resolution</span>
+                                    <?php endif; ?>
+                                <?php elseif ($score >= 4): ?>
+                                    <span style="font-size:11px;font-weight:700;color:#1a73e8;background:#e8f0fe;border:1px solid #bfdbfe;padding:3px 8px;border-radius:99px;" title="Boosted to Google">🚀 Google Boosted</span>
                                 <?php endif; ?>
-                            <?php elseif ($score >= 4): ?>
-                                <span style="font-size:11px;font-weight:700;color:#1a73e8;background:#e8f0fe;border:1px solid #bfdbfe;padding:3px 8px;border-radius:99px;" title="Boosted to Google">🚀 Google Boosted</span>
-                            <?php endif; ?>
-                            <span style="font-size:12px;padding:3px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--line);font-weight:600;color:var(--ink);">
-                                ⌂ <?php echo htmlspecialchars($r['company_name']); ?>
-                            </span>
-                            <span class="table-rating" style="font-size:16px;">
-                                <?php echo str_repeat('★', $score); ?>
-                                <span style="font-size:13px;font-weight:800;"><?php echo $score; ?>.0</span>
-                            </span>
-                            <span class="muted" style="font-size:12px;">
-                                <?php echo date('M d, Y H:i', strtotime($r['created_at'])); ?>
-                            </span>
-                        </div>
-                    </header>
+                                <span style="font-size:12px;padding:3px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--line);font-weight:600;color:var(--ink);">
+                                    ⌂ <?php echo htmlspecialchars($r['company_name']); ?>
+                                </span>
+                                <span class="table-rating" style="font-size:16px;">
+                                    <?php echo str_repeat('★', $score); ?>
+                                    <span style="font-size:13px;font-weight:800;"><?php echo $score; ?>.0</span>
+                                </span>
+                                <span class="muted" style="font-size:12px;">
+                                    <?php echo date('M d, Y H:i', strtotime($r['created_at'])); ?>
+                                </span>
+                                <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;margin-left:8px;">▼</span>
+                            </div>
+                        </header>
+                    </div>
+
+                    <div class="collapsible-content">
 
                     <div class="admin-response-body">
                         <?php if (!empty($r['question_text'])): ?>
@@ -1052,6 +1215,7 @@ include __DIR__ . '/_shell.php';
                             </button>
                         </div>
                     </footer>
+                    </div>
                 </article>
             <?php endforeach; ?>
         <?php else: ?>
@@ -1227,26 +1391,7 @@ function closeCreateRatingModal() {
 }
 
 function populateEditRating(data) {
-    switchRatingTab('crud');
-    var card = document.getElementById('ratingCrudCard');
-    if (!card || !data) return;
-    card.style.display = 'block';
-
-    document.getElementById('formCardTitle').innerText = 'Edit Review #' + data.id + ' (' + data.customer_name + ')';
-    document.getElementById('formAction').value        = 'update_rating';
-    document.getElementById('formRatingId').value      = data.id;
-    document.getElementById('formSubmitBtn').innerText = 'Update Rating & Review';
-
-    document.getElementById('formCompanyId').value     = data.company_id || '<?php echo $default_company_id; ?>';
-    document.getElementById('formQuestionId').value   = data.question_id || '';
-    document.getElementById('formCustomerName').value  = data.customer_name;
-    document.getElementById('formCustomerEmail').value = data.customer_email || '';
-    document.getElementById('formComment').value       = data.comment || '';
-    var vChk = document.getElementById('formIsVerified');
-    if (vChk) vChk.checked = (parseInt(data.is_verified, 10) === 1);
-    setRatingScore(data.rating);
-
-    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    alert("Customer reviews, reviewer names, and feedback are permanently locked and cannot be edited to protect authentic customer proof.");
 }
 
 function setRatingScore(score) {
@@ -1322,6 +1467,215 @@ function populateQuestionEdit(data) {
 }
 
 </script>
+
+<script>
+// Collapsible response cards accordion
+function toggleResponseCard(header) {
+    const card = header.closest('.collapsible-card');
+    const content = card.querySelector('.collapsible-content');
+    const icon = header.querySelector('.collapse-icon');
+    const isOpen = content.style.maxHeight && content.style.maxHeight !== '0px';
+    
+    // Close all other response cards
+    document.querySelectorAll('.admin-response-item.collapsible-card').forEach(otherCard => {
+        if (otherCard !== card) {
+            const otherContent = otherCard.querySelector('.collapsible-content');
+            const otherIcon = otherCard.querySelector('.collapse-icon');
+            if (otherContent && otherIcon) {
+                otherContent.style.maxHeight = '0';
+                otherContent.style.opacity = '0';
+                otherContent.style.marginTop = '0';
+                otherIcon.style.transform = 'rotate(0deg)';
+            }
+        }
+    });
+    
+    // Toggle current card
+    if (isOpen) {
+        content.style.maxHeight = '0';
+        content.style.opacity = '0';
+        content.style.marginTop = '0';
+        icon.style.transform = 'rotate(0deg)';
+    } else {
+        content.style.maxHeight = content.scrollHeight + 'px';
+        content.style.opacity = '1';
+        content.style.marginTop = '14px';
+        icon.style.transform = 'rotate(180deg)';
+    }
+}
+
+// Initialize all response cards as collapsed on page load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.admin-response-item.collapsible-card .collapsible-content').forEach(content => {
+        content.style.maxHeight = '0';
+        content.style.opacity = '0';
+        content.style.overflow = 'hidden';
+        content.style.transition = 'max-height 0.4s ease, opacity 0.3s ease, margin-top 0.3s ease';
+        content.style.marginTop = '0';
+    });
+});
+
+// Toggle actions dropdown
+function toggleActionsDropdown(btn) {
+    var menu = btn.nextElementSibling;
+    if (!menu || !menu.classList.contains('actions-dropdown-menu')) return;
+    
+    var isCurrentlyOpen = menu.style.display === 'block';
+    
+    // Close all dropdowns first
+    closeAllDropdowns();
+    
+    // If it wasn't open before, open it now (toggle behavior)
+    if (!isCurrentlyOpen) {
+        menu.style.display = 'block';
+    }
+}
+
+// Close all dropdowns
+function closeAllDropdowns() {
+    document.querySelectorAll('.actions-dropdown-menu').forEach(function(menu) {
+        menu.style.display = 'none';
+    });
+}
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', function(e) {
+    // Check if click is outside any actions dropdown area
+    if (!e.target.closest('.admin-table-actions')) {
+        closeAllDropdowns();
+    }
+});
+
+// Prevent dropdown from closing when clicking inside it
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.actions-dropdown-menu')) {
+        e.stopPropagation();
+    }
+}, true);
+
+// Show question modal
+function showQuestionModal(questionText, questionNum) {
+    document.getElementById('questionNumber').textContent = 'Question #' + questionNum;
+    document.getElementById('questionFullText').textContent = questionText;
+    document.getElementById('questionModal').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+// Close question modal
+function closeQuestionModal() {
+    document.getElementById('questionModal').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+// Close modal on ESC key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeQuestionModal();
+        closeReviewModal();
+    }
+});
+
+// Show review modal
+function showReviewModal(customerName, rating, reviewText, dateText) {
+    document.getElementById('reviewModalCustomer').textContent = customerName;
+    document.getElementById('reviewModalRating').innerHTML = '★'.repeat(rating) + ' ' + rating + '.0';
+    document.getElementById('reviewModalDate').textContent = dateText;
+    document.getElementById('reviewModalText').textContent = reviewText;
+    document.getElementById('reviewModal').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+// Close review modal
+function closeReviewModal() {
+    document.getElementById('reviewModal').style.display = 'none';
+    document.body.style.overflow = '';
+}
+</script>
+
+<!-- Question Modal -->
+<div id="questionModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;padding:20px;overflow-y:auto;">
+    <div style="max-width:600px;margin:80px auto;background:#ffffff;border-radius:16px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.3);position:relative;">
+        <button type="button" onclick="closeQuestionModal()" style="position:absolute;top:16px;right:16px;background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--muted);line-height:1;padding:4px 8px;">×</button>
+        <h3 style="margin:0 0 8px;font-size:18px;color:var(--ink);font-weight:800;">Rating Question</h3>
+        <p style="margin:0 0 18px;font-size:13px;color:var(--muted);" id="questionNumber"></p>
+        <div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:16px 18px;">
+            <p style="margin:0;font-size:14px;line-height:1.6;color:var(--ink);" id="questionFullText"></p>
+        </div>
+        <div style="margin-top:20px;text-align:right;">
+            <button type="button" onclick="closeQuestionModal()" class="btn btn-secondary" style="padding:10px 20px;">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Review Feedback Modal -->
+<div id="reviewModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;padding:20px;overflow-y:auto;">
+    <div style="max-width:700px;margin:80px auto;background:#ffffff;border-radius:16px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.3);position:relative;">
+        <button type="button" onclick="closeReviewModal()" style="position:absolute;top:16px;right:16px;background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--muted);line-height:1;padding:4px 8px;">×</button>
+        
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--line);">
+            <div>
+                <h3 style="margin:0 0 4px;font-size:18px;color:var(--ink);font-weight:800;" id="reviewModalCustomer"></h3>
+                <p style="margin:0;font-size:13px;color:var(--muted);" id="reviewModalDate"></p>
+            </div>
+            <div style="color:#f59e0b;font-size:20px;font-weight:800;" id="reviewModalRating"></div>
+        </div>
+        
+        <div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:18px 20px;">
+            <p style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:0 0 8px;">Customer Feedback:</p>
+            <p style="margin:0;font-size:14px;line-height:1.7;color:var(--ink);white-space:pre-wrap;" id="reviewModalText"></p>
+        </div>
+        
+        <div style="margin-top:20px;text-align:right;">
+            <button type="button" onclick="closeReviewModal()" class="btn btn-secondary" style="padding:10px 20px;">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Actions Dropdown Styles -->
+<style>
+.btn-view-review:hover {
+    background: #e0f2fe;
+    border-color: #0284c7;
+}
+.actions-dropdown-toggle {
+    position: relative;
+}
+.actions-dropdown-menu {
+    animation: dropdownFadeIn 0.2s ease;
+}
+@keyframes dropdownFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.dropdown-action-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    transition: background 0.15s ease;
+}
+.dropdown-action-btn:hover {
+    background: var(--bg);
+}
+.dropdown-action-btn:first-child {
+    border-radius: 8px 8px 0 0;
+}
+.dropdown-action-btn:last-child {
+    border-radius: 0 0 8px 8px;
+}
+</style>
 
 <?php include __DIR__ . '/_shell_footer.php'; ?>
 

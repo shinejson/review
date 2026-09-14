@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 requireLogin();
+requireTeamAccess('social_card');
 
 $tenant_id = getTenantId();
 $is_tenant = isTenant();
@@ -128,12 +129,22 @@ include __DIR__ . '/_shell.php';
             <?php if (!empty($reviews)): ?>
                 <div class="form-group" style="margin-bottom:14px;">
                     <label for="reviewPicker" style="font-weight:700;font-size:12.5px;">Choose from your real reviews:</label>
+                    
+                    <!-- Search Input -->
+                    <input type="text" id="reviewSearch" placeholder="🔍 Search by customer name or review text..." 
+                           oninput="filterReviews(this.value)" 
+                           style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);font-size:13px;background:var(--bg);color:var(--ink);margin-bottom:8px;">
+                    
+                    <!-- Dropdown Select -->
                     <select id="reviewPicker" onchange="onReviewPicked(this.value)" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #cbd5e1;font-size:13px;background:var(--bg);color:var(--ink);">
                         <?php foreach ($reviews as $r): 
                             $snippet = mb_substr(strip_tags($r['comment']), 0, 60) . (mb_strlen($r['comment']) > 60 ? '...' : '');
                             $stars = str_repeat('★', (int)$r['rating']);
                         ?>
-                            <option value="<?php echo (int)$r['id']; ?>" <?php echo ((int)$r['id'] === (int)$initial_review['id']) ? 'selected' : ''; ?>>
+                            <option value="<?php echo (int)$r['id']; ?>" 
+                                    data-customer="<?php echo htmlspecialchars(strtolower($r['customer_name'] ?: 'anonymous')); ?>"
+                                    data-comment="<?php echo htmlspecialchars(strtolower($r['comment'])); ?>"
+                                    <?php echo ((int)$r['id'] === (int)$initial_review['id']) ? 'selected' : ''; ?>>
                                 <?php echo htmlspecialchars($r['customer_name'] ?: 'Anonymous'); ?> (<?php echo $stars; ?>) &mdash; "<?php echo htmlspecialchars($snippet); ?>"
                             </option>
                         <?php endforeach; ?>
@@ -148,18 +159,18 @@ include __DIR__ . '/_shell.php';
             <div class="form-grid" style="gap:12px;">
                 <div class="form-group">
                     <label for="cardCustName" style="font-weight:700;font-size:12.5px;">Customer Name</label>
-                    <input type="text" id="cardCustName" value="<?php echo htmlspecialchars($initial_review['customer_name'] ?: 'Valued Customer'); ?>" oninput="renderCard()">
+                    <input type="text" id="cardCustName" value="<?php echo htmlspecialchars($initial_review['customer_name'] ?: 'Valued Customer'); ?>" readonly style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);font-size:13.5px;background:var(--bg);color:var(--muted);cursor:not-allowed;opacity:0.7;">
                 </div>
                 <div class="form-group">
                     <label for="cardStars" style="font-weight:700;font-size:12.5px;">Rating Stars</label>
-                    <select id="cardStars" onchange="renderCard()" style="padding:9px 12px;font-size:13px;border-radius:8px;border:1px solid #cbd5e1;">
+                    <select id="cardStars" disabled style="width:100%;padding:10px 12px;font-size:13.5px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--muted);cursor:not-allowed;opacity:0.7;">
                         <option value="5" <?php echo ((int)$initial_review['rating'] === 5) ? 'selected' : ''; ?>>★★★★★ 5.0 Stars (Perfect)</option>
                         <option value="4" <?php echo ((int)$initial_review['rating'] === 4) ? 'selected' : ''; ?>>★★★★☆ 4.0 Stars (Great)</option>
                     </select>
                 </div>
                 <div class="form-group" style="grid-column:1/-1;">
                     <label for="cardComment" style="font-weight:700;font-size:12.5px;">Review Text</label>
-                    <textarea id="cardComment" rows="4" oninput="renderCard()" style="width:100%;font-size:13px;line-height:1.45;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;resize:vertical;"><?php echo htmlspecialchars($initial_review['comment']); ?></textarea>
+                    <textarea id="cardComment" rows="4" readonly style="width:100%;font-size:13.5px;line-height:1.45;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-family:inherit;resize:vertical;background:var(--bg);color:var(--muted);cursor:not-allowed;opacity:0.7;"><?php echo htmlspecialchars($initial_review['comment']); ?></textarea>
                 </div>
             </div>
         </div>
@@ -214,7 +225,7 @@ include __DIR__ . '/_shell.php';
                     <span style="width:12px;height:12px;border-radius:50%;background:#a855f7;display:inline-block;margin-right:6px;"></span>
                     Royal
                 </button>
-                <button type="button" class="theme-pill" data-theme="editorial" onclick="setTheme('editorial')" style="background:#ffffff;color:#091a27;border:1px solid #cbd5e1;">
+                <button type="button" class="theme-pill" data-theme="editorial" onclick="setTheme('editorial')" style="background:var(--card);color:var(--ink);border:1px solid var(--line);">
                     <span style="width:12px;height:12px;border-radius:50%;background:#091a27;display:inline-block;margin-right:6px;"></span>
                     Editorial
                 </button>
@@ -254,7 +265,7 @@ include __DIR__ . '/_shell.php';
     <div style="display:flex;flex-direction:column;gap:18px;position:sticky;top:20px;">
         
         <!-- Live Preview Stage -->
-        <div class="form-card" style="padding:22px;display:flex;flex-direction:column;align-items:center;background:#f8fafc;border:1px solid #cbd5e1;">
+        <div class="form-card" style="padding:22px;display:flex;flex-direction:column;align-items:center;background:var(--bg);border:1px solid var(--line);">
             <div style="width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
                 <strong style="font-size:13.5px;color:var(--ink);">🎨 Real-Time Graphic Preview</strong>
                 <span style="font-size:11.5px;background:#e2e8f0;color:#475569;font-weight:700;padding:3px 8px;border-radius:99px;" id="previewDimLabel">
@@ -301,23 +312,24 @@ include __DIR__ . '/_shell.php';
 
 <style>
 .aspect-btn {
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--line);
     border-radius: 10px;
     padding: 12px 8px;
-    background: #ffffff;
+    background: var(--card);
+    color: var(--ink);
     cursor: pointer;
     text-align: center;
     transition: all 0.2s ease;
 }
 .aspect-btn:hover {
-    border-color: #091a27;
-    background: #f8fafc;
+    border-color: var(--lime);
+    background: var(--bg);
 }
 .aspect-btn.active {
-    border-color: #091a27;
+    border-color: var(--lime);
     background: #091a27;
     color: #ffffff;
-    box-shadow: 0 4px 14px rgba(9, 26, 39, 0.2);
+    box-shadow: 0 4px 14px rgba(194, 245, 66, 0.3);
 }
 .aspect-btn strong {
     display: block;
@@ -366,19 +378,22 @@ include __DIR__ . '/_shell.php';
     background: #091a27;
     color: #c2f542;
     box-shadow: 0 4px 14px rgba(9, 26, 39, 0.25);
+    border: 1px solid var(--lime);
 }
 .btn-export-primary:hover {
     background: #0d2538;
     transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(194, 245, 66, 0.3);
 }
 .btn-export-secondary {
-    background: #ffffff;
+    background: var(--card);
     color: var(--ink);
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--line);
 }
 .btn-export-secondary:hover {
-    background: #f8fafc;
-    border-color: #94a3b8;
+    background: var(--bg);
+    border-color: var(--lime);
+    transform: translateY(-1px);
 }
 </style>
 
@@ -496,6 +511,32 @@ function onReviewPicked(reviewId) {
     }
 }
 
+// Filter/search reviews dropdown
+function filterReviews(searchTerm) {
+    var select = document.getElementById('reviewPicker');
+    var options = select.getElementsByTagName('option');
+    var search = searchTerm.toLowerCase().trim();
+    var visibleCount = 0;
+    
+    for (var i = 0; i < options.length; i++) {
+        var option = options[i];
+        var customerName = option.getAttribute('data-customer') || '';
+        var comment = option.getAttribute('data-comment') || '';
+        
+        if (search === '' || customerName.includes(search) || comment.includes(search)) {
+            option.style.display = '';
+            visibleCount++;
+        } else {
+            option.style.display = 'none';
+        }
+    }
+    
+    // Show message if no results
+    if (visibleCount === 0 && search !== '') {
+        // You could add a "No results" option here if desired
+    }
+}
+
 // Text wrapping utility
 function wrapText(ctx, text, maxWidth) {
     var words = text.split(/\s+/);
@@ -592,16 +633,16 @@ function renderCard() {
         }
         ctx.restore();
 
-        // Business Name & Category
+        // Business Name & Category - INCREASED FONT SIZE FOR BANNER
         var brandTextX = avatarX + avatarR + 18;
         ctx.fillStyle = theme.text;
-        ctx.font = 'bold ' + (currentRatio === 'banner' ? 26 : 32) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.font = 'bold ' + (currentRatio === 'banner' ? 42 : 38) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillText(brandName, brandTextX, avatarY - 10);
 
         ctx.fillStyle = theme.muted;
-        ctx.font = '600 ' + (currentRatio === 'banner' ? 16 : 19) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.font = '600 ' + (currentRatio === 'banner' ? 26 : 24) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.fillText(brandCategory + ' · Customer Reviews', brandTextX, avatarY + 16);
     }
 
@@ -628,7 +669,7 @@ function renderCard() {
     ctx.textBaseline = 'top';
     ctx.fillText('“', cardMarginX + 36, cardTop + 20);
 
-    // Stars Rating
+    // Stars Rating - INCREASED SIZE FOR BANNER
     var starY = cardTop + (currentRatio === 'banner' ? 36 : 56);
     var starX = cardMarginX + (currentRatio === 'banner' ? 100 : 120);
     var starStr = '';
@@ -636,7 +677,7 @@ function renderCard() {
     for (var s = stars; s < 5; s++) starStr += '☆ ';
 
     ctx.fillStyle = theme.stars;
-    ctx.font = 'bold ' + (currentRatio === 'banner' ? 32 : 42) + 'px sans-serif';
+    ctx.font = 'bold ' + (currentRatio === 'banner' ? 48 : 50) + 'px sans-serif';
     ctx.fillText(starStr.trim(), starX, starY);
 
     // 4. Review Comment Text
@@ -644,11 +685,11 @@ function renderCard() {
     var maxTextWidth = cardWidth - 88;
     var textY = cardTop + (currentRatio === 'banner' ? 100 : 140);
     
-    // Choose font size based on text length and aspect ratio
-    var fontSize = currentRatio === 'banner' ? 22 : (currentRatio === 'story' ? 34 : 32);
+    // Choose font size based on text length and aspect ratio - LARGER FOR BANNER
+    var fontSize = currentRatio === 'banner' ? 36 : (currentRatio === 'story' ? 42 : 40);
     if (comment.length > 200) fontSize -= 4;
     if (comment.length > 350) fontSize -= 4;
-    if (currentRatio === 'banner' && comment.length > 150) fontSize = 18;
+    if (currentRatio === 'banner' && comment.length > 150) fontSize = 30;
 
     ctx.fillStyle = theme.text;
     ctx.font = '500 ' + fontSize + 'px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -668,13 +709,44 @@ function renderCard() {
         ctx.fillText(lineText, textPaddingX, textY + (l * lineHeight));
     }
 
-    // 5. Customer Attribution Block (Inside bottom of card)
+    // Customer Attribution Block - INCREASED FONT SIZE FOR BANNER
     var authorY = cardBottom - (currentRatio === 'banner' ? 50 : 70);
 
     // Customer Avatar Circle (Initial)
-    var custAvatarR = currentRatio === 'banner' ? 20 : 26;
+    var custAvatarR = currentRatio === 'banner' ? 28 : 30;
     var custAvatarX = textPaddingX + custAvatarR;
     var custAvatarCenterY = authorY + custAvatarR;
+
+    ctx.fillStyle = theme.accent;
+    ctx.beginPath();
+    ctx.arc(custAvatarX, custAvatarCenterY, custAvatarR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#091a27';
+    ctx.font = 'bold ' + Math.round(custAvatarR * 0.95) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(custName.charAt(0).toUpperCase(), custAvatarX, custAvatarCenterY);
+
+    var custTextX = custAvatarX + custAvatarR + 14;
+    ctx.fillStyle = theme.text;
+    ctx.font = 'bold ' + (currentRatio === 'banner' ? 28 : 28) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(custName, custTextX, custAvatarCenterY - 10);
+
+    var metaText = '';
+    if (showVerified) metaText += '✓ Verified Customer';
+    if (showDate) {
+        if (metaText) metaText += ' · ';
+        metaText += '<?php echo date("M Y"); ?>';
+    }
+
+    if (metaText) {
+        ctx.fillStyle = showVerified ? '#22c55e' : theme.muted;
+        ctx.font = '700 ' + (currentRatio === 'banner' ? 18 : 18) + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText(metaText, custTextX, custAvatarCenterY + 12);
+    }stAvatarR;
 
     ctx.fillStyle = theme.accent;
     ctx.beginPath();

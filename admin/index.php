@@ -70,6 +70,9 @@ $pageTitle = 'Dashboard';
 $activeNav = 'dashboard';
 include __DIR__ . '/_shell.php';
 ?>
+<?php if (isset($_SESSION['flash_error'])): ?>
+<div class="alert alert-error" role="alert">⚠ <?php echo htmlspecialchars($_SESSION['flash_error']); unset($_SESSION['flash_error']); ?></div>
+<?php endif; ?>
   <div class="welcome-row">
     <div>
       <p class="eyebrow">Good morning, <?php echo htmlspecialchars($is_tenant?($tenant_info['company_name']??'there'):($_SESSION['admin_username']??'Admin')); ?></p>
@@ -105,7 +108,7 @@ include __DIR__ . '/_shell.php';
 
   <?php if ($profile_strength): ?>
   <!-- Profile Strength & Setup Completion Card -->
-  <div class="profile-strength-card" style="background:#ffffff;border:1px solid var(--line, #e2e8f0);border-radius:18px;padding:24px 28px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.03);">
+  <div class="profile-strength-card" style="background:var(--ps-card-bg, #ffffff);border:1px solid var(--line, #e2e8f0);border-radius:18px;padding:24px 28px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.03);">
       <div style="display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:center;" class="profile-strength-grid">
           
           <!-- Left: Gamified Ring & Tier Summary -->
@@ -113,7 +116,7 @@ include __DIR__ . '/_shell.php';
               <div style="position:relative;width:96px;height:96px;flex-shrink:0;">
                   <svg width="96" height="96" viewBox="0 0 96 96" style="transform:rotate(-90deg);">
                       <!-- Background Track -->
-                      <circle cx="48" cy="48" r="42" stroke="#f1f5f9" stroke-width="8" fill="none" />
+                      <circle cx="48" cy="48" r="42" stroke="#f1f5f9" stroke-width="8" fill="none" style="stroke:var(--ps-track, #f1f5f9);" />
                       <!-- Progress Arc -->
                       <circle cx="48" cy="48" r="42"
                               stroke="<?php echo htmlspecialchars($profile_strength['tier_color']); ?>"
@@ -132,7 +135,7 @@ include __DIR__ . '/_shell.php';
               </div>
 
               <div>
-                  <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,0.04);padding:4px 10px;border-radius:99px;font-size:12px;font-weight:700;color:var(--ink, #091a27);margin-bottom:6px;">
+                  <div style="display:inline-flex;align-items:center;gap:6px;background:var(--ps-tier-bg, rgba(0,0,0,0.04));padding:4px 10px;border-radius:99px;font-size:12px;font-weight:700;color:var(--ink, #091a27);margin-bottom:6px;">
                       <span><?php echo $profile_strength['tier_icon']; ?></span>
                       <span><?php echo htmlspecialchars($profile_strength['tier']); ?></span>
                   </div>
@@ -156,9 +159,9 @@ include __DIR__ . '/_shell.php';
 
               <div id="strengthChecklistGrid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:10px;">
                   <?php foreach ($profile_strength['items'] as $item): ?>
-                      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:10px;background:<?php echo $item['done'] ? '#f8fafc' : '#ffffff'; ?>;border:1px solid <?php echo $item['done'] ? '#e2e8f0' : 'rgba(194,245,66,0.8)'; ?>;transition:all 0.2s;">
+                      <div class="ps-item <?php echo $item['done'] ? 'ps-done' : 'ps-todo'; ?>">
                           <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-                              <div style="width:22px;height:22px;border-radius:50%;background:<?php echo $item['done'] ? '#dcfce7' : '#f1f5f9'; ?>;color:<?php echo $item['done'] ? '#16a34a' : '#94a3b8'; ?>;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;">
+                              <div class="ps-dot <?php echo $item['done'] ? 'ps-dot-done' : 'ps-dot-todo'; ?>">
                                   <?php echo $item['done'] ? '✓' : '○'; ?>
                               </div>
                               <div style="min-width:0;">
@@ -171,7 +174,7 @@ include __DIR__ . '/_shell.php';
                               </div>
                           </div>
                           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:10px;">
-                              <span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:99px;background:<?php echo $item['done'] ? 'rgba(22,163,74,0.1)' : 'rgba(59,130,246,0.1)'; ?>;color:<?php echo $item['done'] ? '#16a34a' : '#2563eb'; ?>;">
+                              <span class="ps-badge <?php echo $item['done'] ? 'ps-badge-done' : 'ps-badge-todo'; ?>" style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:99px;background:<?php echo $item['done'] ? 'rgba(22,163,74,0.1)' : 'rgba(59,130,246,0.1)'; ?>;color:<?php echo $item['done'] ? '#16a34a' : '#2563eb'; ?>;">
                                   <?php echo $item['done'] ? 'Done' : '+' . $item['weight'] . '%'; ?>
                               </span>
                               <a href="<?php echo htmlspecialchars($item['action_url']); ?>" class="btn btn-secondary" style="padding:5px 10px;font-size:11px;text-decoration:none;font-weight:600;white-space:nowrap;border-radius:6px;">
@@ -187,6 +190,40 @@ include __DIR__ . '/_shell.php';
   </div>
 
   <style>
+  /* Profile Strength card — theme aware (light defaults, dark overrides) */
+  .profile-strength-card {
+      --ps-card-bg: #ffffff;
+      --ps-track: #f1f5f9;
+      --ps-tier-bg: rgba(0, 0, 0, 0.04);
+  }
+  .ps-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; border-radius: 10px; border: 1px solid #e2e8f0;
+      background: #ffffff; transition: all 0.2s;
+  }
+  .ps-done { background: #f8fafc; border-color: #e2e8f0; }
+  .ps-todo { background: #ffffff; border-color: rgba(194, 245, 66, 0.8); }
+  .ps-dot {
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 800; flex-shrink: 0;
+  }
+  .ps-dot-done { background: #dcfce7; color: #16a34a; }
+  .ps-dot-todo { background: #f1f5f9; color: #94a3b8; }
+  :root[data-theme='dark'] .ps-badge-done { background: rgba(52, 211, 153, 0.15) !important; color: #34d399 !important; }
+  :root[data-theme='dark'] .ps-badge-todo { background: rgba(59, 130, 246, 0.15) !important; color: #93c5fd !important; }
+
+  :root[data-theme='dark'] .profile-strength-card {
+      --ps-card-bg: #0f1f2e;
+      --ps-track: rgba(255, 255, 255, 0.08);
+      --ps-tier-bg: rgba(194, 245, 66, 0.15);
+  }
+  :root[data-theme='dark'] .ps-item { background: #0f1f2e; border-color: rgba(255, 255, 255, 0.08); }
+  :root[data-theme='dark'] .ps-done { background: #13293b; }
+  :root[data-theme='dark'] .ps-todo { border-color: rgba(194, 245, 66, 0.8); }
+  :root[data-theme='dark'] .ps-dot-done { background: rgba(52, 211, 153, 0.18); color: #34d399; }
+  :root[data-theme='dark'] .ps-dot-todo { background: rgba(255, 255, 255, 0.08); color: #94a3b8; }
+
   @media (max-width: 820px) {
       .profile-strength-grid { grid-template-columns: 1fr !important; }
       .profile-strength-left { border-right: none !important; border-bottom: 1px solid var(--line, #e2e8f0); padding-right: 0 !important; padding-bottom: 18px !important; }

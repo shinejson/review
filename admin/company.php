@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 requireLogin();
+requireTeamAccess('company');
 
 $tenant_id = getTenantId();
 $is_tenant = isTenant();
@@ -25,14 +26,36 @@ if ($tenant_id) {
     $t->close();
 }
 
-// Fetch tenant's own company profile from customers table
-$company_profile = null;
+// Fetch ALL company profiles owned by this tenant (multi-branch / multi-location support).
+$company_profiles   = [];
+$primary_company_id = 0;
 if ($tenant_id) {
-    $cp = $conn->prepare("SELECT * FROM customers WHERE tenant_id=? ORDER BY id ASC LIMIT 1");
+    $cp = $conn->prepare("SELECT * FROM customers WHERE tenant_id=? ORDER BY id ASC");
     $cp->bind_param("i", $tenant_id);
     $cp->execute();
-    $company_profile = $cp->get_result()->fetch_assoc();
+    $res_cp = $cp->get_result();
+    while ($row_cp = $res_cp->fetch_assoc()) {
+        $company_profiles[] = $row_cp;
+    }
     $cp->close();
+    $primary_company_id = (int)($company_profiles[0]['id'] ?? 0);
+}
+
+// Which profile is being edited? ?company=<id> must be owned by this tenant.
+// ?new=1 starts a brand-new company profile (uses the INSERT branch on save).
+$is_new_profile  = isset($_GET['new']);
+$sel_company_id  = (int)($_GET['company'] ?? 0);
+$company_profile = null;
+if (!$is_new_profile) {
+    foreach ($company_profiles as $cp_row) {
+        if ($sel_company_id > 0 && (int)$cp_row['id'] === $sel_company_id) {
+            $company_profile = $cp_row;
+            break;
+        }
+    }
+    if (!$company_profile) {
+        $company_profile = $company_profiles[0] ?? null;
+    }
 }
 
 $success = '';
@@ -68,12 +91,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
     $tiktok_url    = cleanMapUrl($_POST['tiktok_url'] ?? '');
     $youtube_url   = cleanMapUrl($_POST['youtube_url'] ?? '');
 
+    // Which company is being saved? (hidden field set by the form)
+    $edit_company_id = (int)($_POST['company_id'] ?? 0);
+
+    // Ownership guard: a tenant may only update their own company profiles.
+    $owned = false;
+    if ($edit_company_id > 0) {
+        $own = $conn->prepare("SELECT id FROM customers WHERE id=? AND tenant_id=?");
+        $own->bind_param("ii", $edit_company_id, $tenant_id);
+        $own->execute();
+        $owned = (bool)$own->get_result()->fetch_assoc();
+        $own->close();
+    }
+
     if (empty($company_name)) {
         $_SESSION['error'] = 'Company name is required.';
     } elseif (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $_SESSION['error'] = 'Please enter a valid email address.';
     } elseif ($whatsapp_raw !== '' && $whatsapp_num === '') {
         $_SESSION['error'] = 'That WhatsApp number is not usable. Enter it with the country code, e.g. +233 24 555 0118.';
+    } elseif ($edit_company_id > 0 && !$owned) {
+        $_SESSION['error'] = 'That company profile does not belong to your workspace.';
     } else {
         $cat_val = $category_id > 0 ? $category_id : null;
 
@@ -82,29 +120,62 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
         ensureBoosterColumns($conn);
         ensureLocationAndSocialColumns($conn);
 
-        if ($company_profile) {
+        if ($edit_company_id > 0) {
             $upd = $conn->prepare("UPDATE customers SET company_name=?,email=?,phone=?,whatsapp_number=?,website=?,google_store_url=?,booster_enabled=?,booster_min_stars=?,address=?,description=?,google_map_url=?,map_embed_code=?,location_description=?,facebook_url=?,instagram_url=?,twitter_url=?,linkedin_url=?,tiktok_url=?,youtube_url=?,category_id=? WHERE id=? AND tenant_id=?");
-            $upd->bind_param("ssssssiisssssssssssiii", $company_name, $email, $phone, $whatsapp_num, $website, $google_url, $booster_enabled, $booster_min_stars, $address, $description, $google_map_url, $map_embed_code, $location_description, $facebook_url, $instagram_url, $twitter_url, $linkedin_url, $tiktok_url, $youtube_url, $cat_val, $company_profile['id'], $tenant_id);
+            $upd->bind_param("ssssssiisssssssssssiii", $company_name, $email, $phone, $whatsapp_num, $website, $google_url, $booster_enabled, $booster_min_stars, $address, $description, $google_map_url, $map_embed_code, $location_description, $facebook_url, $instagram_url, $twitter_url, $linkedin_url, $tiktok_url, $youtube_url, $cat_val, $edit_company_id, $tenant_id);
             $upd->execute();
             $upd->close();
+            $saved_id = $edit_company_id;
+            $_SESSION['success'] = 'Company profile saved successfully!';
+
+            // Keep the tenant brand name in sync when the primary profile is updated.
+            if ($edit_company_id === $primary_company_id) {
+                $sync = $conn->prepare("UPDATE tenants SET company_name=? WHERE id=?");
+                $sync->bind_param("si", $company_name, $tenant_id);
+                $sync->execute();
+                $sync->close();
+            }
         } else {
-            $ins = $conn->prepare("INSERT INTO customers (tenant_id,company_name,email,phone,whatsapp_number,website,google_store_url,booster_enabled,booster_min_stars,address,description,google_map_url,map_embed_code,location_description,facebook_url,instagram_url,twitter_url,linkedin_url,tiktok_url,youtube_url,category_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())");
-            $ins->bind_param("issssssiisssssssssssi", $tenant_id, $company_name, $email, $phone, $whatsapp_num, $website, $google_url, $booster_enabled, $booster_min_stars, $address, $description, $google_map_url, $map_embed_code, $location_description, $facebook_url, $instagram_url, $twitter_url, $linkedin_url, $tiktok_url, $youtube_url, $cat_val);
-            $ins->execute();
-            $ins->close();
+            // Creating a brand-new company profile — enforce the plan's company limit.
+            $limit = 0;
+            $lim = $conn->query(
+                "SELECT p.max_customers FROM tenants t JOIN subscription_plans p ON t.plan_id = p.id WHERE t.id = " . (int)$tenant_id
+            );
+            if ($lim) {
+                $limit = (int)($lim->fetch_assoc()['max_customers'] ?? 0);
+                $lim->close();
+            }
+            $current_count = count($company_profiles);
+
+            if ($limit > 0 && $limit < 999 && $current_count >= $limit) {
+                $_SESSION['error'] = 'Your "' . htmlspecialchars($tenant['plan_name'] ?? 'current') . '" plan allows up to ' . $limit . ' company profiles (' . $current_count . ' in use). Please upgrade your subscription to add more.';
+            } else {
+                $ins = $conn->prepare("INSERT INTO customers (tenant_id,company_name,email,phone,whatsapp_number,website,google_store_url,booster_enabled,booster_min_stars,address,description,google_map_url,map_embed_code,location_description,facebook_url,instagram_url,twitter_url,linkedin_url,tiktok_url,youtube_url,category_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())");
+                $ins->bind_param("issssssiisssssssssssi", $tenant_id, $company_name, $email, $phone, $whatsapp_num, $website, $google_url, $booster_enabled, $booster_min_stars, $address, $description, $google_map_url, $map_embed_code, $location_description, $facebook_url, $instagram_url, $twitter_url, $linkedin_url, $tiktok_url, $youtube_url, $cat_val);
+                $ins->execute();
+                $saved_id = (int)($conn->insert_id ?: 0);
+                $ins->close();
+                $_SESSION['success'] = 'New company profile created successfully!';
+
+                // Sync the tenant brand name only when this is the very first profile.
+                if (!$primary_company_id) {
+                    $sync = $conn->prepare("UPDATE tenants SET company_name=? WHERE id=?");
+                    $sync->bind_param("si", $company_name, $tenant_id);
+                    $sync->execute();
+                    $sync->close();
+                }
+            }
         }
-
-        // Keep tenant table in sync
-        $sync = $conn->prepare("UPDATE tenants SET company_name=? WHERE id=?");
-        $sync->bind_param("si", $company_name, $tenant_id);
-        $sync->execute();
-        $sync->close();
-
-        $_SESSION['success'] = 'Company profile saved successfully!';
     }
-    
-    // Redirect to prevent form resubmission
-    header('Location: company.php');
+
+    // Redirect to prevent form resubmission (keep the tenant on the profile they just edited).
+    $redirect_target = 'company.php';
+    if (!empty($saved_id) && (int)$saved_id > 0) {
+        $redirect_target .= '?company=' . (int)$saved_id;
+    } elseif (isset($_GET['new'])) {
+        $redirect_target .= '?new=1';
+    }
+    header('Location: ' . $redirect_target);
     exit;
 }
 
@@ -181,7 +252,7 @@ include __DIR__ . '/_shell.php';
     <div>
         <p class="eyebrow">Your Workspace &middot; Company Profile</p>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <h1 style="margin:0;"><?php echo htmlspecialchars($company_profile['company_name'] ?? $tenant['company_name'] ?? 'Company Profile'); ?></h1>
+            <h1 style="margin:0;"><?php echo $is_new_profile ? 'Add New Company' : htmlspecialchars($company_profile['company_name'] ?? $tenant['company_name'] ?? 'Company Profile'); ?></h1>
             <a href="index.php" title="Profile Strength Meter" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;background:rgba(9,26,39,0.05);color:var(--ink);border:1px solid var(--line);text-decoration:none;transition:all 0.2s;">
                 <span><?php echo $strength['tier_icon']; ?></span>
                 <span style="color:<?php echo $strength['tier_color']; ?>;font-weight:800;"><?php echo $strength['score']; ?>%</span>
@@ -190,10 +261,12 @@ include __DIR__ . '/_shell.php';
         </div>
         <p class="muted" style="margin-top:6px;">Your company information shown on the public rating page and all reports.</p>
     </div>
+    <?php if (!$is_new_profile && $company_profile): ?>
     <a href="<?php echo htmlspecialchars($public_url); ?>" target="_blank"
        class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;">
         ↗ View Public Rating Page
     </a>
+    <?php endif; ?>
 </div>
 
 <?php if ($success): ?>
@@ -202,6 +275,52 @@ include __DIR__ . '/_shell.php';
 <?php if ($error): ?>
 <div class="alert alert-error" role="alert">⚠ <?php echo htmlspecialchars($error); ?></div>
 <?php endif; ?>
+
+<!-- ===== Company Profiles Manager ===== -->
+<div class="form-card" style="padding:22px;margin-bottom:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+        <div>
+            <h3 style="margin:0;font-size:16px;">🏢 Company Profiles</h3>
+            <p class="muted" style="margin:3px 0 0;font-size:12.5px;">
+                Manage the businesses, branches or locations under your workspace —
+                <strong><?php echo count($company_profiles); ?></strong> registered.
+            </p>
+        </div>
+        <a href="company.php?new=1" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;font-size:13px;text-decoration:none;">
+            + Add New Company
+        </a>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:10px;">
+        <?php foreach ($company_profiles as $cp_row):
+            $cp_active = $company_profile && (int)$company_profile['id'] === (int)$cp_row['id'];
+        ?>
+        <a href="company.php?company=<?php echo (int)$cp_row['id']; ?>"
+           style="display:inline-flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;
+                  border:1px solid <?php echo $cp_active ? 'var(--lime)' : 'var(--line)'; ?>;
+                  background:<?php echo $cp_active ? 'rgba(194,245,66,0.14)' : 'var(--bg, #f8fafc)'; ?>;
+                  text-decoration:none;transition:all .15s ease;">
+            <span style="width:34px;height:34px;border-radius:9px;background:<?php echo $cp_active ? 'var(--lime)' : 'var(--primary-dark)'; ?>;color:<?php echo $cp_active ? 'var(--ink)' : '#fff'; ?>;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;">
+                <?php echo htmlspecialchars(strtoupper(mb_substr($cp_row['company_name'], 0, 1))); ?>
+            </span>
+            <span>
+                <strong style="font-size:13px;color:var(--ink);display:block;"><?php echo htmlspecialchars($cp_row['company_name']); ?></strong>
+                <small class="muted" style="font-size:11px;">#<?php echo (int)$cp_row['id']; ?><?php echo $cp_active ? ' · Editing now' : ''; ?></small>
+            </span>
+        </a>
+        <?php endforeach; ?>
+
+        <?php if (!count($company_profiles)): ?>
+        <p class="muted" style="font-size:13px;margin:6px 0;">No company profiles yet — click <strong>+ Add New Company</strong> to create the first one.</p>
+        <?php endif; ?>
+
+        <?php if ($is_new_profile): ?>
+        <span style="display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px dashed var(--lime);background:rgba(194,245,66,0.10);font-size:13px;font-weight:700;color:var(--ink);">
+            ✚ Creating a new profile…
+        </span>
+        <?php endif; ?>
+    </div>
+</div>
 
 <!-- Metric Cards -->
 <div class="metric-grid" style="margin-bottom:24px;">
@@ -250,6 +369,7 @@ include __DIR__ . '/_shell.php';
 
         <form method="POST" action="company.php">
             <input type="hidden" name="action" value="update_profile">
+            <input type="hidden" name="company_id" value="<?php echo (int)($company_profile['id'] ?? 0); ?>">
             <div class="form-grid">
                 <div class="form-group">
                     <label for="company_name">Company Name *</label>
@@ -311,8 +431,8 @@ include __DIR__ . '/_shell.php';
                 </div>
 
                 <!-- Google Review Booster & Sentiment Gating -->
-                <div style="grid-column:1/-1;background:var(--bg, #f8fafc);border:1px solid var(--line, #e2e8f0);border-radius:12px;padding:20px;margin:6px 0 10px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+                <div class="collapsible-card" style="grid-column:1/-1;background:var(--bg, #f8fafc);border:1px solid var(--line, #e2e8f0);border-radius:12px;padding:20px;margin:6px 0 10px;">
+                    <div class="collapsible-header" onclick="toggleSection(this)" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;cursor:pointer;">
                         <div style="display:flex;align-items:center;gap:10px;">
                             <div style="width:36px;height:36px;border-radius:8px;background:#e8f0fe;display:flex;align-items:center;justify-content:center;font-size:18px;color:#1a73e8;font-weight:bold;">
                                 G
@@ -322,12 +442,17 @@ include __DIR__ . '/_shell.php';
                                 <p class="muted" style="margin:2px 0 0;font-size:12px;">Boost Google stars from happy customers while gating complaints away from public search.</p>
                             </div>
                         </div>
-                        <?php if ($booster_active): ?>
-                            <span class="status-badge-replied" style="font-size:11px;">● Booster Active</span>
-                        <?php else: ?>
-                            <span class="status-badge-pending" style="font-size:11px;">● Needs Review Link</span>
-                        <?php endif; ?>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <?php if ($booster_active): ?>
+                                <span class="status-badge-replied" style="font-size:11px;">● Booster Active</span>
+                            <?php else: ?>
+                                <span class="status-badge-pending" style="font-size:11px;">● Needs Review Link</span>
+                            <?php endif; ?>
+                            <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
+                        </div>
                     </div>
+
+                    <div class="collapsible-content">
 
                     <div class="form-group" style="margin-bottom:14px;">
                         <label for="google_store_url" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -374,6 +499,7 @@ include __DIR__ . '/_shell.php';
                             <span><strong>Negative (1–3★):</strong> Privately Gated &amp; Escalated (No Google link)</span>
                         </div>
                     </div>
+                    </div>
                 </div>
 
                 <div class="form-group" style="grid-column:1/-1;">
@@ -392,8 +518,8 @@ include __DIR__ . '/_shell.php';
                 </div>
 
                 <!-- Google Map & Landmark Directions Card -->
-                <div style="grid-column:1/-1;background:var(--bg, #f8fafc);border:1px solid var(--line, #e2e8f0);border-radius:12px;padding:20px;margin:6px 0 10px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+                <div class="collapsible-card" style="grid-column:1/-1;background:var(--bg, #f8fafc);border:1px solid var(--line, #e2e8f0);border-radius:12px;padding:20px;margin:6px 0 10px;">
+                    <div class="collapsible-header" onclick="toggleSection(this)" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;cursor:pointer;">
                         <div style="display:flex;align-items:center;gap:10px;">
                             <div style="width:36px;height:36px;border-radius:8px;background:#e0f2fe;display:flex;align-items:center;justify-content:center;font-size:18px;color:#0284c7;">
                                 📍
@@ -403,12 +529,17 @@ include __DIR__ . '/_shell.php';
                                 <p class="muted" style="margin:2px 0 0;font-size:12px;">Help customers find and navigate directly to your premises with Google Maps directions.</p>
                             </div>
                         </div>
-                        <?php if (!empty($google_map_url)): ?>
-                            <a href="<?php echo htmlspecialchars($google_map_url); ?>" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:700;color:#0284c7;text-decoration:none;">
-                                🚗 Test Direction Link ↗
-                            </a>
-                        <?php endif; ?>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <?php if (!empty($google_map_url)): ?>
+                                <a href="<?php echo htmlspecialchars($google_map_url); ?>" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:700;color:#0284c7;text-decoration:none;" onclick="event.stopPropagation();">
+                                    🚗 Test Direction Link ↗
+                                </a>
+                            <?php endif; ?>
+                            <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
+                        </div>
                     </div>
+
+                    <div class="collapsible-content">
 
                     <div class="form-group" style="margin-bottom:14px;">
                         <label for="google_map_url" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -442,19 +573,23 @@ include __DIR__ . '/_shell.php';
                             Optional: In Google Maps, click <strong>Share &rarr; Embed a map</strong> &rarr; Copy HTML. If provided, an interactive map preview is rendered in the footer.
                         </small>
                     </div>
+                    </div>
                 </div>
 
                 <!-- Social Media Profiles & Company Links Card -->
-                <div style="grid-column:1/-1;background:var(--bg, #f8fafc);border:1px solid var(--line, #e2e8f0);border-radius:12px;padding:20px;margin:6px 0 16px;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                <div class="collapsible-card" style="grid-column:1/-1;background:var(--bg, #f8fafc);border:1px solid var(--line, #e2e8f0);border-radius:12px;padding:20px;margin:6px 0 16px;">
+                    <div class="collapsible-header" onclick="toggleSection(this)" style="display:flex;align-items:center;gap:10px;margin-bottom:14px;cursor:pointer;">
                         <div style="width:36px;height:36px;border-radius:8px;background:#fdf2f8;display:flex;align-items:center;justify-content:center;font-size:18px;color:#db2777;">
                             🔗
                         </div>
-                        <div>
+                        <div style="flex:1;">
                             <h4 style="margin:0;font-size:14.5px;color:var(--ink);font-weight:700;">Company Social Media Profiles</h4>
                             <p class="muted" style="margin:2px 0 0;font-size:12px;">Display clickable, branded social icons alongside your company website link in the footer.</p>
                         </div>
+                        <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
                     </div>
+
+                    <div class="collapsible-content">
 
                     <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:14px;">
                         <div class="form-group" style="margin:0;">
@@ -511,6 +646,7 @@ include __DIR__ . '/_shell.php';
                                    value="<?php echo htmlspecialchars($youtube_url); ?>">
                         </div>
                     </div>
+                    </div>
                 </div>
             </div>
 
@@ -527,12 +663,12 @@ include __DIR__ . '/_shell.php';
     <div style="display:flex;flex-direction:column;gap:16px;">
 
         <!-- Profile Strength Mini Widget -->
-        <div class="form-card" style="padding:22px;border-left:4px solid <?php echo $strength['tier_color']; ?>;background:linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);">
+        <div class="form-card" style="padding:22px;border-left:4px solid <?php echo $strength['tier_color']; ?>;background:var(--card);">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;">
                 <div style="display:flex;align-items:center;gap:12px;">
                     <div style="position:relative;width:52px;height:52px;flex-shrink:0;">
                         <svg width="52" height="52" viewBox="0 0 48 48" style="transform:rotate(-90deg);">
-                            <circle cx="24" cy="24" r="20" fill="none" stroke="#e2e8f0" stroke-width="4.5"/>
+                            <circle cx="24" cy="24" r="20" fill="none" stroke="var(--line)" stroke-width="4.5"/>
                             <circle cx="24" cy="24" r="20" fill="none" stroke="<?php echo $strength['tier_color']; ?>" stroke-width="4.5"
                                     stroke-dasharray="125.66"
                                     stroke-dashoffset="<?php echo round(125.66 * (1 - ($strength['score'] / 100)), 2); ?>"
@@ -543,20 +679,20 @@ include __DIR__ . '/_shell.php';
                         </div>
                     </div>
                     <div>
-                        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;">Profile Strength</div>
+                        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">Profile Strength</div>
                         <div style="font-size:15px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:6px;">
                             <span><?php echo $strength['tier_icon']; ?></span>
                             <span><?php echo htmlspecialchars($strength['tier']); ?></span>
                         </div>
                     </div>
                 </div>
-                <span style="font-size:11.5px;font-weight:700;color:<?php echo $strength['tier_color']; ?>;background:rgba(0,0,0,0.04);padding:4px 8px;border-radius:6px;white-space:nowrap;">
+                <span style="font-size:11.5px;font-weight:700;color:<?php echo $strength['tier_color']; ?>;background:rgba(<?php echo $strength['tier_color'] === '#16a34a' ? '22,163,74' : ($strength['tier_color'] === '#c2f542' ? '194,245,66' : '100,116,139'); ?>,0.15);padding:4px 8px;border-radius:6px;white-space:nowrap;">
                     <?php echo $strength['completed_count']; ?>/<?php echo $strength['total_items']; ?> Done
                 </span>
             </div>
 
             <!-- Progress bar -->
-            <div style="height:6px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-bottom:10px;">
+            <div style="height:6px;background:var(--line);border-radius:99px;overflow:hidden;margin-bottom:10px;">
                 <div style="height:100%;width:<?php echo $strength['score']; ?>%;background:<?php echo $strength['tier_color']; ?>;border-radius:99px;transition:width 0.6s ease;"></div>
             </div>
 
@@ -566,7 +702,7 @@ include __DIR__ . '/_shell.php';
 
             <div style="display:flex;flex-direction:column;gap:7px;padding-top:12px;border-top:1px solid var(--line);">
                 <?php foreach ($strength['items'] as $item): ?>
-                    <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:<?php echo $item['done'] ? '#16a34a' : '#475569'; ?>;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:<?php echo $item['done'] ? '#16a34a' : 'var(--muted)'; ?>;">
                         <span style="display:flex;align-items:center;gap:6px;min-width:0;">
                             <span style="font-weight:800;font-size:11px;"><?php echo $item['done'] ? '✓' : '○'; ?></span>
                             <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;<?php echo $item['done'] ? '' : 'font-weight:600;color:var(--ink);'; ?>"><?php echo htmlspecialchars($item['title']); ?></span>
@@ -664,7 +800,7 @@ include __DIR__ . '/_shell.php';
             <dl class="admin-kv-list">
                 <div class="admin-kv-row">
                     <dt>Tenant ID</dt>
-                    <dd>#<?php echo (int)$tenant_id; ?></dd>
+                    <dd><?php echo !empty($tenant['public_id']) ? '<span style="font-family:monospace;background:rgba(99,102,241,0.12);color:#4338ca;border:1px solid rgba(99,102,241,0.25);font-weight:800;letter-spacing:1px;padding:3px 10px;border-radius:6px;font-size:13px;">' . htmlspecialchars($tenant['public_id']) . '</span>' : '#' . (int)$tenant_id; ?></dd>
                 </div>
                 <div class="admin-kv-row">
                     <dt>Login Username</dt>
@@ -703,6 +839,50 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <script>
+// Collapsible accordion functionality
+function toggleSection(header) {
+    const card = header.closest('.collapsible-card');
+    const content = card.querySelector('.collapsible-content');
+    const icon = header.querySelector('.collapse-icon');
+    const isOpen = content.style.maxHeight && content.style.maxHeight !== '0px';
+    
+    // Close all other sections
+    document.querySelectorAll('.collapsible-card').forEach(otherCard => {
+        if (otherCard !== card) {
+            const otherContent = otherCard.querySelector('.collapsible-content');
+            const otherIcon = otherCard.querySelector('.collapse-icon');
+            otherContent.style.maxHeight = '0';
+            otherContent.style.opacity = '0';
+            otherContent.style.marginTop = '0';
+            otherIcon.style.transform = 'rotate(0deg)';
+        }
+    });
+    
+    // Toggle current section
+    if (isOpen) {
+        content.style.maxHeight = '0';
+        content.style.opacity = '0';
+        content.style.marginTop = '0';
+        icon.style.transform = 'rotate(0deg)';
+    } else {
+        content.style.maxHeight = content.scrollHeight + 'px';
+        content.style.opacity = '1';
+        content.style.marginTop = '14px';
+        icon.style.transform = 'rotate(180deg)';
+    }
+}
+
+// Initialize all sections as closed on page load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.collapsible-content').forEach(content => {
+        content.style.maxHeight = '0';
+        content.style.opacity = '0';
+        content.style.overflow = 'hidden';
+        content.style.transition = 'max-height 0.4s ease, opacity 0.3s ease, margin-top 0.3s ease';
+        content.style.marginTop = '0';
+    });
+});
+
 // Mirrors whatsappDigits() in includes/functions.php so the "test this
 // number" link matches the wa.me URL customers will get.
 function previewWhatsapp(value) {

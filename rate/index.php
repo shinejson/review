@@ -282,6 +282,9 @@ $brand_logo   = $tenant_info['logo'] ?? '';
 $brand_banner = $tenant_info['banner'] ?? ($company['banner'] ?? '');
 $brand_initials = strtoupper(substr($brand_name, 0, 2));
 
+// Tenant public page customisation (layout, colors, visibility)
+$public_page_settings = getTenantPublicPageSettings($conn, $tenant_id);
+
 // Active tab calculation: support URL ?tab= parameter or smartly select default tab
 $requested_tab = trim((string)($_GET['tab'] ?? ''));
 if (in_array($requested_tab, ['questions', 'responses', 'feedbacks', 'qa'], true)) {
@@ -294,6 +297,9 @@ if (in_array($requested_tab, ['questions', 'responses', 'feedbacks', 'qa'], true
     $active_tab = 'responses';
 } else {
     $active_tab = 'feedbacks';
+}
+if (empty($public_page_settings['show_qa']) && $active_tab === 'qa') {
+    $active_tab = !empty($questions) ? 'questions' : 'feedbacks';
 }
 
 // WhatsApp click-to-chat: fallback to company phone or tenant phone if whatsapp_number is not explicitly specified
@@ -503,22 +509,54 @@ if ($total_ratings > 0) {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+    <?php
+    $rt_prim   = htmlspecialchars($public_page_settings['primary_color'] ?? '#10b981');
+    $rt_sec    = htmlspecialchars($public_page_settings['secondary_color'] ?? '#059669');
+    $rt_star   = htmlspecialchars($public_page_settings['star_color'] ?? '#f59e0b');
+    $rt_pagebg = htmlspecialchars($public_page_settings['page_bg'] ?? '#f8fafc');
+    $rt_cardbg = htmlspecialchars($public_page_settings['card_bg'] ?? '#ffffff');
+    $rt_cardbd = htmlspecialchars($public_page_settings['card_border'] ?? '#e2e8f0');
+    $rt_text   = htmlspecialchars($public_page_settings['text_color'] ?? '#0f172a');
+    $rt_muted  = htmlspecialchars($public_page_settings['muted_color'] ?? '#64748b');
+
+    $r_opt = $public_page_settings['border_radius'] ?? 'rounded';
+    $rt_radius = $r_opt === 'subtle' ? '8px' : ($r_opt === 'pill' ? '28px' : ($r_opt === 'sharp' ? '4px' : '20px'));
+    $rt_inner_rad = $r_opt === 'sharp' ? '2px' : '10px';
+
+    $l_opt = $public_page_settings['layout_style'] ?? 'modern_boxed';
+    $rt_max_w = $l_opt === 'wide_compact' ? '1360px' : ($l_opt === 'minimal_clean' ? '880px' : ($l_opt === 'full_width' ? '100%' : '1160px'));
+    ?>
     <style>
+        :root {
+            --rt-primary: <?php echo $rt_prim; ?>;
+            --rt-primary-hover: <?php echo $rt_sec; ?>;
+            --rt-star: <?php echo $rt_star; ?>;
+            --rt-page-bg: <?php echo $rt_pagebg; ?>;
+            --rt-card-bg: <?php echo $rt_cardbg; ?>;
+            --rt-card-border: <?php echo $rt_cardbd; ?>;
+            --rt-text: <?php echo $rt_text; ?>;
+            --rt-muted: <?php echo $rt_muted; ?>;
+            --rt-radius: <?php echo $rt_radius; ?>;
+            --rt-inner-radius: <?php echo $rt_inner_rad; ?>;
+            --rt-container-max: <?php echo $rt_max_w; ?>;
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
             font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: #f8fafc;
-            color: #0f172a;
+            background: var(--rt-page-bg);
+            color: var(--rt-text);
             padding: 30px 16px 60px;
         }
         .rt-container {
-            max-width: 1160px;
+            max-width: var(--rt-container-max);
             margin: 0 auto;
-            background: #ffffff;
-            border-radius: 20px;
+            background: var(--rt-card-bg);
+            border-radius: var(--rt-radius);
             padding: 44px;
             box-shadow: 0 10px 40px rgba(15,23,42,0.06);
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--rt-card-border);
+            color: var(--rt-text);
         }
         /* Breadcrumb Navigation */
         .rt-breadcrumb {
@@ -2150,12 +2188,100 @@ if ($total_ratings > 0) {
             .rt-rating-grid { grid-template-columns: 1fr; gap: 32px; }
             .rt-input-row { grid-template-columns: 1fr; }
         }
+
+        /* Dynamic Star Colors */
+        .fa-star, .rt-avg-stars, .rt-review-stars,
+        .interactive-stars .star-btn.active,
+        .rt-star-rating-input input:checked ~ label,
+        .rt-star-rating-input label:hover,
+        .rt-star-rating-input label:hover ~ label {
+            color: var(--rt-star) !important;
+        }
+
+        /* Dynamic Primary Action Elements */
+        .rt-submit-btn, .rt-service-submit, .btn-lime {
+            background: var(--rt-primary) !important;
+            border-radius: var(--rt-inner-radius) !important;
+            color: #ffffff !important;
+        }
+        .rt-submit-btn:hover, .rt-service-submit:hover, .btn-lime:hover {
+            background: var(--rt-primary-hover) !important;
+        }
+        .rt-jump-review-btn {
+            background: var(--rt-primary) !important;
+            border-radius: 99px !important;
+        }
+        .rt-jump-review-btn:hover {
+            background: var(--rt-primary-hover) !important;
+        }
+        .rt-bar-fill {
+            background: var(--rt-primary) !important;
+        }
+        .rt-tab-btn.is-active {
+            color: var(--rt-primary) !important;
+            border-bottom-color: var(--rt-primary) !important;
+        }
+        .rt-brand-fallback {
+            background: var(--rt-primary) !important;
+            border-radius: var(--rt-inner-radius) !important;
+        }
+        .rt-brand-logo {
+            border-radius: var(--rt-inner-radius) !important;
+        }
+        .rt-badge {
+            border-radius: var(--rt-inner-radius) !important;
+        }
+
+        /* Header Alignment Mode */
+        <?php if (($public_page_settings['header_layout'] ?? 'standard') === 'centered'): ?>
+        .rt-company-header {
+            flex-direction: column !important;
+            text-align: center !important;
+            justify-content: center !important;
+            align-items: center !important;
+        }
+        .rt-brand-wrap {
+            flex-direction: column !important;
+            text-align: center !important;
+            justify-content: center !important;
+        }
+        .rt-company-header h1 {
+            justify-content: center !important;
+        }
+        .rt-header-actions {
+            align-items: center !important;
+        }
+        <?php elseif (($public_page_settings['header_layout'] ?? 'standard') === 'compact'): ?>
+        .rt-company-header {
+            margin-bottom: 20px !important;
+            padding-bottom: 14px !important;
+        }
+        .rt-brand-logo {
+            width: 44px !important;
+            height: 44px !important;
+        }
+        <?php endif; ?>
+
+        /* Review Layout Mode */
+        <?php if (($public_page_settings['review_layout'] ?? 'tabs') === 'card_grid'): ?>
+        .rt-review-list {
+            display: grid !important;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)) !important;
+            gap: 16px !important;
+        }
+        <?php endif; ?>
+
+        <?php if (!empty($public_page_settings['custom_css'])): ?>
+        /* Tenant Custom CSS */
+        <?php echo $public_page_settings['custom_css']; ?>
+        <?php endif; ?>
     </style>
 </head>
 <body>
 
 <div class="rt-container">
 
+    <?php if (!empty($public_page_settings['show_breadcrumb'])): ?>
     <!-- Breadcrumb Navigation -->
     <nav class="rt-breadcrumb" aria-label="Breadcrumb">
         <a href="../index.php"><i class="fa-solid fa-house"></i> Home</a>
@@ -2168,8 +2294,9 @@ if ($total_ratings > 0) {
         <span class="rt-breadcrumb-sep">›</span>
         <span class="rt-breadcrumb-current"><?php echo htmlspecialchars($brand_name); ?></span>
     </nav>
+    <?php endif; ?>
 
-    <?php if (!empty($brand_banner)): ?>
+    <?php if (!empty($brand_banner) && !empty($public_page_settings['show_banner'])): ?>
     <!-- Tenant Brand Cover Banner -->
     <div class="rt-cover-banner-wrap">
         <img src="../<?php echo htmlspecialchars($brand_banner); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> Banner" class="rt-cover-banner">
@@ -2197,7 +2324,9 @@ if ($total_ratings > 0) {
             <a href="#generalRatingForm" class="rt-jump-review-btn">
                 <i class="fa-solid fa-pen-to-square"></i> Leave a Review
             </a>
+            <?php if (!empty($public_page_settings['show_verified_badge'])): ?>
             <span class="rt-badge">✓ Verified Rating Channel</span>
+            <?php endif; ?>
             <?php
             $company_website = trim((string)($company['website'] ?? ''));
             $company_gstore  = trim((string)($company['google_store_url'] ?? ''));
@@ -2208,13 +2337,13 @@ if ($total_ratings > 0) {
                 Visit Website
             </a>
             <?php endif; ?>
-            <?php if ($company_gstore !== ''): ?>
+            <?php if ($company_gstore !== '' && !empty($public_page_settings['show_gstore'])): ?>
             <a class="rt-link-btn rt-gstore-btn" href="<?php echo htmlspecialchars($company_gstore); ?>" target="_blank" rel="noopener noreferrer" title="<?php echo htmlspecialchars($brand_name); ?> on Google Store">
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 20.5V3.5c0-.6.34-1.1.84-1.35L13.7 12 3.84 21.85c-.5-.25-.84-.75-.84-1.35zm13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27zm3.35-4.31c.34.27.59.68.59 1.19s-.22.9-.57 1.18l-2.29 1.32-2.5-2.5 2.5-2.5 2.27 1.31zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/></svg>
                 Google Store
             </a>
             <?php endif; ?>
-            <?php if ($whatsapp_url !== ''): ?>
+            <?php if ($whatsapp_url !== '' && !empty($public_page_settings['show_whatsapp'])): ?>
             <!-- WhatsApp click-to-chat: shown only when the business published a number -->
             <a class="rt-whatsapp-btn" href="<?php echo htmlspecialchars($whatsapp_url); ?>"
                target="_blank" rel="noopener noreferrer">
@@ -2250,6 +2379,7 @@ if ($total_ratings > 0) {
                 Based on <strong><?php echo number_format($total_ratings); ?></strong> verified customer review(s)
             </div>
             
+            <?php if (!empty($public_page_settings['show_rating_dist'])): ?>
             <div class="rt-rating-bars">
                 <?php foreach ($rating_dist as $star => $data): ?>
                 <div class="rt-rating-bar-item">
@@ -2261,6 +2391,7 @@ if ($total_ratings > 0) {
                 </div>
                 <?php endforeach; ?>
             </div>
+            <?php endif; ?>
         </div>
         
         <!-- Right: Submit Your Review (Required Email & Submit at top for General Customer Rating) -->
@@ -2304,7 +2435,18 @@ if ($total_ratings > 0) {
                 <div class="rt-input-row">
                     <div>
                         <label class="rt-review-form-label">Your Name *</label>
-                        <input type="text" name="customer_name" class="rt-form-input" placeholder="e.g. John Doe" required value="<?php echo htmlspecialchars($prefill_name); ?>">
+                        <?php if (!empty($prefill_name)): ?>
+                            <div style="position:relative;">
+                                <input type="text" name="customer_name" class="rt-form-input" value="<?php echo htmlspecialchars($prefill_name); ?>" readonly style="background:#f8fafc;cursor:not-allowed;color:#1e293b;font-weight:700;border-color:#cbd5e1;padding-right:32px;">
+                                <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:14px;color:#64748b;" title="Reviewer name locked by invitation">🔒</span>
+                            </div>
+                            <span style="display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:11px;color:#15803d;font-weight:600;">
+                                <svg style="width:12px;height:12px;fill:currentColor;" viewBox="0 0 512 512"><path d="M504 256c0 137-111 248-248 248S8 393 8 256 119 8 256 8s248 111 248 248zM227.3 387.3l184-184c6.2-6.2 6.2-16.4 0-22.6l-22.6-22.6c-6.2-6.2-16.4-6.2-22.6 0L216 308.1l-70.1-70.1c-6.2-6.2-16.4-6.2-22.6 0l-22.6 22.6c-6.2 6.2-6.2 16.4 0 22.6l104 104c6.2 6.2 16.4 6.2 22.6 0z"/></svg>
+                                Verified recipient: <?php echo htmlspecialchars($prefill_name); ?> (Locked)
+                            </span>
+                        <?php else: ?>
+                            <input type="text" name="customer_name" class="rt-form-input" placeholder="e.g. John Doe" required value="">
+                        <?php endif; ?>
                     </div>
                     <div>
                         <label class="rt-review-form-label">Email Address *</label>
@@ -2347,7 +2489,7 @@ if ($total_ratings > 0) {
         </div>
     </div>
     
-    <?php if (!empty($services)): ?>
+    <?php if (!empty($services) && !empty($public_page_settings['show_services'])): ?>
     <!-- Services Grid: the things this company does, with per-service reviews -->
     <section class="rt-services-section">
         <div class="rt-services-head">
@@ -2434,9 +2576,11 @@ if ($total_ratings > 0) {
             <button type="button" class="rt-tab-btn <?php echo $active_tab === 'feedbacks' ? 'is-active' : ''; ?>" id="tabBtn-feedbacks" role="tab" aria-selected="<?php echo $active_tab === 'feedbacks' ? 'true' : 'false'; ?>" onclick="switchPublicSection('feedbacks')">
                 <span>💬</span> Reviews (<?php echo count($general_reviews); ?>)
             </button>
+            <?php if (!empty($public_page_settings['show_qa'])): ?>
             <button type="button" class="rt-tab-btn <?php echo $active_tab === 'qa' ? 'is-active' : ''; ?>" id="tabBtn-qa" role="tab" aria-selected="<?php echo $active_tab === 'qa' ? 'true' : 'false'; ?>" onclick="switchPublicSection('qa')">
                 <span>💡</span> Community Q&amp;A (<?php echo count($community_qa); ?>)
             </button>
+            <?php endif; ?>
         </div>
 
         <!-- PANEL 1: Questions Created by Admin -->
@@ -2845,6 +2989,7 @@ if ($total_ratings > 0) {
         </div>
 
         <!-- PANEL 4: Community Q&A (Customer Questions & Official Management Answers) -->
+        <?php if (!empty($public_page_settings['show_qa'])): ?>
         <div class="rt-tab-panel <?php echo $active_tab === 'qa' ? 'is-active' : ''; ?>" id="panel-qa" role="tabpanel">
             <div style="margin-bottom:20px;">
                 <h3 style="font-size:20px;font-weight:800;color:#0f172a;">Community Q&amp;A</h3>
@@ -2982,6 +3127,7 @@ if ($total_ratings > 0) {
                 <button type="button" class="rt-qa-btn-ask" onclick="toggleQaAskForm()" style="margin-top:10px;">Ask this Question</button>
             </div>
         </div>
+        <?php endif; ?>
 
     </div>
 
@@ -3091,6 +3237,7 @@ if ($total_ratings > 0) {
             </div>
 
             <!-- Col 3: Location, Landmark Description & Google Map Directions -->
+            <?php if (!empty($public_page_settings['show_map'])): ?>
             <div class="rt-footer-col">
                 <div class="rt-footer-col-title">
                     <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -3131,6 +3278,7 @@ if ($total_ratings > 0) {
                     <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
         </div>
         <div class="rt-footer-bottom">
             <span>&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($brand_name); ?>. All rights reserved.</span>

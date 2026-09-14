@@ -1402,3 +1402,41 @@ nav a .nav-label{font-size:13px;width:auto;font-weight:600;color:inherit;line-he
   .admin-connection-grid,.admin-plan-grid{grid-template-columns:1fr}
   .admin-actions .btn{flex:1;text-align:center}
 }
+
+
+/* ============================================================
+   Custom Sidebar Scrollbar - Smoother & Smaller
+   ============================================================ */
+.admin-sidebar-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.admin-sidebar-scroll::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 3px;
+}
+
+.admin-sidebar-scroll::-webkit-scrollbar-thumb {
+    background: rgba(194, 245, 66, 0.25);
+    border-radius: 3px;
+    transition: background 0.3s ease;
+}
+
+.admin-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(194, 245, 66, 0.4);
+}
+
+/* Firefox scrollbar */
+.admin-sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(194, 245, 66, 0.25) rgba(255, 255, 255, 0.03);
+}
+
+/* Dark mode scrollbar */
+:root[data-theme='dark'] .admin-sidebar-scroll::-webkit-scrollbar-thumb {
+    background: rgba(194, 245, 66, 0.2);
+}
+
+:root[data-theme='dark'] .admin-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(194, 245, 66, 0.35);
+}

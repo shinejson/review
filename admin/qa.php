@@ -13,6 +13,7 @@ require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 
 requireLogin();
+requireTeamAccess('qa');
 
 $tenant_id = getTenantId();
 $is_tenant = isTenant();
@@ -157,6 +158,215 @@ $activeNav = 'qa';
 include __DIR__ . '/_shell.php';
 ?>
 
+<style>
+/* ── QA Page: Semantic classes using CSS variables ── */
+
+/* Flash banners */
+.qa-banner-success {
+    background: #dcfce7; border: 1px solid #86efac; color: #15803d;
+    padding: 12px 18px; border-radius: 12px; margin-bottom: 20px;
+    font-weight: 600; display: flex; align-items: center; gap: 8px;
+}
+.qa-banner-error {
+    background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c;
+    padding: 12px 18px; border-radius: 12px; margin-bottom: 20px;
+    font-weight: 600; display: flex; align-items: center; gap: 8px;
+}
+
+/* Needs-answer card highlight */
+.qa-card-unanswered { border-color: #fcd34d !important; background: #fffdf5 !important; }
+.qa-card-pinned     { border-color: #fde68a !important; }
+.qa-card-normal     { border-color: var(--line) !important; background: var(--card-bg, #fff) !important; }
+
+/* Card question text */
+.qa-question-text {
+    font-size: 16px; font-weight: 800; color: var(--ink); line-height: 1.45;
+}
+
+/* Official answer block */
+.qa-answer-block {
+    background: #f8fafc; border: 1px solid #e2e8f0;
+    border-left: 4px solid #059669;
+    border-radius: 0 12px 12px 0;
+    padding: 16px 18px; margin-bottom: 16px;
+}
+.qa-answer-label { font-size: 12.5px; font-weight: 700; color: #065f46; }
+.qa-answer-text  { font-size: 14px; color: #334155; line-height: 1.6; }
+
+/* FAQ creation box */
+.qa-faq-box {
+    background: var(--bg); border: 2px dashed var(--line) !important;
+}
+
+/* Seed template buttons */
+.qa-seed-btn {
+    cursor: pointer;
+    border: 1px solid var(--line) !important;
+    background: var(--card-bg, #fff) !important;
+    color: var(--ink) !important;
+}
+
+/* Form inputs */
+.qa-form-input {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+    width: 100%;
+    font-family: inherit;
+    transition: border-color .15s ease, background .15s ease;
+}
+.qa-form-input::placeholder { color: var(--muted); }
+.qa-form-input:focus { outline: none; border-color: #059669; background: var(--card-bg, #fff); }
+
+/* Search input */
+.qa-search-input {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-size: 13px;
+    width: 100%;
+    font-family: inherit;
+}
+.qa-search-input::placeholder { color: var(--muted); }
+.qa-search-input:focus { outline: none; border-color: #059669; }
+
+/* Toolbar border */
+.qa-toolbar-sep { border-top: 1px solid var(--line); }
+
+/* Empty state */
+.qa-empty {
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 50px 20px;
+    text-align: center;
+}
+
+/* ── Dark Mode Overrides ── */
+:root[data-theme='dark'] .qa-banner-success {
+    background: rgba(20,83,45,.35); border-color: rgba(134,239,172,.25); color: #86efac;
+}
+:root[data-theme='dark'] .qa-banner-error {
+    background: rgba(127,29,29,.35); border-color: rgba(252,165,165,.2); color: #fca5a5;
+}
+:root[data-theme='dark'] .qa-card-unanswered {
+    border-color: rgba(252,211,77,.35) !important;
+    background: rgba(252,211,77,.04) !important;
+}
+:root[data-theme='dark'] .qa-card-pinned {
+    border-color: rgba(253,230,138,.25) !important;
+}
+:root[data-theme='dark'] .qa-card-normal {
+    background: #0f1f2e !important;
+}
+:root[data-theme='dark'] .qa-answer-block {
+    background: rgba(5,150,105,.08);
+    border-color: rgba(5,150,105,.2);
+    border-left-color: #059669;
+}
+:root[data-theme='dark'] .qa-answer-label { color: #6ee7b7; }
+:root[data-theme='dark'] .qa-answer-text  { color: #cbd5e1; }
+:root[data-theme='dark'] .qa-faq-box      { background: rgba(255,255,255,.02) !important; }
+:root[data-theme='dark'] .qa-seed-btn {
+    border-color: rgba(255,255,255,.1) !important;
+    background: rgba(255,255,255,.04) !important;
+    color: #e2e8f0 !important;
+}
+:root[data-theme='dark'] .qa-form-input {
+    background: rgba(255,255,255,.05);
+    border-color: rgba(255,255,255,.1);
+    color: #e2e8f0;
+}
+:root[data-theme='dark'] .qa-form-input:focus {
+    background: rgba(255,255,255,.08);
+    border-color: #059669;
+}
+:root[data-theme='dark'] .qa-search-input {
+    background: rgba(255,255,255,.05);
+    border-color: rgba(255,255,255,.1);
+    color: #e2e8f0;
+}
+:root[data-theme='dark'] .qa-empty { background: #0f1f2e; border-color: rgba(255,255,255,.08); }
+
+/* ── Filter Tab Strip ── */
+.qa-tab-strip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.03);
+    transition: background .3s ease, border-color .3s ease;
+    flex-wrap: wrap;
+}
+.qa-tab-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 13px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--muted);
+    border: 1px solid transparent;
+    transition: all .18s ease;
+    white-space: nowrap;
+}
+.qa-tab-link:hover  { background: var(--bg); color: var(--ink); }
+.qa-tab-link.active {
+    background: var(--navy);
+    color: var(--lime);
+    border-color: transparent;
+    font-weight: 700;
+    box-shadow: 0 2px 10px rgba(11,29,43,.15);
+}
+.qa-tab-count {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 99px;
+    background: rgba(255,255,255,.18);
+    font-weight: 700;
+}
+.qa-tab-link:not(.active) .qa-tab-count {
+    background: var(--line);
+    color: var(--muted);
+}
+
+:root[data-theme='dark'] .qa-tab-strip {
+    background: #0f1f2e;
+    border-color: rgba(255,255,255,.08);
+}
+:root[data-theme='dark'] .qa-tab-link:hover {
+    background: rgba(255,255,255,.05);
+    color: #e2e8f0;
+}
+:root[data-theme='dark'] .qa-tab-link.active {
+    background: rgba(194,245,66,.15);
+    color: var(--lime);
+    border-color: rgba(194,245,66,.25);
+    box-shadow: none;
+}
+
+/* Badge pills (status) */
+.qa-badge-answered { display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:99px;font-size:11.5px;font-weight:700; }
+.qa-badge-unanswered { display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;border-radius:99px;font-size:11.5px;font-weight:700; }
+.qa-badge-pinned { display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:99px;font-size:11.5px;font-weight:700; }
+.qa-contact-pill { display:inline-flex;align-items:center;gap:6px;font-size:11.5px;background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:6px;border:1px solid #e2e8f0; }
+
+:root[data-theme='dark'] .qa-badge-answered    { background:rgba(20,83,45,.3);border-color:rgba(134,239,172,.2);color:#6ee7b7; }
+:root[data-theme='dark'] .qa-badge-unanswered  { background:rgba(127,29,29,.3);border-color:rgba(252,165,165,.2);color:#fca5a5; }
+:root[data-theme='dark'] .qa-badge-pinned      { background:rgba(146,64,14,.25);border-color:rgba(253,230,138,.2);color:#fde68a; }
+:root[data-theme='dark'] .qa-contact-pill      { background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.08);color:#94a3b8; }
+</style>
+
 <!-- Header Row -->
 <div class="welcome-row" style="margin-bottom:24px;">
     <div>
@@ -175,13 +385,13 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <?php if (!empty($success)): ?>
-    <div style="background:#dcfce7;border:1px solid #86efac;color:#15803d;padding:12px 18px;border-radius:12px;margin-bottom:20px;font-weight:600;display:flex;align-items:center;gap:8px;">
+    <div class="qa-banner-success">
         <span>✓</span> <?php echo htmlspecialchars($success); ?>
     </div>
 <?php endif; ?>
 
 <?php if (!empty($error)): ?>
-    <div style="background:#fee2e2;border:1px solid #fca5a5;color:#b91c1c;padding:12px 18px;border-radius:12px;margin-bottom:20px;font-weight:600;display:flex;align-items:center;gap:8px;">
+    <div class="qa-banner-error">
         <span>⚠️</span> <?php echo htmlspecialchars($error); ?>
     </div>
 <?php endif; ?>
@@ -215,7 +425,7 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <!-- Pre-Emptive FAQ Creation Box (Collapsible) -->
-<div class="form-card" id="addFaqBox" style="display:none;padding:24px;margin-bottom:26px;border:2px dashed var(--line);background:#fafafa;">
+<div class="form-card qa-faq-box" id="addFaqBox" style="display:none;padding:24px;margin-bottom:26px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
         <div>
             <h3 style="margin:0;font-size:16px;color:var(--ink);">Create Pre-Emptive FAQ</h3>
@@ -227,20 +437,20 @@ include __DIR__ . '/_shell.php';
     <!-- Quick Seed Templates -->
     <div style="margin-bottom:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span style="font-size:12px;font-weight:700;color:var(--muted);">Quick Suggestions:</span>
-        <button type="button" class="badge-pill" style="cursor:pointer;border:1px solid #cbd5e1;background:#fff;" onclick="seedFaq('Do you offer delivery in Accra / nationwide?', 'Yes! We offer nationwide delivery. Accra and Tema deliveries take 2-4 hours, while other regions take 24-48 hours via registered dispatch.')">🚚 Delivery Area</button>
-        <button type="button" class="badge-pill" style="cursor:pointer;border:1px solid #cbd5e1;background:#fff;" onclick="seedFaq('What payment methods do you accept?', 'We accept MTN MoMo, Vodafone Cash, AirtelTigo, Visa, Mastercard, and Cash on Delivery for selected locations.')">💳 Payment Options</button>
-        <button type="button" class="badge-pill" style="cursor:pointer;border:1px solid #cbd5e1;background:#fff;" onclick="seedFaq('What are your business and customer support hours?', 'Our business hours are Monday through Saturday, 8:00 AM to 7:00 PM. WhatsApp support is available 24/7.')">⏰ Hours &amp; Support</button>
+        <button type="button" class="badge-pill qa-seed-btn" onclick="seedFaq('Do you offer delivery in Accra / nationwide?', 'Yes! We offer nationwide delivery. Accra and Tema deliveries take 2-4 hours, while other regions take 24-48 hours via registered dispatch.')">🚚 Delivery Area</button>
+        <button type="button" class="badge-pill qa-seed-btn" onclick="seedFaq('What payment methods do you accept?', 'We accept MTN MoMo, Vodafone Cash, AirtelTigo, Visa, Mastercard, and Cash on Delivery for selected locations.')">💳 Payment Options</button>
+        <button type="button" class="badge-pill qa-seed-btn" onclick="seedFaq('What are your business and customer support hours?', 'Our business hours are Monday through Saturday, 8:00 AM to 7:00 PM. WhatsApp support is available 24/7.')">⏰ Hours &amp; Support</button>
     </div>
 
     <form method="POST" action="qa.php">
         <input type="hidden" name="action" value="create_faq">
         <div style="margin-bottom:14px;">
-            <label class="form-label" style="font-weight:700;font-size:13px;">Question <span style="color:#ef4444;">*</span></label>
-            <input type="text" name="question_text" id="faqQuestionInput" required class="form-control" placeholder="e.g. Do you offer bulk discounts or corporate packages?" style="width:100%;padding:10px 14px;font-size:14px;border-radius:10px;border:1px solid var(--line);">
+            <label class="form-label" style="font-weight:700;font-size:13px;color:var(--ink);display:block;margin-bottom:6px;">Question <span style="color:#ef4444;">*</span></label>
+            <input type="text" name="question_text" id="faqQuestionInput" required class="qa-form-input" placeholder="e.g. Do you offer bulk discounts or corporate packages?">
         </div>
         <div style="margin-bottom:14px;">
-            <label class="form-label" style="font-weight:700;font-size:13px;">Official Verified Answer <span style="color:#ef4444;">*</span></label>
-            <textarea name="official_answer" id="faqAnswerInput" required rows="3" class="form-control" placeholder="Write a clear, authoritative response from management..." style="width:100%;padding:10px 14px;font-size:14px;border-radius:10px;border:1px solid var(--line);resize:vertical;font-family:inherit;"></textarea>
+            <label class="form-label" style="font-weight:700;font-size:13px;color:var(--ink);display:block;margin-bottom:6px;">Official Verified Answer <span style="color:#ef4444;">*</span></label>
+            <textarea name="official_answer" id="faqAnswerInput" required rows="3" class="qa-form-input" placeholder="Write a clear, authoritative response from management..." style="resize:vertical;"></textarea>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
             <label style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;color:var(--ink);">
@@ -257,29 +467,34 @@ include __DIR__ . '/_shell.php';
 
 <!-- Controls Row: Filter Tabs & Search -->
 <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <a href="qa.php?filter=all<?php echo $search_term ? '&q=' . urlencode($search_term) : ''; ?>" class="btn <?php echo $current_filter === 'all' ? 'btn-primary' : 'btn-secondary'; ?>" style="padding:7px 14px;font-size:13px;text-decoration:none;">
-            All Questions (<?php echo $total_q; ?>)
+    <div class="qa-tab-strip">
+        <a href="qa.php?filter=all<?php echo $search_term ? '&q=' . urlencode($search_term) : ''; ?>"
+           class="qa-tab-link<?php echo $current_filter === 'all' ? ' active' : ''; ?>">
+            ❓ All Questions <span class="qa-tab-count"><?php echo $total_q; ?></span>
         </a>
-        <a href="qa.php?filter=unanswered<?php echo $search_term ? '&q=' . urlencode($search_term) : ''; ?>" class="btn <?php echo $current_filter === 'unanswered' ? 'btn-primary' : 'btn-secondary'; ?>" style="padding:7px 14px;font-size:13px;text-decoration:none;<?php echo $unanswered_q > 0 ? 'font-weight:700;' : ''; ?>">
-            ⚠️ Needs Answer (<?php echo $unanswered_q; ?>)
+        <a href="qa.php?filter=unanswered<?php echo $search_term ? '&q=' . urlencode($search_term) : ''; ?>"
+           class="qa-tab-link<?php echo $current_filter === 'unanswered' ? ' active' : ''; ?>"
+           <?php echo $unanswered_q > 0 ? 'style="font-weight:800;"' : ''; ?>>
+            ⚠️ Needs Answer <span class="qa-tab-count"><?php echo $unanswered_q; ?></span>
         </a>
-        <a href="qa.php?filter=answered<?php echo $search_term ? '&q=' . urlencode($search_term) : ''; ?>" class="btn <?php echo $current_filter === 'answered' ? 'btn-primary' : 'btn-secondary'; ?>" style="padding:7px 14px;font-size:13px;text-decoration:none;">
-            ✓ Answered (<?php echo $answered_q; ?>)
+        <a href="qa.php?filter=answered<?php echo $search_term ? '&q=' . urlencode($search_term) : ''; ?>"
+           class="qa-tab-link<?php echo $current_filter === 'answered' ? ' active' : ''; ?>">
+            ✓ Answered <span class="qa-tab-count"><?php echo $answered_q; ?></span>
         </a>
-        <a href="qa.php?filter=pinned<?php echo $search_term ? '&q=' . urlencode($search_term) : ''; ?>" class="btn <?php echo $current_filter === 'pinned' ? 'btn-primary' : 'btn-secondary'; ?>" style="padding:7px 14px;font-size:13px;text-decoration:none;">
-            📌 Featured FAQs (<?php echo $pinned_q; ?>)
+        <a href="qa.php?filter=pinned<?php echo $search_term ? '&q=' . urlencode($search_term) : ''; ?>"
+           class="qa-tab-link<?php echo $current_filter === 'pinned' ? ' active' : ''; ?>">
+            📌 Featured FAQs <span class="qa-tab-count"><?php echo $pinned_q; ?></span>
         </a>
     </div>
 
     <!-- Search Form -->
-    <form method="GET" action="qa.php" style="display:flex;align-items:center;gap:8px;min-width:260px;">
+    <form method="GET" action="qa.php" style="display:flex;align-items:center;gap:8px;min-width:240px;">
         <?php if ($current_filter !== 'all'): ?>
             <input type="hidden" name="filter" value="<?php echo htmlspecialchars($current_filter); ?>">
         <?php endif; ?>
-        <input type="text" name="q" value="<?php echo htmlspecialchars($search_term); ?>" placeholder="Search inquiries..." class="form-control" style="padding:8px 12px;font-size:13px;border-radius:10px;border:1px solid var(--line);width:100%;">
+        <input type="text" name="q" value="<?php echo htmlspecialchars($search_term); ?>" placeholder="Search inquiries..." class="qa-search-input">
         <?php if ($search_term !== ''): ?>
-            <a href="qa.php?filter=<?php echo urlencode($current_filter); ?>" class="btn btn-secondary" style="padding:8px 12px;font-size:12px;text-decoration:none;">✕</a>
+            <a href="qa.php?filter=<?php echo urlencode($current_filter); ?>" class="btn btn-secondary" style="padding:8px 12px;font-size:12px;text-decoration:none;flex-shrink:0;">✕</a>
         <?php endif; ?>
     </form>
 </div>
@@ -305,63 +520,69 @@ include __DIR__ . '/_shell.php';
                 $cust_wa_url = "https://wa.me/" . preg_replace('/[^0-9]/', '', $cust_phone) . "?text=" . rawurlencode($wa_reply_msg);
             }
         ?>
-            <div class="form-card" style="padding:22px;border:1px solid <?php echo !$has_answer ? '#fcd34d' : ($is_pinned ? '#fde68a' : 'var(--line)'); ?>;background:<?php echo !$has_answer ? '#fffdf5' : '#ffffff'; ?>;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
-                <!-- Card Top Info -->
-                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px;">
-                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                        <?php if ($is_pinned): ?>
-                            <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:99px;font-size:11.5px;font-weight:700;">📌 Featured FAQ</span>
-                        <?php endif; ?>
+            <div class="collapsible-card form-card <?php echo !$has_answer ? 'qa-card-unanswered' : ($is_pinned ? 'qa-card-pinned qa-card-normal' : 'qa-card-normal'); ?>" style="padding:22px;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+                <!-- Card Top Info - Clickable Header -->
+                <div class="collapsible-header" onclick="toggleQuestionCard(this)" style="cursor:pointer;">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px;">
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;">
+                            <?php if ($is_pinned): ?>
+                                <span class="qa-badge-pinned">📌 Featured FAQ</span>
+                            <?php endif; ?>
 
-                        <?php if ($has_answer): ?>
-                            <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:99px;font-size:11.5px;font-weight:700;">✓ Answered &amp; Live</span>
-                        <?php else: ?>
-                            <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;border-radius:99px;font-size:11.5px;font-weight:700;">⚠️ Needs Official Answer</span>
-                        <?php endif; ?>
+                            <?php if ($has_answer): ?>
+                                <span class="qa-badge-answered">✓ Answered &amp; Live</span>
+                            <?php else: ?>
+                                <span class="qa-badge-unanswered">⚠️ Needs Official Answer</span>
+                            <?php endif; ?>
 
-                        <span style="font-size:13.5px;font-weight:700;color:var(--ink);"><?php echo htmlspecialchars($cust_name); ?></span>
+                            <span style="font-size:13.5px;font-weight:700;color:var(--ink);"><?php echo htmlspecialchars($cust_name); ?></span>
 
-                        <!-- Private Contact Badge (Visible ONLY to Tenant) -->
-                        <?php if ($cust_phone !== '' || $cust_email !== ''): ?>
-                            <span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:6px;border:1px solid #e2e8f0;" title="Private contact information provided for direct notifications">
-                                <span>🔒</span>
-                                <?php if ($cust_phone !== ''): ?>
-                                    <span><?php echo htmlspecialchars($cust_phone); ?></span>
-                                <?php endif; ?>
-                                <?php if ($cust_email !== ''): ?>
-                                    <span><?php echo ($cust_phone !== '' ? '&middot; ' : '') . htmlspecialchars($cust_email); ?></span>
-                                <?php endif; ?>
+                            <!-- Private Contact Badge (Visible ONLY to Tenant) -->
+                            <?php if ($cust_phone !== '' || $cust_email !== ''): ?>
+                                <span class="qa-contact-pill" title="Private contact information provided for direct notifications">
+                                    <span>🔒</span>
+                                    <?php if ($cust_phone !== ''): ?>
+                                        <span><?php echo htmlspecialchars($cust_phone); ?></span>
+                                    <?php endif; ?>
+                                    <?php if ($cust_email !== ''): ?>
+                                        <span><?php echo ($cust_phone !== '' ? '&middot; ' : '') . htmlspecialchars($cust_email); ?></span>
+                                    <?php endif; ?>
+                                </span>
+                            <?php endif; ?>
+                        </div>
+
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <span style="font-size:12px;color:var(--muted);"><?php echo $time_ago; ?></span>
+                            <span style="font-size:12px;color:#059669;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+                                <span>👍</span> <?php echo (int)$q['helpful_count']; ?>
                             </span>
-                        <?php endif; ?>
+                            <span class="collapse-icon" style="font-size:18px;color:var(--muted);transition:transform 0.3s;">▼</span>
+                        </div>
                     </div>
 
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <span style="font-size:12px;color:var(--muted);"><?php echo $time_ago; ?> &middot; <?php echo $created_ts; ?></span>
-                        <span style="font-size:12px;color:#059669;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
-                            <span>👍</span> <?php echo (int)$q['helpful_count']; ?>
-                        </span>
+                    <!-- The Question Text -->
+                    <div style="margin-bottom:14px;">
+                        <div class="qa-question-text">
+                            Q: <?php echo htmlspecialchars($q['question_text']); ?>
+                        </div>
                     </div>
                 </div>
 
-                <!-- The Question Text -->
-                <div style="margin-bottom:14px;">
-                    <div style="font-size:16px;font-weight:800;color:#0f172a;line-height:1.45;">
-                        Q: <?php echo htmlspecialchars($q['question_text']); ?>
-                    </div>
-                </div>
+                <!-- Collapsible Content Area -->
+                <div class="collapsible-content">
 
                 <!-- If already answered: Show current answer & edit toggle -->
                 <?php if ($has_answer): ?>
-                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #059669;border-radius:0 12px 12px 0;padding:16px 18px;margin-bottom:16px;">
+                    <div class="qa-answer-block">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-                            <span style="font-size:12.5px;font-weight:700;color:#065f46;display:inline-flex;align-items:center;gap:6px;">
+                            <span class="qa-answer-label" style="display:inline-flex;align-items:center;gap:6px;">
                                 <span>↪</span> Official Management Response
                             </span>
                             <?php if ($answered_ts !== ''): ?>
                                 <small style="font-size:11.5px;color:var(--muted);">Answered <?php echo $answered_ts; ?><?php echo !empty($q['answered_by_name']) ? ' by ' . htmlspecialchars($q['answered_by_name']) : ''; ?></small>
                             <?php endif; ?>
                         </div>
-                        <div style="font-size:14px;color:#334155;line-height:1.6;">
+                        <div class="qa-answer-text">
                             <?php echo nl2br(htmlspecialchars($q['official_answer'])); ?>
                         </div>
                     </div>
@@ -373,10 +594,10 @@ include __DIR__ . '/_shell.php';
                         <input type="hidden" name="action" value="answer_question">
                         <input type="hidden" name="question_id" value="<?php echo $qid; ?>">
                         <div style="margin-bottom:10px;">
-                            <label class="form-label" style="font-weight:700;font-size:12.5px;color:var(--ink);">
+                            <label style="font-weight:700;font-size:12.5px;color:var(--ink);display:block;margin-bottom:6px;">
                                 <?php echo $has_answer ? 'Update Official Management Answer:' : 'Compose Official Management Answer:'; ?>
                             </label>
-                            <textarea name="official_answer" required rows="3" class="form-control" placeholder="Type your official, verified answer here. This will appear publicly on your rating portal..." style="width:100%;padding:10px 12px;font-size:13.5px;border-radius:10px;border:1px solid var(--line);resize:vertical;font-family:inherit;"><?php echo htmlspecialchars($q['official_answer'] ?? ''); ?></textarea>
+                            <textarea name="official_answer" required rows="3" class="qa-form-input" placeholder="Type your official, verified answer here. This will appear publicly on your rating portal..." style="resize:vertical;"><?php echo htmlspecialchars($q['official_answer'] ?? ''); ?></textarea>
                         </div>
                         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
                             <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;color:var(--ink);">
@@ -396,7 +617,7 @@ include __DIR__ . '/_shell.php';
                 </div>
 
                 <!-- Card Action Toolbar -->
-                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9;">
+                <div class="qa-toolbar-sep" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;">
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                         <?php if ($has_answer): ?>
                             <button type="button" class="btn btn-secondary" onclick="toggleReplyBox(<?php echo $qid; ?>)" style="padding:5px 12px;font-size:12px;">
@@ -426,17 +647,18 @@ include __DIR__ . '/_shell.php';
                         <form method="POST" action="qa.php" style="display:inline;" onsubmit="return confirm('Are you sure you want to permanently delete this question?')">
                             <input type="hidden" name="action" value="delete_question">
                             <input type="hidden" name="question_id" value="<?php echo $qid; ?>">
-                            <button type="submit" style="background:none;border:none;color:#94a3b8;font-size:12px;cursor:pointer;padding:4px 8px;border-radius:6px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">
+                            <button type="submit" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:4px 8px;border-radius:6px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color=''">
                                 🗑 Delete
                             </button>
                         </form>
                     </div>
                 </div>
+                </div>
             </div>
         <?php endforeach; ?>
     </div>
 <?php else: ?>
-    <div class="empty-state" style="padding:50px 20px;text-align:center;background:#fff;border-radius:16px;border:1px solid var(--line);">
+    <div class="qa-empty">
         <div style="font-size:42px;margin-bottom:10px;">💡</div>
         <h3 style="margin:0 0 6px;font-size:18px;color:var(--ink);">No Questions Found</h3>
         <p class="muted" style="max-width:440px;margin:0 auto 18px;font-size:13.5px;">
@@ -447,6 +669,52 @@ include __DIR__ . '/_shell.php';
 <?php endif; ?>
 
 <script>
+// Collapsible question card accordion
+function toggleQuestionCard(header) {
+    const card = header.closest('.collapsible-card');
+    const content = card.querySelector('.collapsible-content');
+    const icon = header.querySelector('.collapse-icon');
+    const isOpen = content.style.maxHeight && content.style.maxHeight !== '0px';
+    
+    // Close all other question cards
+    document.querySelectorAll('.collapsible-card').forEach(otherCard => {
+        if (otherCard !== card) {
+            const otherContent = otherCard.querySelector('.collapsible-content');
+            const otherIcon = otherCard.querySelector('.collapse-icon');
+            if (otherContent && otherIcon) {
+                otherContent.style.maxHeight = '0';
+                otherContent.style.opacity = '0';
+                otherContent.style.marginTop = '0';
+                otherIcon.style.transform = 'rotate(0deg)';
+            }
+        }
+    });
+    
+    // Toggle current question card
+    if (isOpen) {
+        content.style.maxHeight = '0';
+        content.style.opacity = '0';
+        content.style.marginTop = '0';
+        icon.style.transform = 'rotate(0deg)';
+    } else {
+        content.style.maxHeight = content.scrollHeight + 'px';
+        content.style.opacity = '1';
+        content.style.marginTop = '14px';
+        icon.style.transform = 'rotate(180deg)';
+    }
+}
+
+// Initialize all question cards as collapsed on page load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.collapsible-content').forEach(content => {
+        content.style.maxHeight = '0';
+        content.style.opacity = '0';
+        content.style.overflow = 'hidden';
+        content.style.transition = 'max-height 0.4s ease, opacity 0.3s ease, margin-top 0.3s ease';
+        content.style.marginTop = '0';
+    });
+});
+
 function toggleFaqBox() {
     var b = document.getElementById('addFaqBox');
     if (!b) return;

@@ -14,13 +14,13 @@ $username = '';
 $notice = auth_login_notice();   // "you have been signed out", "session expired" …
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username']);
-    $password = $_POST['password'];
+    $username = trim($_POST['username'] ?? '');
+    $password = $_POST['password'] ?? '';
 
     if (empty($username) || empty($password)) {
         $error = 'Please enter both username/email and password.';
     } else {
-        // 1. Check if user is a Tenant in `tenants` table — now supports Real Public ID (OPT-XXXXXXXX), username, email
+        // 1. Check if user is a Tenant in `tenants` table — supports Real Public ID (OPT-XXXXXXXX), username, email
         $stmt = $conn->prepare("SELECT * FROM tenants WHERE username = ? OR email = ? OR public_id = ? LIMIT 1");
         $stmt->bind_param("sss", $username, $username, $username);
         $stmt->execute();
@@ -46,31 +46,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'Invalid credentials. Please verify your password.';
             }
         } else {
-            // 2. Check if user is in `admins` table
-            $stmt2 = $conn->prepare("SELECT * FROM admins WHERE username = ? OR email = ? LIMIT 1");
-            $stmt2->bind_param("ss", $username, $username);
-            $stmt2->execute();
-            $resAdmin = $stmt2->get_result();
-
-            if ($resAdmin && $resAdmin->num_rows === 1) {
-                $admin = $resAdmin->fetch_assoc();
-                if (password_verify($password, $admin['password'])) {
-                    $_SESSION['admin_id'] = (int)$admin['id'];
-                    $_SESSION['admin_username'] = $admin['username'];
-                    $_SESSION['admin_email'] = $admin['email'];
-                    $_SESSION['user_type'] = 'admin';
-                    auth_login_session($conn, 'admin', (int)$admin['id'], $admin['username'], 'admin');
-                    redirect('index.php');
-                } else {
-                    $error = 'Invalid credentials. Please verify your password.';
+            // 1.5. Team member (staff account created by a workspace owner)
+            ensureTeamSchema($conn);
+            $tm_found = false;
+            $stmtT = $conn->prepare("SELECT tm.*, t.company_name, t.logo, t.email AS tenant_email, t.phone, t.username AS tenant_username, t.subscription_status, t.subscription_end_date, t.plan_id FROM team_members tm JOIN tenants t ON t.id = tm.tenant_id WHERE tm.username = ? OR tm.email = ? LIMIT 1");
+            if ($stmtT) {
+                $stmtT->bind_param("ss", $username, $username);
+                $stmtT->execute();
+                $resT = $stmtT->get_result();
+                if ($resT && $resT->num_rows === 1) {
+                    $tm_found = true;
+                    $member = $resT->fetch_assoc();
+                    if ((int)$member['is_active'] !== 1) {
+                        $error = 'This team account is disabled. Contact your workspace owner.';
+                    } elseif (!password_verify($password, (string)$member['password'])) {
+                        $error = 'Invalid credentials. Please verify your password.';
+                    } else {
+                        $_SESSION['tenant_id'] = (int)$member['tenant_id'];
+                        $_SESSION['tenant_name'] = $member['company_name'];
+                        $_SESSION['tenant_logo'] = $member['logo'] ?? '';
+                        $_SESSION['tenant_username'] = $member['tenant_username'];
+                        $_SESSION['tenant_email'] = $member['tenant_email'];
+                        $_SESSION['tenant_plan_id'] = $member['plan_id'];
+                        $_SESSION['tenant_status'] = $member['subscription_status'];
+                        $_SESSION['tenant_subscription_end'] = $member['subscription_end_date'] ?? null;
+                        $_SESSION['user_type'] = 'tenant';
+                        $_SESSION['user_kind'] = 'team';
+                        $_SESSION['team_member_id'] = (int)$member['id'];
+                        $_SESSION['team_member_role'] = $member['role'];
+                        $_SESSION['team_permissions'] = teamMemberParsePerms($member['permissions']);
+                        $_SESSION['admin_username'] = $member['full_name'];
+                        $_SESSION['admin_email'] = $member['email'];
+                        auth_login_session($conn, 'admin', (int)$member['id'], $member['full_name'], 'team');
+                        $ll = $conn->prepare("UPDATE team_members SET last_login_at = NOW() WHERE id = ?");
+                        if ($ll) { $ll->bind_param("i", $member['id']); $ll->execute(); $ll->close(); }
+                        redirect('index.php');
+                    }
                 }
-            } else {
-                // Check if superadmin is attempting login here
-                $stmt3 = $conn->prepare("SELECT id FROM super_admins WHERE username = ? OR email = ? LIMIT 1");
-                $stmt3->bind_param("ss", $username, $username);
-                $stmt3->execute();
-                if ($stmt3->get_result()->num_rows === 1) {
-                    $error = 'Super Admin accounts must sign in at the <a href="../superadmin/login.php" style="color:inherit;text-decoration:underline;font-weight:700;">Super Admin Portal</a>.';
+                $stmtT->close();
+            }
+
+            if (!$tm_found) {
+                // 2. Check if user is in `admins` table
+                $stmt2 = $conn->prepare("SELECT * FROM admins WHERE username = ? OR email = ? LIMIT 1");
+                $stmt2->bind_param("ss", $username, $username);
+                $stmt2->execute();
+                $resAdmin = $stmt2->get_result();
+
+                if ($resAdmin && $resAdmin->num_rows === 1) {
+                    $admin = $resAdmin->fetch_assoc();
+                    if (password_verify($password, $admin['password'])) {
+                        $_SESSION['admin_id'] = (int)$admin['id'];
+                        $_SESSION['admin_username'] = $admin['username'];
+                        $_SESSION['admin_email'] = $admin['email'];
+                        $_SESSION['user_type'] = 'admin';
+                        auth_login_session($conn, 'admin', (int)$admin['id'], $admin['username'], 'admin');
+                        redirect('index.php');
+                    } else {
+                        $error = 'Invalid credentials. Please verify your password.';
+                    }
+                    $stmt2->close();
                 } else {
                     $error = 'Account not found. Please check your username or email.';
                 }
@@ -81,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $robots    = 'noindex, nofollow';
 $BASE      = '../';
-$pageTitle = 'Tenant & Admin Login';
+$pageTitle = 'Business & Admin Login';
 $extraCss = ['assets/css/auth.css'];
 include dirname(__DIR__) . '/includes/header.php';
 ?>
@@ -101,25 +136,29 @@ include dirname(__DIR__) . '/includes/header.php';
         </a>
 
         <div class="auth-brand-body">
-            <h1>Turn customer feedback into a <em>competitive edge</em>.</h1>
-            <p>Sign in to manage your company's ratings, monitor customer reviews, and share your rating link.</p>
+            <h1>Grow your business with <em>verified reviews</em>.</h1>
+            <p>Sign in to your business workspace to monitor verified ratings, dispatch WhatsApp review requests, and build lasting customer trust.</p>
             <ul class="auth-points">
                 <li>
                     <span class="auth-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-                    Multi-tenant rating &amp; review analytics
+                    Ratings &amp; real-time customer feedback analytics
                 </li>
                 <li>
                     <span class="auth-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-                    Manage companies, branches &amp; customers
+                    WhatsApp review invites &amp; printable counter QR stands
                 </li>
                 <li>
                     <span class="auth-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
-                    Instant public rating links &amp; QR codes
+                    Social proof cards, ad funnels &amp; pre-purchase FAQs
+                </li>
+                <li>
+                    <span class="auth-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>
+                    Full public rating portal customiser &amp; brand theme control
                 </li>
             </ul>
         </div>
 
-        <p class="auth-brand-foot">&copy; <?php echo date('Y'); ?> Optibiz &middot; Company Rating Platform</p>
+        <p class="auth-brand-foot">&copy; <?php echo date('Y'); ?> Optibiz &middot; Business Reputation Workspace</p>
     </aside>
 
     <!-- Form panel -->
@@ -139,8 +178,8 @@ include dirname(__DIR__) . '/includes/header.php';
                 <span class="auth-card-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 11.5 11.5 14 15.5 9.5"/></svg>
                 </span>
-                <h2 id="authCardTitle">Tenant &amp; Admin Sign In</h2>
-                <p>Use your Account ID (OPT-XXXXXXXX), username or email to access your dashboard.</p>
+                <h2 id="authCardTitle">Sign In to Your Workspace</h2>
+                <p>Enter your Account ID (OPT-XXXXXXXX), username, or email to continue.</p>
             </header>
 
             <?php if ($notice): ?>

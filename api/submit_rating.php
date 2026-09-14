@@ -14,6 +14,7 @@ if ($company_id <= 0) {
 
 // Auto-ensure booster and sentiment routing columns exist
 ensureBoosterColumns($conn);
+ensureRatingsServiceColumn($conn);
 
 // Fetch company details and booster configuration
 $c_stmt = $conn->prepare("SELECT company_name, google_store_url, booster_enabled, booster_min_stars FROM customers WHERE id = ?");
@@ -169,12 +170,21 @@ if (isset($_POST['rating']) && is_array($_POST['rating'])) {
 }
 
 // Single review submission
+$service_id_raw = isset($_POST['service_id']) ? (int)$_POST['service_id'] : 0;
+$service_id     = $service_id_raw > 0 ? $service_id_raw : null;
+$is_service     = ($service_id !== null);
 $rating         = (int)($_POST['rating'] ?? 0);
 $customer_name  = is_string($_POST['customer_name'] ?? null) ? sanitize($_POST['customer_name']) : '';
 $customer_email = is_string($_POST['customer_email'] ?? null) ? sanitize($_POST['customer_email']) : '';
 $comment        = is_string($_POST['comment'] ?? null) ? sanitize($_POST['comment']) : '';
 $question_id    = isset($_POST['question_id']) && !is_array($_POST['question_id']) && (int)$_POST['question_id'] > 0 ? (int)$_POST['question_id'] : null;
 $is_question    = ($question_id !== null);
+
+// A service review cannot also be a question review — service wins; drop any stray question_id
+if ($is_service) {
+    $question_id = null;
+    $is_question = false;
+}
 
 // Verification metadata (MoMo reference or Receipt/Invoice upload)
 $momo_ref_raw   = isset($_POST['momo_ref']) && is_string($_POST['momo_ref']) ? trim($_POST['momo_ref']) : '';
@@ -187,22 +197,22 @@ if ($rating < 1 || $rating > 5) {
     die('Please select a valid rating between 1 and 5 stars.');
 }
 
-// Name is required for general reviews. Question submissions collect no
-// name or email - they are stored anonymously.
+// Name is required for general reviews. Question and service submissions
+// collect no name or email - they are stored anonymously.
 if (empty($customer_name)) {
-    if ($is_question) {
+    if ($is_question || $is_service) {
         $customer_name = 'Anonymous';
     } else {
         die('Customer name is required.');
     }
 }
 
-if (!$is_question && empty($customer_email)) {
+if (!$is_question && !$is_service && empty($customer_email)) {
     die('Customer email address is required.');
 }
 
-// Question submissions collect no email - store empty string (column is NOT NULL)
-if ($is_question) {
+// Question and service submissions collect no email - store empty string (column is NOT NULL)
+if ($is_question || $is_service) {
     $customer_email = '';
 }
 
@@ -211,9 +221,24 @@ $is_escalated        = ($rating < $booster_min_stars) ? 1 : 0;
 $escalation_status   = $is_escalated ? 'pending' : 'none';
 $is_booster_eligible = ($rating >= $booster_min_stars) && $booster_enabled && !empty($google_store_url);
 
+// Validate the target service belongs to the same company before linking it
+if ($is_service) {
+    $svc_chk = $conn->prepare("SELECT id FROM services WHERE id = ? AND tenant_id = (SELECT tenant_id FROM customers WHERE id = ? LIMIT 1) LIMIT 1");
+    if ($svc_chk) {
+        $svc_chk->bind_param("ii", $service_id, $company_id);
+        $svc_chk->execute();
+        $svc_res = $svc_chk->get_result();
+        if (!$svc_res || $svc_res->num_rows === 0) {
+            $service_id = null;
+            $is_service = false;
+        }
+        $svc_chk->close();
+    }
+}
+
 // Insert rating with verification metadata and escalation tracking
-$stmt = $conn->prepare("INSERT INTO ratings (company_id, question_id, rating, customer_name, customer_email, comment, is_verified, verification_type, momo_ref, is_escalated, escalation_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("iiisssissis", $company_id, $question_id, $rating, $customer_name, $customer_email, $comment, $is_verified, $verification_type, $momo_ref, $is_escalated, $escalation_status);
+$stmt = $conn->prepare("INSERT INTO ratings (company_id, question_id, service_id, rating, customer_name, customer_email, comment, is_verified, verification_type, momo_ref, is_escalated, escalation_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("iiiisssissis", $company_id, $question_id, $service_id, $rating, $customer_name, $customer_email, $comment, $is_verified, $verification_type, $momo_ref, $is_escalated, $escalation_status);
 
 if ($stmt->execute()) {
     $rating_id = $conn->insert_id;

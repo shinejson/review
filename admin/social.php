@@ -22,6 +22,7 @@ require_once dirname(__DIR__) . '/includes/admin_helpers.php';
 require_once dirname(__DIR__) . '/includes/social_publisher.php';
 
 requireLogin();
+requireTeamAccess('social');
 
 $tenant_id = getTenantId();
 $is_tenant = isTenant();
@@ -629,16 +630,25 @@ include __DIR__ . '/_shell.php';
         </div>
 
         <!-- Connections -->
-        <div class="form-card" id="connections-section">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:16px;flex-wrap:wrap;">
-                <div>
-                    <h3 style="margin:0 0 8px;">Network connections</h3>
-                    <p class="muted" style="margin:0;">
-                        Paste the access token from each network's developer console. Optibiz posts straight to their API —
-                        tokens are stored for this workspace only and never shown again in full.
-                    </p>
+        <div class="collapsible-card form-card" id="connections-section">
+            <div class="collapsible-header" onclick="toggleSocialSection(this)" style="cursor:pointer;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:16px;flex-wrap:wrap;">
+                    <div style="flex:1;">
+                        <h3 style="margin:0 0 8px;">Network connections</h3>
+                        <p class="muted" style="margin:0;">
+                            Paste the access token from each network's developer console. Optibiz posts straight to their API —
+                            tokens are stored for this workspace only and never shown again in full.
+                        </p>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:12px;font-weight:700;color:var(--lime);background:rgba(194,245,66,0.15);padding:4px 10px;border-radius:99px;"><?php echo count($accounts); ?> connected</span>
+                        <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
+                    </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:8px;">
+            </div>
+
+            <div class="collapsible-content">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px;">:8px;">
                     <?php foreach ($platforms as $key => $meta): ?>
                         <?php if (!isset($accounts[$key])): ?>
                             <button type="button" class="btn btn-secondary" 
@@ -716,18 +726,24 @@ include __DIR__ . '/_shell.php';
                     </div>
                 <?php endforeach; ?>
             </div>
+            </div>
         </div>
 
         <!-- Library -->
-        <div class="data-table-card">
-            <div class="admin-card-head">
-                <div>
-                    <h3>Post library</h3>
-                    <p class="muted"><?php echo sa_e(sa_num($published_count)); ?> published ·
-                        <?php echo sa_e(sa_num($draft_count)); ?> drafts ·
-                        <?php echo sa_e(sa_num($failed_count)); ?> failed</p>
+        <div class="collapsible-card data-table-card">
+            <div class="collapsible-header" onclick="toggleSocialSection(this)" style="cursor:pointer;">
+                <div class="admin-card-head">
+                    <div style="flex:1;">
+                        <h3>Post library</h3>
+                        <p class="muted"><?php echo sa_e(sa_num($published_count)); ?> published ·
+                            <?php echo sa_e(sa_num($draft_count)); ?> drafts ·
+                            <?php echo sa_e(sa_num($failed_count)); ?> failed</p>
+                    </div>
+                    <span class="collapse-icon" style="font-size:18px;color:#64748b;transition:transform 0.3s;">▼</span>
                 </div>
             </div>
+
+            <div class="collapsible-content">
             <div class="admin-table-wrap">
                 <table class="data-table">
                     <thead>
@@ -811,6 +827,7 @@ include __DIR__ . '/_shell.php';
                     <?php endif; ?>
                     </tbody>
                 </table>
+            </div>
             </div>
         </div>
 <?php include __DIR__ . '/_shell_footer.php'; ?>
@@ -1021,5 +1038,51 @@ function closeEditModal() {
 document.addEventListener('click', function(e) {
     var modal = document.getElementById('editPostModal');
     if (e.target === modal) closeEditModal();
+});
+
+// Collapsible social sections accordion
+function toggleSocialSection(header) {
+    const card = header.closest('.collapsible-card');
+    const content = card.querySelector('.collapsible-content');
+    const icon = header.querySelector('.collapse-icon');
+    const isOpen = content.style.maxHeight && content.style.maxHeight !== '0px';
+    
+    // Close all other sections
+    document.querySelectorAll('.collapsible-card').forEach(otherCard => {
+        if (otherCard !== card) {
+            const otherContent = otherCard.querySelector('.collapsible-content');
+            const otherIcon = otherCard.querySelector('.collapse-icon');
+            if (otherContent && otherIcon) {
+                otherContent.style.maxHeight = '0';
+                otherContent.style.opacity = '0';
+                otherContent.style.marginTop = '0';
+                otherIcon.style.transform = 'rotate(0deg)';
+            }
+        }
+    });
+    
+    // Toggle current section
+    if (isOpen) {
+        content.style.maxHeight = '0';
+        content.style.opacity = '0';
+        content.style.marginTop = '0';
+        icon.style.transform = 'rotate(0deg)';
+    } else {
+        content.style.maxHeight = content.scrollHeight + 'px';
+        content.style.opacity = '1';
+        content.style.marginTop = '14px';
+        icon.style.transform = 'rotate(180deg)';
+    }
+}
+
+// Initialize all sections as collapsed on page load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.collapsible-content').forEach(content => {
+        content.style.maxHeight = '0';
+        content.style.opacity = '0';
+        content.style.overflow = 'hidden';
+        content.style.transition = 'max-height 0.4s ease, opacity 0.3s ease, margin-top 0.3s ease';
+        content.style.marginTop = '0';
+    });
 });
 </script>

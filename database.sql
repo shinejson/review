@@ -78,6 +78,27 @@ CREATE TABLE IF NOT EXISTS admins (
 INSERT INTO admins (username, password, email) VALUES 
 ('admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin@example.com');
 
+-- Team members: staff accounts created by a tenant (workspace owner) to help run
+-- their workspace. They sign in at /admin/login.php and are scoped to tenant_id
+-- with module-level access stored as comma-separated keys in `permissions`.
+CREATE TABLE IF NOT EXISTS team_members (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    full_name VARCHAR(100) NOT NULL,
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'staff',
+    permissions VARCHAR(1000) NOT NULL DEFAULT '',
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    last_login_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_team_username (username),
+    UNIQUE KEY uniq_team_email (email),
+    KEY idx_team_tenant (tenant_id),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+);
+
 -- User sessions: one row per browser sign-in, for both panels
 -- (portal = 'superadmin' for the control center, 'admin' for the tenant
 -- workspace). Closing a row signs that browser out on its next request.

@@ -17,6 +17,7 @@ require_once dirname(__DIR__) . '/includes/admin_helpers.php';
 require_once dirname(__DIR__) . '/includes/ad_conversions.php';
 
 requireLogin();
+requireTeamAccess('ads');
 
 $tenant_id = getTenantId();
 $is_tenant = isTenant();
@@ -141,6 +142,73 @@ $pageTitle = 'Ads & Funnel';
 $activeNav = 'ads';
 include __DIR__ . '/_shell.php';
 ?>
+<style>
+/* Ads page — dark-mode overrides (these beat the inline background:#fff styles with !important) */
+:root[data-theme='dark'] .metric-card,
+:root[data-theme='dark'] .panel{background:#0f1f2e !important;border-color:rgba(255,255,255,.08) !important;box-shadow:none !important;}
+:root[data-theme='dark'] div[style*="font-size:36px"]{color:#e8eef4 !important;}
+:root[data-theme='dark'] select[name="company_id"],
+:root[data-theme='dark'] select[name="days"]{background:rgba(255,255,255,.05) !important;border-color:rgba(255,255,255,.1) !important;color:#e2e8f0 !important;color-scheme:dark;}
+:root[data-theme='dark'] option{background:#0f1f2e;color:#e2e8f0;}
+:root[data-theme='dark'] thead tr[style*="#f8fafc"]{background:rgba(255,255,255,.03) !important;}
+:root[data-theme='dark'] thead th{color:#94a3b8 !important;}
+:root[data-theme='dark'] tbody tr[style*="#f1f5f9"]{border-color:rgba(255,255,255,.08) !important;}
+:root[data-theme='dark'] tbody td code,
+:root[data-theme='dark'] tbody td .mono{background:rgba(255,255,255,.08) !important;color:#e2e8f0 !important;}
+:root[data-theme='dark'] div[style*="background:#fff;border:1px solid #e2e8f0"]{background:rgba(255,255,255,.04) !important;border-color:rgba(255,255,255,.1) !important;}
+:root[data-theme='dark'] div[style*="background:#f1f5f9;height:8px"]{background:rgba(255,255,255,.08) !important;}
+:root[data-theme='dark'] #finalUtmUrl{background:rgba(255,255,255,.05) !important;border-color:rgba(255,255,255,.1) !important;color:#e2e8f0 !important;}
+:root[data-theme='dark'] input[type="text"],
+:root[data-theme='dark'] input[type="password"],
+:root[data-theme='dark'] input[type="number"],
+:root[data-theme='dark'] select,
+:root[data-theme='dark'] #utmSource,
+:root[data-theme='dark'] #utmMedium,
+:root[data-theme='dark'] #utmCampaign,
+:root[data-theme='dark'] #utmContent,
+:root[data-theme='dark'] #cplSpend,
+:root[data-theme='dark'] #pixelId,
+:root[data-theme='dark'] #capiToken,
+:root[data-theme='dark'] #testCode,
+:root[data-theme='dark'] #googleId,
+:root[data-theme='dark'] #googleLabel,
+:root[data-theme='dark'] #tiktokId{background:rgba(255,255,255,.05) !important;border-color:rgba(255,255,255,.1) !important;color:#e2e8f0 !important;color-scheme:dark;}
+:root[data-theme='dark'] input::placeholder{color:#64748b !important;}
+:root[data-theme='dark'] [style*="color:#059669"]{color:#4ade80 !important;}
+:root[data-theme='dark'] [style*="color:#0284c7"]{color:#38bdf8 !important;}
+:root[data-theme='dark'] [style*="color:#7c3aed"]{color:#a78bfa !important;}
+:root[data-theme='dark'] [style*="color:#0369a1"]{color:#7dd3fc !important;}
+:root[data-theme='dark'] [style*="color:#92400e"]{color:#fcd34d !important;}
+:root[data-theme='dark'] [style*="color:#6d28d9"]{color:#c4b5fd !important;}
+:root[data-theme='dark'] [style*="color:#047857"]{color:#6ee7b7 !important;}
+:root[data-theme='dark'] [style*="background:#dcfce7"]{background:rgba(34,197,94,.15) !important;color:#4ade80 !important;border-color:rgba(34,197,94,.3) !important;}
+:root[data-theme='dark'] [style*="background:#f0fdf4"]{background:rgba(34,197,94,.08) !important;border-color:rgba(34,197,94,.25) !important;}
+:root[data-theme='dark'] [style*="background:#fef2f2"]{background:rgba(239,68,68,.1) !important;border-color:rgba(239,68,68,.3) !important;}
+:root[data-theme='dark'] [style*="background:#fefce8"]{background:rgba(250,204,21,.1) !important;border-color:rgba(250,204,21,.3) !important;}
+:root[data-theme='dark'] [style*="background:#fff7ed"]{background:rgba(251,146,60,.1) !important;border-color:rgba(251,146,60,.3) !important;}
+:root[data-theme='dark'] [style*="background:#eef2ff"]{background:rgba(129,140,248,.12) !important;border-color:rgba(129,140,248,.3) !important;}
+:root[data-theme='dark'] [style*="background:#ecfdf5"]{background:rgba(52,211,153,.1) !important;border-color:rgba(52,211,153,.3) !important;}
+:root[data-theme='dark'] div[style*="background:var(--bg)"]{background:rgba(255,255,255,.03) !important;}
+:root[data-theme='dark'] div[style*="background:#f8fafc"]{background:rgba(255,255,255,.04) !important;}
+:root[data-theme='dark'] div[style*="background:#fcfdff"]{background:rgba(255,255,255,.02) !important;border-color:rgba(255,255,255,.1) !important;}
+:root[data-theme='dark'] div[style*="background:#e2e8f0"]{background:rgba(255,255,255,.12) !important;}
+:root[data-theme='dark'] div[style*="border:1px solid #e2e8f0"]{border-color:rgba(255,255,255,.1) !important;}
+:root[data-theme='dark'] tbody td{color:#cbd5e1 !important;}
+:root[data-theme='dark'] tbody td strong{color:#e2e8f0 !important;}
+:root[data-theme='dark'] label[style*="color:#374151"],
+:root[data-theme='dark'] [style*="color:#4b5563"]{color:#cbd5e1 !important;}
+:root[data-theme='dark'] [style*="color:#1e293b"]{color:#e2e8f0 !important;}
+:root[data-theme='dark'] [style*="color:#b45309"]{color:#fbbf24 !important;}
+:root[data-theme='dark'] [style*="color:#15803d"]{color:#4ade80 !important;}
+:root[data-theme='dark'] [style*="color:#8b5cf6"]{color:#c4b5fd !important;}
+:root[data-theme='dark'] [style*="color:#d97706"]{color:#fbbf24 !important;}
+:root[data-theme='dark'] [style*="color:#166534"]{color:#86efac !important;}
+:root[data-theme='dark'] [style*="background:#e0f2fe"]{background:rgba(56,189,248,.15) !important;color:#7dd3fc !important;}
+:root[data-theme='dark'] [style*="background:#fef3c7"]{background:rgba(251,191,36,.15) !important;color:#fcd34d !important;}
+:root[data-theme='dark'] [style*="background:#ede9fe"]{background:rgba(167,139,250,.15) !important;color:#c4b5fd !important;}
+:root[data-theme='dark'] .admin-tab-btn:not(.is-active){background:rgba(255,255,255,.06) !important;color:#94a3b8 !important;}
+:root[data-theme='dark'] code{background:rgba(255,255,255,.08) !important;color:#e2e8f0 !important;}
+</style>
 
 <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
     <div>
@@ -240,13 +308,17 @@ include __DIR__ . '/_shell.php';
 <!-- Visual Funnel & ROAS Calculator Grid -->
 <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px;margin-bottom:24px;">
     <!-- Visual Funnel Flow -->
-    <div class="panel" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
-        <h3 style="font-size:17px;font-weight:800;margin:0 0 16px;display:flex;align-items:center;gap:8px;">
-            <span>📈</span> Funnel Progression
-        </h3>
-        <p style="color:var(--muted);font-size:13px;margin:0 0 20px;">Live conversion efficiency across the customer acquisition journey:</p>
+    <div class="panel collapsible-card" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
+        <div class="collapsible-header" onclick="toggleAdsSection(this)" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin:0 0 16px;">
+            <h3 style="font-size:17px;font-weight:800;margin:0;display:flex;align-items:center;gap:8px;">
+                <span>📈</span> Funnel Progression
+            </h3>
+            <span class="dropdown-arrow" style="font-size:18px;transition:transform 0.3s ease;color:var(--muted);">▼</span>
+        </div>
+        <div class="collapsible-content" style="max-height:0;overflow:hidden;opacity:0;transition:max-height 0.4s ease,opacity 0.3s ease,margin-top 0.3s ease;">
+            <p style="color:var(--muted);font-size:13px;margin:0 0 20px;">Live conversion efficiency across the customer acquisition journey:</p>
 
-        <div style="display:flex;flex-direction:column;gap:14px;">
+            <div style="display:flex;flex-direction:column;gap:14px;">
             <!-- Step 1 -->
             <div style="background:var(--bg);border-radius:10px;padding:14px 18px;">
                 <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;margin-bottom:6px;">
@@ -291,16 +363,21 @@ include __DIR__ . '/_shell.php';
                 </div>
             </div>
         </div>
+        </div>
     </div>
 
     <!-- ROAS & Cost Per Lead Calculator -->
-    <div class="panel" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
-        <h3 style="font-size:17px;font-weight:800;margin:0 0 12px;display:flex;align-items:center;gap:8px;">
-            <span>💰</span> Cost Per Lead Calculator
-        </h3>
-        <p style="color:var(--muted);font-size:12px;margin:0 0 16px;">Estimate your customer acquisition costs based on total ad spend:</p>
+    <div class="panel collapsible-card" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
+        <div class="collapsible-header" onclick="toggleAdsSection(this)" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin:0 0 12px;">
+            <h3 style="font-size:17px;font-weight:800;margin:0;display:flex;align-items:center;gap:8px;">
+                <span>💰</span> Cost Per Lead Calculator
+            </h3>
+            <span class="dropdown-arrow" style="font-size:18px;transition:transform 0.3s ease;color:var(--muted);">▼</span>
+        </div>
+        <div class="collapsible-content" style="max-height:0;overflow:hidden;opacity:0;transition:max-height 0.4s ease,opacity 0.3s ease,margin-top 0.3s ease;">
+            <p style="color:var(--muted);font-size:12px;margin:0 0 16px;">Estimate your customer acquisition costs based on total ad spend:</p>
 
-        <div style="margin-bottom:16px;">
+            <div style="margin-bottom:16px;">
             <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">Total Ad Spend ($)</label>
             <input type="number" id="calcSpend" value="100" min="1" step="5" style="width:100%;padding:10px 14px;border:1px solid var(--line);border-radius:8px;font-size:15px;font-weight:700;box-sizing:border-box;">
         </div>
@@ -316,8 +393,9 @@ include __DIR__ . '/_shell.php';
             </div>
         </div>
 
-        <div style="background:#f8fafc;border-radius:8px;padding:12px;font-size:12px;color:var(--muted);line-height:1.5;">
-            💡 <strong>Reputation Advantage:</strong> Sending ads to an Optibiz verified profile typically reduces Cost Per Lead by <strong>35% - 50%</strong> compared to sending cold traffic to an unrated generic homepage.
+            <div style="background:#f8fafc;border-radius:8px;padding:12px;font-size:12px;color:var(--muted);line-height:1.5;">
+                💡 <strong>Reputation Advantage:</strong> Sending ads to an Optibiz verified profile typically reduces Cost Per Lead by <strong>35% - 50%</strong> compared to sending cold traffic to an unrated generic homepage.
+            </div>
         </div>
     </div>
 </div>
@@ -356,11 +434,15 @@ include __DIR__ . '/_shell.php';
      ============================================================ -->
 <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px;">
     <!-- Pixels Form Card -->
-    <div class="panel" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
-        <h3 style="font-size:18px;font-weight:800;margin:0 0 8px;display:flex;align-items:center;gap:8px;">
-            <span>🔌</span> Connect Ad Accounts &amp; Pixels
-        </h3>
-        <p style="color:var(--muted);font-size:13px;margin:0 0 24px;">Configure your tracking tags. Once saved, pixel events and server-side Conversions API (CAPI) signals will fire automatically.</p>
+    <div class="panel collapsible-card" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
+        <div class="collapsible-header" onclick="toggleAdsSection(this)" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;">
+            <h3 style="font-size:18px;font-weight:800;margin:0;display:flex;align-items:center;gap:8px;">
+                <span>🔌</span> Connect Ad Accounts &amp; Pixels
+            </h3>
+            <span class="dropdown-arrow" style="font-size:18px;transition:transform 0.3s ease;color:var(--muted);">▼</span>
+        </div>
+        <div class="collapsible-content" style="max-height:0;overflow:hidden;opacity:0;transition:max-height 0.4s ease,opacity 0.3s ease,margin-top 0.3s ease;">
+            <p style="color:var(--muted);font-size:13px;margin:0 0 24px;">Configure your tracking tags. Once saved, pixel events and server-side Conversions API (CAPI) signals will fire automatically.</p>
 
         <form method="POST" action="ads.php?tab=pixels&company_id=<?php echo $company_id; ?>&days=<?php echo $days; ?>">
             <input type="hidden" name="action" value="save_pixels">
@@ -442,14 +524,19 @@ include __DIR__ . '/_shell.php';
                 Save Tracking Configuration
             </button>
         </form>
+        </div>
     </div>
 
     <!-- Diagnostic & Live Test Panel -->
     <div>
-        <div class="panel" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:20px;">
-            <h3 style="font-size:16px;font-weight:800;margin:0 0 12px;display:flex;align-items:center;gap:8px;">
-                <span>🧪</span> Connection Diagnostics
-            </h3>
+        <div class="panel collapsible-card" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:20px;">
+            <div class="collapsible-header" onclick="toggleAdsSection(this)" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin:0 0 12px;">
+                <h3 style="font-size:16px;font-weight:800;margin:0;display:flex;align-items:center;gap:8px;">
+                    <span>🧪</span> Connection Diagnostics
+                </h3>
+                <span class="dropdown-arrow" style="font-size:18px;transition:transform 0.3s ease;color:var(--muted);">▼</span>
+            </div>
+            <div class="collapsible-content" style="max-height:0;overflow:hidden;opacity:0;transition:max-height 0.4s ease,opacity 0.3s ease,margin-top 0.3s ease;">
             <p style="color:var(--muted);font-size:12px;line-height:1.5;margin:0 0 18px;">
                 Verify that your server-side Conversions API token is working properly by sending a synthetic test lead event to Meta:
             </p>
@@ -467,6 +554,7 @@ include __DIR__ . '/_shell.php';
             <?php if (empty($ad_config['meta_capi_token'])): ?>
             <p style="color:#d97706;font-size:11px;margin:10px 0 0;text-align:center;">⚠️ Add your Meta Pixel ID and CAPI token on the left to enable live diagnostics.</p>
             <?php endif; ?>
+            </div>
         </div>
 
         <div class="panel" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
@@ -487,11 +575,15 @@ include __DIR__ . '/_shell.php';
      ============================================================ -->
 <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:20px;">
     <!-- Review to Ad Copy Presets -->
-    <div class="panel" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
-        <h3 style="font-size:18px;font-weight:800;margin:0 0 8px;display:flex;align-items:center;gap:8px;">
-            <span>⭐</span> Review-to-Ad Copy Studio
-        </h3>
-        <p style="color:var(--muted);font-size:13px;margin:0 0 20px;">Pick any verified 5-star customer testimonial and copy ready-to-launch ad copy presets for Facebook, Instagram, or Google Ads:</p>
+    <div class="panel collapsible-card" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
+        <div class="collapsible-header" onclick="toggleAdsSection(this)" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;">
+            <h3 style="font-size:18px;font-weight:800;margin:0;display:flex;align-items:center;gap:8px;">
+                <span>⭐</span> Review-to-Ad Copy Studio
+            </h3>
+            <span class="dropdown-arrow" style="font-size:18px;transition:transform 0.3s ease;color:var(--muted);">▼</span>
+        </div>
+        <div class="collapsible-content" style="max-height:0;overflow:hidden;opacity:0;transition:max-height 0.4s ease,opacity 0.3s ease,margin-top 0.3s ease;">
+            <p style="color:var(--muted);font-size:13px;margin:0 0 20px;">Pick any verified 5-star customer testimonial and copy ready-to-launch ad copy presets for Facebook, Instagram, or Google Ads:</p>
 
         <?php if (count($top_reviews) > 0): ?>
         <div style="display:flex;flex-direction:column;gap:14px;">
@@ -532,14 +624,19 @@ include __DIR__ . '/_shell.php';
             <p style="font-size:12px;">Invite your recent customers via <a href="whatsapp_sender.php" style="color:#0284c7;">Ask for Reviews (WhatsApp)</a> to collect high-converting testimonials.</p>
         </div>
         <?php endif; ?>
+        </div>
     </div>
 
     <!-- Interactive UTM Campaign Link Generator -->
-    <div class="panel" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
-        <h3 style="font-size:18px;font-weight:800;margin:0 0 8px;display:flex;align-items:center;gap:8px;">
-            <span>🔗</span> UTM Campaign Link Builder
-        </h3>
-        <p style="color:var(--muted);font-size:13px;margin:0 0 20px;">Generate campaign URLs so Google Ads and Meta Ads clicks are automatically tracked and attributed in your Optibiz dashboard:</p>
+    <div class="panel collapsible-card" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
+        <div class="collapsible-header" onclick="toggleAdsSection(this)" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;">
+            <h3 style="font-size:18px;font-weight:800;margin:0;display:flex;align-items:center;gap:8px;">
+                <span>🔗</span> UTM Campaign Link Builder
+            </h3>
+            <span class="dropdown-arrow" style="font-size:18px;transition:transform 0.3s ease;color:var(--muted);">▼</span>
+        </div>
+        <div class="collapsible-content" style="max-height:0;overflow:hidden;opacity:0;transition:max-height 0.4s ease,opacity 0.3s ease,margin-top 0.3s ease;">
+            <p style="color:var(--muted);font-size:13px;margin:0 0 20px;">Generate campaign URLs so Google Ads and Meta Ads clicks are automatically tracked and attributed in your Optibiz dashboard:</p>
 
         <div style="display:flex;flex-direction:column;gap:14px;">
             <div>
@@ -582,6 +679,7 @@ include __DIR__ . '/_shell.php';
                     📋 Copy Destination URL for Ads
                 </button>
             </div>
+        </div>
         </div>
     </div>
 </div>
@@ -626,11 +724,15 @@ include __DIR__ . '/_shell.php';
 <!-- ============================================================
      TAB 4: PAID CAMPAIGN ATTRIBUTION ANALYTICS
      ============================================================ -->
-<div class="panel" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
-    <h3 style="font-size:18px;font-weight:800;margin:0 0 8px;display:flex;align-items:center;gap:8px;">
-        <span>📊</span> Campaign Attribution Performance
-    </h3>
-    <p style="color:var(--muted);font-size:13px;margin:0 0 20px;">Breakdown of incoming traffic, unique visitors, and bottom-of-funnel WhatsApp inquiries grouped by campaign:</p>
+<div class="panel collapsible-card" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;">
+    <div class="collapsible-header" onclick="toggleAdsSection(this)" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;">
+        <h3 style="font-size:18px;font-weight:800;margin:0;display:flex;align-items:center;gap:8px;">
+            <span>📊</span> Campaign Attribution Performance
+        </h3>
+        <span class="dropdown-arrow" style="font-size:18px;transition:transform 0.3s ease;color:var(--muted);">▼</span>
+    </div>
+    <div class="collapsible-content" style="max-height:0;overflow:hidden;opacity:0;transition:max-height 0.4s ease,opacity 0.3s ease,margin-top 0.3s ease;">
+        <p style="color:var(--muted);font-size:13px;margin:0 0 20px;">Breakdown of incoming traffic, unique visitors, and bottom-of-funnel WhatsApp inquiries grouped by campaign:</p>
 
     <?php if (count($attribution_rows) > 0): ?>
     <div class="table-scroll-wrap" style="overflow-x:auto;">
@@ -692,7 +794,57 @@ include __DIR__ . '/_shell.php';
         </a>
     </div>
     <?php endif; ?>
+    </div>
 </div>
 <?php endif; ?>
+
+<!-- Collapsible Accordion JavaScript for Ads Page -->
+<style>
+.collapsible-card .collapsible-content.is-open {
+    max-height: 5000px !important;
+    opacity: 1 !important;
+    margin-top: 0 !important;
+}
+.collapsible-card .collapsible-header .dropdown-arrow.is-rotated {
+    transform: rotate(180deg);
+}
+</style>
+
+<script>
+function toggleAdsSection(headerEl) {
+    var card = headerEl.closest('.collapsible-card');
+    var content = card.querySelector('.collapsible-content');
+    var arrow = headerEl.querySelector('.dropdown-arrow');
+    var isOpen = content.classList.contains('is-open');
+    
+    // Close all other sections (accordion behavior)
+    document.querySelectorAll('.collapsible-card .collapsible-content').forEach(function(otherContent) {
+        if (otherContent !== content) {
+            otherContent.classList.remove('is-open');
+            var otherArrow = otherContent.closest('.collapsible-card').querySelector('.dropdown-arrow');
+            if (otherArrow) otherArrow.classList.remove('is-rotated');
+        }
+    });
+    
+    // Toggle current section
+    if (isOpen) {
+        content.classList.remove('is-open');
+        arrow.classList.remove('is-rotated');
+    } else {
+        content.classList.add('is-open');
+        arrow.classList.add('is-rotated');
+    }
+}
+
+// Initialize all sections as collapsed on page load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.collapsible-card .collapsible-content').forEach(function(content) {
+        content.classList.remove('is-open');
+    });
+    document.querySelectorAll('.collapsible-card .dropdown-arrow').forEach(function(arrow) {
+        arrow.classList.remove('is-rotated');
+    });
+});
+</script>
 
 <?php include __DIR__ . '/_shell_footer.php'; ?>

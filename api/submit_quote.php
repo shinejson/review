@@ -61,6 +61,43 @@ $conn->query("CREATE TABLE IF NOT EXISTS quote_requests (
 
 ensureRealIdSchema($conn);
 
+// ── DUPLICATE DETECTION ──────────────────────────────────────────────────────
+// Block a second quote from the same company (matched by email OR company name)
+// within a 30-day rolling window.  Exceptions:
+//   • Requests with status = 'rejected' are excluded (allow reapplication).
+//   • Requests older than 30 days are excluded.
+// ─────────────────────────────────────────────────────────────────────────────
+$dupStmt = $conn->prepare(
+    "SELECT id, public_id, company_name, status, created_at
+     FROM quote_requests
+     WHERE (LOWER(email) = LOWER(?) OR LOWER(company_name) = LOWER(?))
+       AND status != 'rejected'
+       AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+     ORDER BY created_at DESC
+     LIMIT 1"
+);
+if ($dupStmt) {
+    $dupStmt->bind_param("ss", $email, $company_name);
+    $dupStmt->execute();
+    $dupRow = $dupStmt->get_result()->fetch_assoc();
+    $dupStmt->close();
+
+    if ($dupRow) {
+        $dupRef  = $dupRow['public_id'] ?: ('#' . $dupRow['id']);
+        $dupDate = date('M d, Y', strtotime($dupRow['created_at']));
+        $dupStatus = ucfirst($dupRow['status']);
+        echo json_encode([
+            'success'   => false,
+            'duplicate' => true,
+            'message'   => "A quote request for \"" . htmlspecialchars($dupRow['company_name']) . "\" was already submitted on {$dupDate} (Reference: {$dupRef}, Status: {$dupStatus}). Please wait for our team to contact you, or email support if you need to update your request.",
+            'existing_ref' => $dupRef,
+            'existing_status' => $dupStatus,
+            'existing_date' => $dupDate,
+        ]);
+        exit;
+    }
+}
+
 // Generate real public ID (QTE-XXXXXXXX)
 $public_id = generateRealPublicId($conn, 'quote_requests', 'public_id', 'QTE-', 8);
 

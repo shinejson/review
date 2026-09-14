@@ -4,6 +4,7 @@ require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 
 requireLogin();
+requireTeamAccess('settings');
 
 $tenant_id = getTenantId();
 $is_tenant = isTenant();
@@ -205,6 +206,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
+// Handle Public Page Customisation Update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_public_customization') {
+    $target_tenant_id = $is_tenant ? (int)$tenant_id : 0;
+
+    $custom_settings = [
+        'primary_color'       => sanitize($_POST['primary_color'] ?? '#10b981'),
+        'secondary_color'     => sanitize($_POST['secondary_color'] ?? '#059669'),
+        'star_color'          => sanitize($_POST['star_color'] ?? '#f59e0b'),
+        'page_bg'             => sanitize($_POST['page_bg'] ?? '#f8fafc'),
+        'card_bg'             => sanitize($_POST['card_bg'] ?? '#ffffff'),
+        'card_border'         => sanitize($_POST['card_border'] ?? '#e2e8f0'),
+        'text_color'          => sanitize($_POST['text_color'] ?? '#0f172a'),
+        'muted_color'         => sanitize($_POST['muted_color'] ?? '#64748b'),
+        'layout_style'        => sanitize($_POST['layout_style'] ?? 'modern_boxed'),
+        'header_layout'       => sanitize($_POST['header_layout'] ?? 'standard'),
+        'review_layout'       => sanitize($_POST['review_layout'] ?? 'tabs'),
+        'border_radius'       => sanitize($_POST['border_radius'] ?? 'rounded'),
+        'theme_mode'          => sanitize($_POST['theme_mode'] ?? 'light'),
+        'show_banner'         => isset($_POST['show_banner']) ? 1 : 0,
+        'show_breadcrumb'     => isset($_POST['show_breadcrumb']) ? 1 : 0,
+        'show_verified_badge' => isset($_POST['show_verified_badge']) ? 1 : 0,
+        'show_rating_dist'    => isset($_POST['show_rating_dist']) ? 1 : 0,
+        'show_services'       => isset($_POST['show_services']) ? 1 : 0,
+        'show_qa'             => isset($_POST['show_qa']) ? 1 : 0,
+        'show_whatsapp'       => isset($_POST['show_whatsapp']) ? 1 : 0,
+        'show_gstore'         => isset($_POST['show_gstore']) ? 1 : 0,
+        'show_map'            => isset($_POST['show_map']) ? 1 : 0,
+        'custom_css'          => trim((string)($_POST['custom_css'] ?? '')),
+    ];
+
+    if (saveTenantPublicPageSettings($conn, $target_tenant_id, $custom_settings)) {
+        $_SESSION['success'] = "Public page layout & color customisation saved successfully!";
+    } else {
+        $_SESSION['error'] = "Failed to save public page customisation: " . $conn->error;
+    }
+
+    header('Location: settings.php#tab=customization');
+    exit;
+}
+
+// Handle Reset Public Page Customisation
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'reset_public_customization') {
+    $target_tenant_id = $is_tenant ? (int)$tenant_id : 0;
+    $defaults = getDefaultPublicPageSettings();
+    if (saveTenantPublicPageSettings($conn, $target_tenant_id, $defaults)) {
+        $_SESSION['success'] = "Public page customisation has been reset to defaults!";
+    } else {
+        $_SESSION['error'] = "Failed to reset public page customisation: " . $conn->error;
+    }
+
+    header('Location: settings.php#tab=customization');
+    exit;
+}
+
 // Data loading for both tenants and platform admins
 $tenant      = null;
 $admin_info  = null;
@@ -290,8 +345,19 @@ if ($public_review_first_comp) {
     $public_review_qs  = $public_review_tenant_id > 0 ? ('?tenant=' . $public_review_tenant_id . ($display_title ? '&tenant_slug=' . urlencode(slugify($display_title)) : '')) : '';
     $public_review_url = getCompanyPublicRatingUrl(0, $display_title, $public_review_tenant_id > 0 ? ['tenant' => $public_review_tenant_id] : []);
 }
-$widget_base_url    = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/widget.php';
+$__scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$__root   = function_exists('getAppWebRoot') ? getAppWebRoot() : rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
+$widget_base_url    = (function_exists('getAppBaseUrl') ? getAppBaseUrl() : ($__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root)) . '/widget.php';
 $widget_default_url = $widget_base_url . $public_review_qs;
+
+// Current public page layout & color customisation
+$page_customization = getTenantPublicPageSettings($conn, $is_tenant ? (int)$tenant_id : 0);
+
+// Determine initial active tab from URL query param ?tab=...
+$initial_tab = 'profile';
+if (isset($_GET['tab']) && in_array($_GET['tab'], ['profile', 'customization', 'preferences', 'subscription', 'security'], true)) {
+    $initial_tab = $_GET['tab'];
+}
 
 $robots    = 'noindex, nofollow';
 $BASE      = '../';
@@ -338,28 +404,32 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
 
 <!-- Tab Navigation Bar -->
 <nav class="admin-tabs" role="tablist" aria-label="Settings navigation">
-    <button type="button" class="admin-tab-btn is-active" id="tabBtn-profile" role="tab" aria-selected="true" aria-controls="tab-profile" onclick="switchAdminTab('profile')">
+    <button type="button" class="admin-tab-btn <?php echo $initial_tab === 'profile' ? 'is-active' : ''; ?>" id="tabBtn-profile" role="tab" aria-selected="<?php echo $initial_tab === 'profile' ? 'true' : 'false'; ?>" aria-controls="tab-profile" onclick="switchAdminTab('profile')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         Profile &amp; Details
     </button>
-    <button type="button" class="admin-tab-btn" id="tabBtn-subscription" role="tab" aria-selected="false" aria-controls="tab-subscription" onclick="switchAdminTab('subscription')">
+    <button type="button" class="admin-tab-btn <?php echo $initial_tab === 'customization' ? 'is-active' : ''; ?>" id="tabBtn-customization" role="tab" aria-selected="<?php echo $initial_tab === 'customization' ? 'true' : 'false'; ?>" aria-controls="tab-customization" onclick="switchAdminTab('customization')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/><path d="M12 22.5A8.5 8.5 0 0 0 20.5 14c0-2.3-1.07-4.4-2.84-5.84L12 2.69 6.34 8.16A8.5 8.5 0 0 0 3.5 14a8.5 8.5 0 0 0 8.5 8.5z"/></svg>
+        Public Page Customisation
+    </button>
+    <button type="button" class="admin-tab-btn <?php echo $initial_tab === 'preferences' ? 'is-active' : ''; ?>" id="tabBtn-preferences" role="tab" aria-selected="<?php echo $initial_tab === 'preferences' ? 'true' : 'false'; ?>" aria-controls="tab-preferences" onclick="switchAdminTab('preferences')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Preferences &amp; Links
+    </button>
+    <button type="button" class="admin-tab-btn <?php echo $initial_tab === 'subscription' ? 'is-active' : ''; ?>" id="tabBtn-subscription" role="tab" aria-selected="<?php echo $initial_tab === 'subscription' ? 'true' : 'false'; ?>" aria-controls="tab-subscription" onclick="switchAdminTab('subscription')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         <?php echo $is_tenant ? 'Subscription & Quotas' : 'Platform Overview'; ?>
     </button>
-    <button type="button" class="admin-tab-btn" id="tabBtn-security" role="tab" aria-selected="false" aria-controls="tab-security" onclick="switchAdminTab('security')">
+    <button type="button" class="admin-tab-btn <?php echo $initial_tab === 'security' ? 'is-active' : ''; ?>" id="tabBtn-security" role="tab" aria-selected="<?php echo $initial_tab === 'security' ? 'true' : 'false'; ?>" aria-controls="tab-security" onclick="switchAdminTab('security')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         Security &amp; Password
-    </button>
-    <button type="button" class="admin-tab-btn" id="tabBtn-preferences" role="tab" aria-selected="false" aria-controls="tab-preferences" onclick="switchAdminTab('preferences')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        Preferences &amp; Links
     </button>
 </nav>
 
 <!-- ============================================================
      TAB 1: PROFILE & DETAILS
      ============================================================ -->
-<div class="admin-tab-panel is-active" id="tab-profile" role="tabpanel" aria-labelledby="tabBtn-profile">
+<div class="admin-tab-panel <?php echo $initial_tab === 'profile' ? 'is-active' : ''; ?>" id="tab-profile" role="tabpanel" aria-labelledby="tabBtn-profile">
     <div class="grid-2col">
         <!-- Profile Form Card -->
         <div class="form-card">
@@ -523,7 +593,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
 <!-- ============================================================
      TAB 2: SUBSCRIPTION & QUOTAS / PLATFORM OVERVIEW
      ============================================================ -->
-<div class="admin-tab-panel" id="tab-subscription" role="tabpanel" aria-labelledby="tabBtn-subscription">
+<div class="admin-tab-panel <?php echo $initial_tab === 'subscription' ? 'is-active' : ''; ?>" id="tab-subscription" role="tabpanel" aria-labelledby="tabBtn-subscription">
     <?php if ($is_tenant && $tenant): 
         $max_cust  = (int)($tenant['max_customers'] ?? 50);
         $curr_cust = $usage_stats['customer_count'];
@@ -715,7 +785,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
 <!-- ============================================================
      TAB 3: SECURITY & PASSWORD
      ============================================================ -->
-<div class="admin-tab-panel" id="tab-security" role="tabpanel" aria-labelledby="tabBtn-security">
+<div class="admin-tab-panel <?php echo $initial_tab === 'security' ? 'is-active' : ''; ?>" id="tab-security" role="tabpanel" aria-labelledby="tabBtn-security">
     <div class="grid-2col">
         <!-- Change Password Card -->
         <div class="form-card">
@@ -855,7 +925,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
 <!-- ============================================================
      TAB 4: PREFERENCES & LINKS
      ============================================================ -->
-<div class="admin-tab-panel" id="tab-preferences" role="tabpanel" aria-labelledby="tabBtn-preferences">
+<div class="admin-tab-panel <?php echo $initial_tab === 'preferences' ? 'is-active' : ''; ?>" id="tab-preferences" role="tabpanel" aria-labelledby="tabBtn-preferences">
     <div class="grid-2col">
         <!-- Appearance & Theme Card -->
         <div class="form-card">
@@ -1040,6 +1110,800 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
     </div>
 </div>
 
+<!-- ============================================================
+     TAB: PUBLIC PAGE CUSTOMISATION
+     ============================================================ -->
+<div class="admin-tab-panel <?php echo $initial_tab === 'customization' ? 'is-active' : ''; ?>" id="tab-customization" role="tabpanel" aria-labelledby="tabBtn-customization">
+    <style>
+    /* ── Public Page Customizer Styles ── */
+    .customizer-banner {
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 20px 24px;
+        margin-bottom: 22px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 14px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+    }
+    :root[data-theme='dark'] .customizer-banner {
+        background: #0f1f2e;
+        border-color: rgba(255,255,255,0.08);
+    }
+    .customizer-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.95fr);
+        gap: 24px;
+        align-items: start;
+    }
+    @media (max-width: 990px) {
+        .customizer-grid {
+            grid-template-columns: 1fr;
+        }
+        .customizer-preview-col {
+            position: static !important;
+        }
+    }
+    .customizer-card {
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 22px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    :root[data-theme='dark'] .customizer-card {
+        background: #0f1f2e;
+        border-color: rgba(255,255,255,0.08);
+        box-shadow: none;
+    }
+    .customizer-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 14px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--line);
+        cursor: pointer;
+        user-select: none;
+    }
+    .customizer-card-title {
+        margin: 0;
+        font-size: 14.5px;
+        font-weight: 800;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .customizer-card-desc {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+    }
+    .customizer-collapse-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        font-size: 13px;
+        cursor: pointer;
+        padding: 4px;
+    }
+    .customizer-collapse-icon {
+        display: inline-block;
+        transition: transform 0.25s ease;
+        font-size: 12px;
+    }
+    .preset-card-btn {
+        border: 1.5px solid var(--line);
+        background: var(--bg);
+        border-radius: 10px;
+        padding: 12px 10px;
+        cursor: pointer;
+        text-align: left;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        transition: all 0.15s ease;
+    }
+    .preset-card-btn:hover {
+        border-color: #cbd5e1;
+        transform: translateY(-1px);
+    }
+    :root[data-theme='dark'] .preset-card-btn {
+        background: rgba(255,255,255,0.04);
+        border-color: rgba(255,255,255,0.08);
+    }
+    :root[data-theme='dark'] .preset-card-btn:hover {
+        background: rgba(255,255,255,0.07);
+        border-color: rgba(194,245,66,0.3);
+    }
+    .custom-radio-card {
+        border: 1.5px solid var(--line);
+        padding: 12px 14px;
+        border-radius: 10px;
+        cursor: pointer;
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        background: var(--bg);
+        transition: all 0.15s ease;
+    }
+    .custom-radio-card:hover {
+        border-color: #cbd5e1;
+    }
+    .custom-radio-card input[type="radio"]:checked + div strong {
+        color: var(--navy);
+    }
+    :root[data-theme='dark'] .custom-radio-card {
+        background: rgba(255,255,255,0.03);
+        border-color: rgba(255,255,255,0.08);
+    }
+    :root[data-theme='dark'] .custom-radio-card:hover {
+        background: rgba(255,255,255,0.06);
+    }
+    :root[data-theme='dark'] .custom-radio-card input[type="radio"]:checked + div strong {
+        color: var(--lime);
+    }
+    .custom-toggle-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--ink);
+        transition: all 0.15s ease;
+    }
+    .custom-toggle-card:hover {
+        border-color: #cbd5e1;
+    }
+    :root[data-theme='dark'] .custom-toggle-card {
+        background: rgba(255,255,255,0.03);
+        border-color: rgba(255,255,255,0.08);
+    }
+    .customizer-save-card {
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px 20px;
+        margin-top: 24px;
+        margin-bottom: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+    }
+    :root[data-theme='dark'] .customizer-save-card {
+        background: #0f1f2e;
+        border-color: rgba(255,255,255,0.08);
+    }
+    .customizer-preview-frame {
+        padding: 16px;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: #f8fafc;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+        transition: all 0.25s ease;
+    }
+    :root[data-theme='dark'] .customizer-preview-frame {
+        border-color: rgba(255,255,255,0.08);
+    }
+    .color-input-pair {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .color-picker-swatch {
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        cursor: pointer;
+        background: transparent;
+        flex-shrink: 0;
+    }
+    .color-hex-text {
+        font-family: monospace;
+        text-transform: uppercase;
+        font-size: 13px;
+        width: 100%;
+        padding: 9px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--ink);
+    }
+    .device-toggle-btn {
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 11.5px;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        color: var(--muted);
+        transition: all 0.15s ease;
+    }
+    .device-toggle-btn.is-active {
+        background: var(--navy);
+        color: var(--lime);
+        border-color: transparent;
+    }
+    :root[data-theme='dark'] .device-toggle-btn.is-active {
+        background: rgba(194,245,66,0.15);
+        color: var(--lime);
+        border-color: rgba(194,245,66,0.25);
+    }
+    </style>
+
+    <!-- Header Banner -->
+    <div class="customizer-banner">
+        <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap;">
+                <h3 style="margin:0;font-size:18px;color:var(--ink);font-weight:800;">Public Rating Page Customisation</h3>
+                <span style="font-size:11px;background:rgba(194,245,66,.2);color:var(--ink);padding:3px 8px;border-radius:6px;font-weight:700;font-family:monospace;">rate/index.php</span>
+            </div>
+            <p class="muted" style="margin:0;font-size:13px;">Customise the visual appearance, color palette, container layout, and component visibility for your customer review portal.</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <button type="submit" form="publicCustomizerForm" class="btn btn-primary" style="padding:9px 18px;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+                <span>✓</span> Save Changes
+            </button>
+            <?php if (!empty($public_review_url)): ?>
+            <a href="<?php echo htmlspecialchars($public_review_url); ?>" target="_blank" rel="noopener" class="btn btn-secondary" style="padding:9px 14px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;">
+                <span>↗</span> View Live Page
+            </a>
+            <?php endif; ?>
+            <form method="POST" action="settings.php" onsubmit="return confirm('Reset all layout and color customisations back to system defaults?');" style="margin:0;">
+                <input type="hidden" name="action" value="reset_public_customization">
+                <button type="submit" class="btn btn-secondary" style="padding:9px 13px;font-size:12.5px;color:#ef4444;" title="Revert to original theme defaults">
+                    ↺ Reset Defaults
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Customizer Grid -->
+    <div class="customizer-grid" id="publicCustomizerGrid">
+        <!-- Left: Customizer Form -->
+        <form method="POST" action="settings.php" id="publicCustomizerForm">
+            <input type="hidden" name="action" value="update_public_customization">
+
+            <!-- Card 1: 1-Click Color Presets -->
+            <div class="collapsible-card customizer-card">
+                <div class="customizer-card-header" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h4 class="customizer-card-title">
+                            <span>🎨</span> 1. Quick Theme Presets
+                        </h4>
+                        <p class="customizer-card-desc">Instant curated color palettes for high conversion and brand harmony.</p>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span class="status-dot">● 1-Click</span>
+                        <span class="customizer-collapse-icon collapse-icon">▼</span>
+                    </div>
+                </div>
+
+                <div class="collapsible-content">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));gap:10px;" id="themePresetsGrid">
+                        <button type="button" class="preset-card-btn" onclick="applyColorPreset('emerald')">
+                            <div style="display:flex;gap:5px;">
+                                <span style="width:14px;height:14px;border-radius:50%;background:#10b981;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#f59e0b;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#f8fafc;border:1px solid #cbd5e1;"></span>
+                            </div>
+                            <strong style="font-size:12px;color:var(--ink);">Emerald &amp; Lime</strong>
+                            <span class="muted" style="font-size:11px;">Default Fresh</span>
+                        </button>
+
+                        <button type="button" class="preset-card-btn" onclick="applyColorPreset('indigo')">
+                            <div style="display:flex;gap:5px;">
+                                <span style="width:14px;height:14px;border-radius:50%;background:#4f46e5;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#f59e0b;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#f5f3ff;border:1px solid #c7d2fe;"></span>
+                            </div>
+                            <strong style="font-size:12px;color:var(--ink);">Royal Indigo</strong>
+                            <span class="muted" style="font-size:11px;">Modern SaaS</span>
+                        </button>
+
+                        <button type="button" class="preset-card-btn" onclick="applyColorPreset('ocean')">
+                            <div style="display:flex;gap:5px;">
+                                <span style="width:14px;height:14px;border-radius:50%;background:#0284c7;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#f59e0b;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#f0f9ff;border:1px solid #bae6fd;"></span>
+                            </div>
+                            <strong style="font-size:12px;color:var(--ink);">Ocean Azure</strong>
+                            <span class="muted" style="font-size:11px;">Medical &amp; Corp</span>
+                        </button>
+
+                        <button type="button" class="preset-card-btn" onclick="applyColorPreset('crimson')">
+                            <div style="display:flex;gap:5px;">
+                                <span style="width:14px;height:14px;border-radius:50%;background:#e11d48;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#f59e0b;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#fff1f2;border:1px solid #fecdd3;"></span>
+                            </div>
+                            <strong style="font-size:12px;color:var(--ink);">Crimson Rose</strong>
+                            <span class="muted" style="font-size:11px;">Hospitality</span>
+                        </button>
+
+                        <button type="button" class="preset-card-btn" onclick="applyColorPreset('amber')">
+                            <div style="display:flex;gap:5px;">
+                                <span style="width:14px;height:14px;border-radius:50%;background:#d97706;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#f59e0b;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#fffbeb;border:1px solid #fde68a;"></span>
+                            </div>
+                            <strong style="font-size:12px;color:var(--ink);">Sunset Amber</strong>
+                            <span class="muted" style="font-size:11px;">Warm Energetic</span>
+                        </button>
+
+                        <button type="button" class="preset-card-btn" onclick="applyColorPreset('midnight')">
+                            <div style="display:flex;gap:5px;">
+                                <span style="width:14px;height:14px;border-radius:50%;background:#10b981;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#fbbf24;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#0a1926;border:1px solid #1e293b;"></span>
+                            </div>
+                            <strong style="font-size:12px;color:var(--ink);">Dark Midnight</strong>
+                            <span class="muted" style="font-size:11px;">Dark Mode</span>
+                        </button>
+
+                        <button type="button" class="preset-card-btn" onclick="applyColorPreset('obsidian')">
+                            <div style="display:flex;gap:5px;">
+                                <span style="width:14px;height:14px;border-radius:50%;background:#6366f1;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#fbbf24;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#090d16;border:1px solid #1f2937;"></span>
+                            </div>
+                            <strong style="font-size:12px;color:var(--ink);">Obsidian Cyber</strong>
+                            <span class="muted" style="font-size:11px;">Deep Obsidian</span>
+                        </button>
+
+                        <button type="button" class="preset-card-btn" onclick="applyColorPreset('monochrome')">
+                            <div style="display:flex;gap:5px;">
+                                <span style="width:14px;height:14px;border-radius:50%;background:#0f172a;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#f59e0b;"></span>
+                                <span style="width:14px;height:14px;border-radius:50%;background:#ffffff;border:1px solid #cbd5e1;"></span>
+                            </div>
+                            <strong style="font-size:12px;color:var(--ink);">Clean Slate</strong>
+                            <span class="muted" style="font-size:11px;">Monochrome</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 2: Detailed Color Palette -->
+            <div class="collapsible-card customizer-card">
+                <div class="customizer-card-header" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h4 class="customizer-card-title">
+                            <span>✨</span> 2. Brand Colors &amp; Styling
+                        </h4>
+                        <p class="customizer-card-desc">Fine-tune individual colors for actions, buttons, cards, and rating stars.</p>
+                    </div>
+                    <span class="customizer-collapse-icon collapse-icon">▼</span>
+                </div>
+
+                <div class="collapsible-content">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                        <!-- Primary Color -->
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="c_primary" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                                <span>Primary Action Color</span>
+                                <span style="font-size:11px;color:var(--muted);">(Buttons, Active Tabs)</span>
+                            </label>
+                            <div class="color-input-pair">
+                                <input type="color" id="c_primary_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['primary_color'] ?? '#10b981'); ?>">
+                                <input type="text" id="c_primary" name="primary_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['primary_color'] ?? '#10b981'); ?>" maxlength="7">
+                            </div>
+                        </div>
+
+                        <!-- Secondary / Hover Color -->
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="c_secondary" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                                <span>Hover / Accent Color</span>
+                                <span style="font-size:11px;color:var(--muted);">(Button Hover States)</span>
+                            </label>
+                            <div class="color-input-pair">
+                                <input type="color" id="c_secondary_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['secondary_color'] ?? '#059669'); ?>">
+                                <input type="text" id="c_secondary" name="secondary_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['secondary_color'] ?? '#059669'); ?>" maxlength="7">
+                            </div>
+                        </div>
+
+                        <!-- Star Rating Color -->
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="c_star" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                                <span>Rating Stars Color</span>
+                                <span style="font-size:11px;color:var(--muted);">(★ Star Icons)</span>
+                            </label>
+                            <div class="color-input-pair">
+                                <input type="color" id="c_star_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['star_color'] ?? '#f59e0b'); ?>">
+                                <input type="text" id="c_star" name="star_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['star_color'] ?? '#f59e0b'); ?>" maxlength="7">
+                            </div>
+                        </div>
+
+                        <!-- Page Background -->
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="c_page_bg" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                                <span>Page Background</span>
+                                <span style="font-size:11px;color:var(--muted);">(Outer Background)</span>
+                            </label>
+                            <div class="color-input-pair">
+                                <input type="color" id="c_page_bg_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['page_bg'] ?? '#f8fafc'); ?>">
+                                <input type="text" id="c_page_bg" name="page_bg" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['page_bg'] ?? '#f8fafc'); ?>" maxlength="7">
+                            </div>
+                        </div>
+
+                        <!-- Card / Surface Background -->
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="c_card_bg" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                                <span>Container Background</span>
+                                <span style="font-size:11px;color:var(--muted);">(Main Card Surface)</span>
+                            </label>
+                            <div class="color-input-pair">
+                                <input type="color" id="c_card_bg_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['card_bg'] ?? '#ffffff'); ?>">
+                                <input type="text" id="c_card_bg" name="card_bg" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['card_bg'] ?? '#ffffff'); ?>" maxlength="7">
+                            </div>
+                        </div>
+
+                        <!-- Card Border Color -->
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="c_card_border" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                                <span>Card Border Color</span>
+                            </label>
+                            <div class="color-input-pair">
+                                <input type="color" id="c_card_border_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['card_border'] ?? '#e2e8f0'); ?>">
+                                <input type="text" id="c_card_border" name="card_border" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['card_border'] ?? '#e2e8f0'); ?>" maxlength="7">
+                            </div>
+                        </div>
+
+                        <!-- Primary Headings & Text -->
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="c_text" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                                <span>Headings &amp; Text</span>
+                                <span style="font-size:11px;color:var(--muted);">(Main Typography)</span>
+                            </label>
+                            <div class="color-input-pair">
+                                <input type="color" id="c_text_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['text_color'] ?? '#0f172a'); ?>">
+                                <input type="text" id="c_text" name="text_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['text_color'] ?? '#0f172a'); ?>" maxlength="7">
+                            </div>
+                        </div>
+
+                        <!-- Muted Text -->
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="c_muted" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                                <span>Muted Subtext</span>
+                                <span style="font-size:11px;color:var(--muted);">(Timestamps, Labels)</span>
+                            </label>
+                            <div class="color-input-pair">
+                                <input type="color" id="c_muted_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['muted_color'] ?? '#64748b'); ?>">
+                                <input type="text" id="c_muted" name="muted_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['muted_color'] ?? '#64748b'); ?>" maxlength="7">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3: Layout & Structure -->
+            <div class="collapsible-card customizer-card">
+                <div class="customizer-card-header" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h4 class="customizer-card-title">
+                            <span>📐</span> 3. Layout &amp; Container Structure
+                        </h4>
+                        <p class="customizer-card-desc">Configure container width, header orientation, and review presentation mode.</p>
+                    </div>
+                    <span class="customizer-collapse-icon collapse-icon">▼</span>
+                </div>
+
+                <div class="collapsible-content">
+                    <!-- Container Width / Style -->
+                    <div class="form-group" style="margin-bottom:18px;">
+                        <label style="font-size:13px;font-weight:700;margin-bottom:8px;display:block;color:var(--ink);">Page Container Style</label>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                            <?php $curr_layout = $page_customization['layout_style'] ?? 'modern_boxed'; ?>
+                            <label class="custom-radio-card">
+                                <input type="radio" name="layout_style" value="modern_boxed" <?php echo $curr_layout === 'modern_boxed' ? 'checked' : ''; ?> onchange="syncCustomizerPreview()" style="margin-top:2px;">
+                                <div>
+                                    <strong style="font-size:13px;color:var(--ink);display:block;">Modern Boxed</strong>
+                                    <span class="muted" style="font-size:11.5px;">Max-width 1160px card with subtle shadow.</span>
+                                </div>
+                            </label>
+
+                            <label class="custom-radio-card">
+                                <input type="radio" name="layout_style" value="wide_compact" <?php echo $curr_layout === 'wide_compact' ? 'checked' : ''; ?> onchange="syncCustomizerPreview()" style="margin-top:2px;">
+                                <div>
+                                    <strong style="font-size:13px;color:var(--ink);display:block;">Wide View</strong>
+                                    <span class="muted" style="font-size:11.5px;">Max-width 1360px expanded presentation.</span>
+                                </div>
+                            </label>
+
+                            <label class="custom-radio-card">
+                                <input type="radio" name="layout_style" value="minimal_clean" <?php echo $curr_layout === 'minimal_clean' ? 'checked' : ''; ?> onchange="syncCustomizerPreview()" style="margin-top:2px;">
+                                <div>
+                                    <strong style="font-size:13px;color:var(--ink);display:block;">Minimal Streamlined</strong>
+                                    <span class="muted" style="font-size:11.5px;">Max-width 880px single-column focus.</span>
+                                </div>
+                            </label>
+
+                            <label class="custom-radio-card">
+                                <input type="radio" name="layout_style" value="full_width" <?php echo $curr_layout === 'full_width' ? 'checked' : ''; ?> onchange="syncCustomizerPreview()" style="margin-top:2px;">
+                                <div>
+                                    <strong style="font-size:13px;color:var(--ink);display:block;">Full Width</strong>
+                                    <span class="muted" style="font-size:11.5px;">Fluid 100% width with edge padding.</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Header Alignment -->
+                    <div class="form-group" style="margin-bottom:18px;">
+                        <label style="font-size:13px;font-weight:700;margin-bottom:8px;display:block;color:var(--ink);">Header Alignment &amp; Format</label>
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                            <?php $curr_header = $page_customization['header_layout'] ?? 'standard'; ?>
+                            <label class="custom-radio-card">
+                                <input type="radio" name="header_layout" value="standard" <?php echo $curr_header === 'standard' ? 'checked' : ''; ?> onchange="syncCustomizerPreview()" style="margin-top:2px;">
+                                <div>
+                                    <strong style="font-size:12.5px;color:var(--ink);display:block;">Standard Split</strong>
+                                    <span class="muted" style="font-size:11px;">Logo left, actions right</span>
+                                </div>
+                            </label>
+
+                            <label class="custom-radio-card">
+                                <input type="radio" name="header_layout" value="centered" <?php echo $curr_header === 'centered' ? 'checked' : ''; ?> onchange="syncCustomizerPreview()" style="margin-top:2px;">
+                                <div>
+                                    <strong style="font-size:12.5px;color:var(--ink);display:block;">Centered Showcase</strong>
+                                    <span class="muted" style="font-size:11px;">Prominent centered logo</span>
+                                </div>
+                            </label>
+
+                            <label class="custom-radio-card">
+                                <input type="radio" name="header_layout" value="compact" <?php echo $curr_header === 'compact' ? 'checked' : ''; ?> onchange="syncCustomizerPreview()" style="margin-top:2px;">
+                                <div>
+                                    <strong style="font-size:12.5px;color:var(--ink);display:block;">Compact Slim</strong>
+                                    <span class="muted" style="font-size:11px;">Reduced vertical height</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Review Presentation Mode & Corner Rounding -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="review_layout_select" style="font-size:13px;font-weight:700;margin-bottom:6px;display:block;color:var(--ink);">Review Listing Mode</label>
+                            <select id="review_layout_select" name="review_layout" onchange="syncCustomizerPreview()" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;">
+                                <?php $curr_rev = $page_customization['review_layout'] ?? 'tabs'; ?>
+                                <option value="tabs" <?php echo $curr_rev === 'tabs' ? 'selected' : ''; ?>>🗂️ Interactive Tabs (Feedbacks, Questions, Q&A)</option>
+                                <option value="card_grid" <?php echo $curr_rev === 'card_grid' ? 'selected' : ''; ?>>🧱 2-Column Responsive Card Grid</option>
+                                <option value="stacked" <?php echo $curr_rev === 'stacked' ? 'selected' : ''; ?>>📜 Continuous Scrolling Feed</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="border_radius_select" style="font-size:13px;font-weight:700;margin-bottom:6px;display:block;color:var(--ink);">Corner Rounding (Radius)</label>
+                            <select id="border_radius_select" name="border_radius" onchange="syncCustomizerPreview()" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;">
+                                <?php $curr_rad = $page_customization['border_radius'] ?? 'rounded'; ?>
+                                <option value="rounded" <?php echo $curr_rad === 'rounded' ? 'selected' : ''; ?>>Rounded (20px - Modern Smooth)</option>
+                                <option value="subtle" <?php echo $curr_rad === 'subtle' ? 'selected' : ''; ?>>Subtle (8px - Clean &amp; Sleek)</option>
+                                <option value="pill" <?php echo $curr_rad === 'pill' ? 'selected' : ''; ?>>Pill (28px - Soft &amp; Friendly)</option>
+                                <option value="sharp" <?php echo $curr_rad === 'sharp' ? 'selected' : ''; ?>>Sharp (4px - Crisp &amp; Technical)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 4: Component Visibility Toggles -->
+            <div class="collapsible-card customizer-card">
+                <div class="customizer-card-header" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h4 class="customizer-card-title">
+                            <span>👁️</span> 4. Feature &amp; Component Visibility
+                        </h4>
+                        <p class="customizer-card-desc">Toggle specific modules on or off on your public rating portal.</p>
+                    </div>
+                    <span class="customizer-collapse-icon collapse-icon">▼</span>
+                </div>
+
+                <div class="collapsible-content">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <label class="custom-toggle-card">
+                            <input type="checkbox" name="show_banner" value="1" <?php echo !empty($page_customization['show_banner']) ? 'checked' : ''; ?> onchange="syncCustomizerPreview()">
+                            <span>Cover Banner Image</span>
+                        </label>
+
+                        <label class="custom-toggle-card">
+                            <input type="checkbox" name="show_breadcrumb" value="1" <?php echo !empty($page_customization['show_breadcrumb']) ? 'checked' : ''; ?> onchange="syncCustomizerPreview()">
+                            <span>Breadcrumb Navigation</span>
+                        </label>
+
+                        <label class="custom-toggle-card">
+                            <input type="checkbox" name="show_verified_badge" value="1" <?php echo !empty($page_customization['show_verified_badge']) ? 'checked' : ''; ?> onchange="syncCustomizerPreview()">
+                            <span>Verified Channel Badge</span>
+                        </label>
+
+                        <label class="custom-toggle-card">
+                            <input type="checkbox" name="show_rating_dist" value="1" <?php echo !empty($page_customization['show_rating_dist']) ? 'checked' : ''; ?> onchange="syncCustomizerPreview()">
+                            <span>5-Star Breakdown Bars</span>
+                        </label>
+
+                        <label class="custom-toggle-card">
+                            <input type="checkbox" name="show_services" value="1" <?php echo !empty($page_customization['show_services']) ? 'checked' : ''; ?> onchange="syncCustomizerPreview()">
+                            <span>Services Showcase</span>
+                        </label>
+
+                        <label class="custom-toggle-card">
+                            <input type="checkbox" name="show_qa" value="1" <?php echo !empty($page_customization['show_qa']) ? 'checked' : ''; ?> onchange="syncCustomizerPreview()">
+                            <span>Community Q&amp;A Section</span>
+                        </label>
+
+                        <label class="custom-toggle-card">
+                            <input type="checkbox" name="show_whatsapp" value="1" <?php echo !empty($page_customization['show_whatsapp']) ? 'checked' : ''; ?> onchange="syncCustomizerPreview()">
+                            <span>WhatsApp Click-to-Chat Button</span>
+                        </label>
+
+                        <label class="custom-toggle-card">
+                            <input type="checkbox" name="show_gstore" value="1" <?php echo !empty($page_customization['show_gstore']) ? 'checked' : ''; ?> onchange="syncCustomizerPreview()">
+                            <span>Google Store Redirect Button</span>
+                        </label>
+
+                        <label class="custom-toggle-card" style="grid-column:span 2;">
+                            <input type="checkbox" name="show_map" value="1" <?php echo !empty($page_customization['show_map']) ? 'checked' : ''; ?> onchange="syncCustomizerPreview()">
+                            <span>Footer Location &amp; Directions Card</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 5: Custom CSS Code (Optional) -->
+            <div class="collapsible-card customizer-card">
+                <div class="customizer-card-header" onclick="toggleSettingsSection(this)">
+                    <div>
+                        <h4 class="customizer-card-title">
+                            <span>💻</span> 5. Custom CSS Styling (Optional)
+                        </h4>
+                        <p class="customizer-card-desc">Add custom CSS rules to tailor fonts, borders, or spacing.</p>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span class="muted" style="font-size:11.5px;background:var(--bg);padding:2px 8px;border-radius:6px;border:1px solid var(--line);">Advanced</span>
+                        <span class="customizer-collapse-icon collapse-icon">▼</span>
+                    </div>
+                </div>
+
+                <div class="collapsible-content">
+                    <textarea name="custom_css" rows="4" placeholder="/* e.g. .rt-submit-btn { font-size: 16px; } */" style="width:100%;font-family:monospace;font-size:12.5px;padding:12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);line-height:1.5;resize:vertical;"><?php echo htmlspecialchars($page_customization['custom_css'] ?? ''); ?></textarea>
+                </div>
+            </div>
+
+            <!-- In-flow Save Action Bar (Never floats or covers content) -->
+            <div class="customizer-save-card">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:32px;height:32px;border-radius:50%;background:rgba(16,185,129,0.15);color:#10b981;display:grid;place-items:center;font-size:14px;font-weight:800;flex-shrink:0;">
+                        ✓
+                    </div>
+                    <div>
+                        <strong style="font-size:13px;color:var(--ink);display:block;">Ready to update your portal?</strong>
+                        <span class="muted" style="font-size:12px;">Changes reflect in live preview instantly • Click Save to publish.</span>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary" style="padding:10px 24px;font-size:13.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+                    <span>✓</span> Save Changes
+                </button>
+            </div>
+        </form>
+
+        <!-- Right: Sticky Live Interactive Visual Preview -->
+        <div class="customizer-preview-col" style="position:sticky;top:88px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <label style="font-size:13px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:6px;">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;"></span>
+                    Live Portal Preview
+                </label>
+                <span class="muted" style="font-size:11.5px;">Auto-updates as you edit</span>
+            </div>
+
+            <!-- Outer Preview Frame Mockup -->
+            <div id="pvOuter" class="customizer-preview-frame">
+                <!-- Mini Breadcrumb -->
+                <div id="pvBreadcrumb" style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:#64748b;margin-bottom:12px;">
+                    <span>Home</span> <span>›</span> <span>Directory</span> <span>›</span> <strong id="pvBrandBreadcrumb" style="color:#0f172a;"><?php echo htmlspecialchars($display_title); ?></strong>
+                </div>
+
+                <!-- Mini Container Card -->
+                <div id="pvCard" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;padding:20px;box-shadow:0 4px 18px rgba(0,0,0,0.04);transition:all .2s ease;">
+                    <!-- Mini Banner -->
+                    <div id="pvBanner" style="width:100%;height:70px;background:linear-gradient(135deg, rgba(16,185,129,0.15), rgba(5,150,105,0.25));border-radius:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:11px;font-weight:600;border:1px dashed rgba(0,0,0,0.1);">
+                        Cover Banner Preview
+                    </div>
+
+                    <!-- Mini Header -->
+                    <div id="pvHeader" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding-bottom:14px;border-bottom:1px solid #f1f5f9;margin-bottom:16px;flex-wrap:wrap;">
+                        <div id="pvBrandWrap" style="display:flex;align-items:center;gap:10px;">
+                            <div id="pvLogo" style="width:40px;height:40px;border-radius:10px;background:#10b981;color:#ffffff;display:grid;place-items:center;font-weight:800;font-size:14px;flex-shrink:0;">
+                                <?php echo htmlspecialchars($display_initials ?: 'OP'); ?>
+                            </div>
+                            <div>
+                                <div style="font-size:15px;font-weight:800;color:#0f172a;line-height:1.2;" id="pvTitle">
+                                    ★ Rate <?php echo htmlspecialchars($display_title); ?>
+                                </div>
+                                <div style="font-size:10.5px;color:#64748b;margin-top:2px;">Verified Business Profile</div>
+                            </div>
+                        </div>
+                        <div id="pvActions" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <span id="pvBadge" style="font-size:10.5px;padding:3px 8px;border-radius:99px;background:#dcfce7;color:#15803d;font-weight:700;">✓ Verified</span>
+                            <span id="pvWaBtn" style="font-size:10.5px;padding:4px 10px;border-radius:99px;background:#25D366;color:#ffffff;font-weight:700;">WhatsApp</span>
+                            <span id="pvReviewJump" style="font-size:10.5px;padding:4px 10px;border-radius:99px;background:#10b981;color:#ffffff;font-weight:700;">Leave Review</span>
+                        </div>
+                    </div>
+
+                    <!-- Mini Rating Overview Grid -->
+                    <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:14px;margin-bottom:16px;padding:12px;background:rgba(0,0,0,0.02);border-radius:12px;">
+                        <!-- Score box -->
+                        <div style="text-align:center;">
+                            <div style="font-size:24px;font-weight:800;color:#0f172a;" id="pvScore">4.9</div>
+                            <div id="pvStars" style="color:#f59e0b;font-size:13px;letter-spacing:1px;">★★★★★</div>
+                            <div style="font-size:10px;color:#64748b;margin-top:2px;">Overall Satisfaction</div>
+                        </div>
+                        <!-- Bars breakdown -->
+                        <div id="pvDistBars" style="display:flex;flex-direction:column;justify-content:center;gap:4px;">
+                            <div style="display:flex;align-items:center;gap:6px;font-size:10px;">
+                                <span style="width:20px;color:#64748b;">5 ★</span>
+                                <div style="flex:1;height:5px;background:#e2e8f0;border-radius:4px;overflow:hidden;">
+                                    <div id="pvBarFill" style="width:88%;height:100%;background:#10b981;border-radius:4px;"></div>
+                                </div>
+                                <span style="font-size:9.5px;color:#64748b;">88%</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px;font-size:10px;">
+                                <span style="width:20px;color:#64748b;">4 ★</span>
+                                <div style="flex:1;height:5px;background:#e2e8f0;border-radius:4px;overflow:hidden;">
+                                    <div style="width:12%;height:100%;background:#10b981;border-radius:4px;opacity:0.7;"></div>
+                                </div>
+                                <span style="font-size:9.5px;color:#64748b;">12%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mini Nav Tabs -->
+                    <div id="pvTabs" style="display:flex;gap:6px;border-bottom:1px solid #e2e8f0;margin-bottom:12px;padding-bottom:6px;">
+                        <span id="pvTabActive" style="font-size:11px;font-weight:700;color:#10b981;border-bottom:2px solid #10b981;padding-bottom:4px;">Customer Feedbacks</span>
+                        <span style="font-size:11px;color:#64748b;padding-bottom:4px;">Rating Items</span>
+                        <span id="pvTabQa" style="font-size:11px;color:#64748b;padding-bottom:4px;">Community Q&amp;A</span>
+                    </div>
+
+                    <!-- Mini Review Card Sample -->
+                    <div id="pvSampleCard" style="border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:12px;background:#ffffff;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                            <strong style="font-size:12px;color:#0f172a;" id="pvReviewerName">Michael K.</strong>
+                            <div id="pvReviewStars" style="color:#f59e0b;font-size:11px;">★★★★★</div>
+                        </div>
+                        <p style="font-size:11px;color:#475569;margin:0 0 6px 0;line-height:1.4;" id="pvReviewText">"Incredible customer support and seamless service! Highly recommend."</p>
+                        <span style="font-size:9.5px;color:#15803d;background:#dcfce7;padding:2px 6px;border-radius:6px;font-weight:700;">✓ Verified Reviewer</span>
+                    </div>
+
+                    <!-- Mini Leave Review Action -->
+                    <div style="text-align:center;padding-top:6px;">
+                        <button type="button" id="pvSubmitBtn" class="btn" style="width:100%;padding:10px;background:#10b981;color:#ffffff;border:none;border-radius:10px;font-size:12.5px;font-weight:700;cursor:default;">
+                            Submit Your Review ★
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
 <script>
 /* ============================================================
    Tab Switching with URL Hash Memory
@@ -1063,14 +1927,319 @@ function switchAdminTab(tabId) {
     } catch (e) {}
 }
 
-// Restore active tab on load from URL hash
+// Restore active tab on load from URL query (?tab=...) or hash (#tab=...)
 (function () {
-    var hash = location.hash.replace('#tab=', '').replace('#', '');
-    var validTabs = ['profile', 'subscription', 'security', 'preferences'];
-    if (validTabs.indexOf(hash) !== -1) {
-        switchAdminTab(hash);
+    var validTabs = ['profile', 'customization', 'preferences', 'subscription', 'security'];
+    var targetTab = '';
+
+    try {
+        var urlParams = new URLSearchParams(window.location.search);
+        var qTab = urlParams.get('tab');
+        if (qTab && validTabs.indexOf(qTab) !== -1) {
+            targetTab = qTab;
+        }
+    } catch (e) {}
+
+    if (!targetTab && location.hash) {
+        var hash = location.hash.replace('#tab=', '').replace('#', '');
+        if (validTabs.indexOf(hash) !== -1) {
+            targetTab = hash;
+        }
+    }
+
+    if (targetTab && validTabs.indexOf(targetTab) !== -1) {
+        switchAdminTab(targetTab);
+        var btn = document.getElementById('tabBtn-' + targetTab);
+        if (btn && typeof btn.scrollIntoView === 'function') {
+            btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
     }
 })();
+
+/* ============================================================
+   Public Page Customizer Live Preview & Presets
+   ============================================================ */
+var colorPresets = {
+    emerald: {
+        primary: '#10b981',
+        secondary: '#059669',
+        star: '#f59e0b',
+        page_bg: '#f8fafc',
+        card_bg: '#ffffff',
+        card_border: '#e2e8f0',
+        text: '#0f172a',
+        muted: '#64748b',
+        radius: 'rounded',
+        layout: 'modern_boxed',
+        header: 'standard'
+    },
+    indigo: {
+        primary: '#4f46e5',
+        secondary: '#4338ca',
+        star: '#f59e0b',
+        page_bg: '#f5f3ff',
+        card_bg: '#ffffff',
+        card_border: '#e0e7ff',
+        text: '#0f172a',
+        muted: '#64748b',
+        radius: 'rounded',
+        layout: 'modern_boxed',
+        header: 'standard'
+    },
+    ocean: {
+        primary: '#0284c7',
+        secondary: '#0369a1',
+        star: '#f59e0b',
+        page_bg: '#f0f9ff',
+        card_bg: '#ffffff',
+        card_border: '#bae6fd',
+        text: '#0f172a',
+        muted: '#64748b',
+        radius: 'rounded',
+        layout: 'modern_boxed',
+        header: 'standard'
+    },
+    crimson: {
+        primary: '#e11d48',
+        secondary: '#be123c',
+        star: '#f59e0b',
+        page_bg: '#fff1f2',
+        card_bg: '#ffffff',
+        card_border: '#fecdd3',
+        text: '#0f172a',
+        muted: '#64748b',
+        radius: 'pill',
+        layout: 'modern_boxed',
+        header: 'centered'
+    },
+    amber: {
+        primary: '#d97706',
+        secondary: '#b45309',
+        star: '#f59e0b',
+        page_bg: '#fffbeb',
+        card_bg: '#ffffff',
+        card_border: '#fde68a',
+        text: '#0f172a',
+        muted: '#64748b',
+        radius: 'rounded',
+        layout: 'modern_boxed',
+        header: 'standard'
+    },
+    midnight: {
+        primary: '#10b981',
+        secondary: '#059669',
+        star: '#fbbf24',
+        page_bg: '#0a1926',
+        card_bg: '#0f2438',
+        card_border: '#1e293b',
+        text: '#f8fafc',
+        muted: '#94a3b8',
+        radius: 'rounded',
+        layout: 'modern_boxed',
+        header: 'standard'
+    },
+    obsidian: {
+        primary: '#6366f1',
+        secondary: '#4f46e5',
+        star: '#fbbf24',
+        page_bg: '#090d16',
+        card_bg: '#111827',
+        card_border: '#1f2937',
+        text: '#f9fafb',
+        muted: '#9ca3af',
+        radius: 'subtle',
+        layout: 'modern_boxed',
+        header: 'standard'
+    },
+    monochrome: {
+        primary: '#0f172a',
+        secondary: '#1e293b',
+        star: '#f59e0b',
+        page_bg: '#f1f5f9',
+        card_bg: '#ffffff',
+        card_border: '#cbd5e1',
+        text: '#0f172a',
+        muted: '#64748b',
+        radius: 'sharp',
+        layout: 'modern_boxed',
+        header: 'standard'
+    }
+};
+
+function applyColorPreset(presetKey) {
+    var p = colorPresets[presetKey];
+    if (!p) return;
+
+    setColorVal('c_primary', p.primary);
+    setColorVal('c_secondary', p.secondary);
+    setColorVal('c_star', p.star);
+    setColorVal('c_page_bg', p.page_bg);
+    setColorVal('c_card_bg', p.card_bg);
+    setColorVal('c_card_border', p.card_border);
+    setColorVal('c_text', p.text);
+    setColorVal('c_muted', p.muted);
+
+    if (p.radius) {
+        var rSel = document.getElementById('border_radius_select');
+        if (rSel) rSel.value = p.radius;
+    }
+    if (p.layout) {
+        var rLayout = document.querySelector('input[name="layout_style"][value="' + p.layout + '"]');
+        if (rLayout) rLayout.checked = true;
+    }
+    if (p.header) {
+        var rHeader = document.querySelector('input[name="header_layout"][value="' + p.header + '"]');
+        if (rHeader) rHeader.checked = true;
+    }
+
+    syncCustomizerPreview();
+}
+
+function setColorVal(id, hex) {
+    var txt = document.getElementById(id);
+    var pkr = document.getElementById(id + '_picker');
+    if (txt) txt.value = hex;
+    if (pkr) pkr.value = hex.indexOf('#') === 0 && hex.length === 7 ? hex : '#10b981';
+}
+
+function syncCustomizerPreview() {
+    var primary    = (document.getElementById('c_primary') || {}).value || '#10b981';
+    var secondary  = (document.getElementById('c_secondary') || {}).value || '#059669';
+    var star       = (document.getElementById('c_star') || {}).value || '#f59e0b';
+    var pageBg     = (document.getElementById('c_page_bg') || {}).value || '#f8fafc';
+    var cardBg     = (document.getElementById('c_card_bg') || {}).value || '#ffffff';
+    var cardBorder = (document.getElementById('c_card_border') || {}).value || '#e2e8f0';
+    var textColor  = (document.getElementById('c_text') || {}).value || '#0f172a';
+    var mutedColor = (document.getElementById('c_muted') || {}).value || '#64748b';
+
+    var radiusSel = (document.getElementById('border_radius_select') || {}).value || 'rounded';
+    var radPx = (radiusSel === 'subtle') ? '8px' : ((radiusSel === 'pill') ? '28px' : ((radiusSel === 'sharp') ? '4px' : '20px'));
+    var innerRadPx = (radiusSel === 'sharp') ? '2px' : '10px';
+
+    var headerRadio = document.querySelector('input[name="header_layout"]:checked');
+    var headerMode = headerRadio ? headerRadio.value : 'standard';
+
+    // Outer and Card Styles
+    var pvOuter = document.getElementById('pvOuter');
+    if (pvOuter) pvOuter.style.background = pageBg;
+
+    var pvCard = document.getElementById('pvCard');
+    if (pvCard) {
+        pvCard.style.background = cardBg;
+        pvCard.style.borderColor = cardBorder;
+        pvCard.style.borderRadius = radPx;
+        pvCard.style.color = textColor;
+    }
+
+    // Header elements
+    var pvTitle = document.getElementById('pvTitle');
+    if (pvTitle) pvTitle.style.color = textColor;
+
+    var pvLogo = document.getElementById('pvLogo');
+    if (pvLogo) {
+        pvLogo.style.background = primary;
+        pvLogo.style.borderRadius = innerRadPx;
+    }
+
+    var pvReviewJump = document.getElementById('pvReviewJump');
+    if (pvReviewJump) {
+        pvReviewJump.style.background = primary;
+        pvReviewJump.style.borderRadius = (radiusSel === 'sharp') ? '2px' : '99px';
+    }
+
+    var pvSubmitBtn = document.getElementById('pvSubmitBtn');
+    if (pvSubmitBtn) {
+        pvSubmitBtn.style.background = primary;
+        pvSubmitBtn.style.borderRadius = innerRadPx;
+    }
+
+    var pvBarFill = document.getElementById('pvBarFill');
+    if (pvBarFill) pvBarFill.style.background = primary;
+
+    var pvTabActive = document.getElementById('pvTabActive');
+    if (pvTabActive) {
+        pvTabActive.style.color = primary;
+        pvTabActive.style.borderColor = primary;
+    }
+
+    // Stars
+    var pvStars = document.getElementById('pvStars');
+    if (pvStars) pvStars.style.color = star;
+
+    var pvReviewStars = document.getElementById('pvReviewStars');
+    if (pvReviewStars) pvReviewStars.style.color = star;
+
+    // Header layout
+    var pvHeader = document.getElementById('pvHeader');
+    var pvBrandWrap = document.getElementById('pvBrandWrap');
+    if (pvHeader && pvBrandWrap) {
+        if (headerMode === 'centered') {
+            pvHeader.style.flexDirection = 'column';
+            pvHeader.style.textAlign = 'center';
+            pvBrandWrap.style.flexDirection = 'column';
+        } else if (headerMode === 'compact') {
+            pvHeader.style.flexDirection = 'row';
+            pvHeader.style.textAlign = 'left';
+            pvBrandWrap.style.flexDirection = 'row';
+            pvHeader.style.marginBottom = '8px';
+            pvHeader.style.paddingBottom = '8px';
+        } else {
+            pvHeader.style.flexDirection = 'row';
+            pvHeader.style.textAlign = 'left';
+            pvBrandWrap.style.flexDirection = 'row';
+            pvHeader.style.marginBottom = '16px';
+            pvHeader.style.paddingBottom = '14px';
+        }
+    }
+
+    // Visibility toggles
+    var showBanner = document.querySelector('input[name="show_banner"]');
+    var pvBanner = document.getElementById('pvBanner');
+    if (pvBanner) pvBanner.style.display = (showBanner && !showBanner.checked) ? 'none' : 'flex';
+
+    var showBreadcrumb = document.querySelector('input[name="show_breadcrumb"]');
+    var pvBreadcrumb = document.getElementById('pvBreadcrumb');
+    if (pvBreadcrumb) pvBreadcrumb.style.display = (showBreadcrumb && !showBreadcrumb.checked) ? 'none' : 'flex';
+
+    var showBadge = document.querySelector('input[name="show_verified_badge"]');
+    var pvBadge = document.getElementById('pvBadge');
+    if (pvBadge) pvBadge.style.display = (showBadge && !showBadge.checked) ? 'none' : 'inline-block';
+
+    var showWa = document.querySelector('input[name="show_whatsapp"]');
+    var pvWaBtn = document.getElementById('pvWaBtn');
+    if (pvWaBtn) pvWaBtn.style.display = (showWa && !showWa.checked) ? 'none' : 'inline-block';
+
+    var showDist = document.querySelector('input[name="show_rating_dist"]');
+    var pvDistBars = document.getElementById('pvDistBars');
+    if (pvDistBars) pvDistBars.style.visibility = (showDist && !showDist.checked) ? 'hidden' : 'visible';
+
+    var showQa = document.querySelector('input[name="show_qa"]');
+    var pvTabQa = document.getElementById('pvTabQa');
+    if (pvTabQa) pvTabQa.style.display = (showQa && !showQa.checked) ? 'none' : 'inline-block';
+}
+
+// Bind 2-way sync between text & color pickers
+document.addEventListener('DOMContentLoaded', function() {
+    var colorIds = ['c_primary', 'c_secondary', 'c_star', 'c_page_bg', 'c_card_bg', 'c_card_border', 'c_text', 'c_muted'];
+    colorIds.forEach(function(cid) {
+        var txt = document.getElementById(cid);
+        var pkr = document.getElementById(cid + '_picker');
+        if (txt && pkr) {
+            pkr.addEventListener('input', function() {
+                txt.value = pkr.value;
+                syncCustomizerPreview();
+            });
+            txt.addEventListener('input', function() {
+                if (txt.value.indexOf('#') === 0 && txt.value.length === 7) {
+                    pkr.value = txt.value;
+                }
+                syncCustomizerPreview();
+            });
+        }
+    });
+
+    syncCustomizerPreview();
+});
 
 /* ============================================================
    Password Visibility Toggle
@@ -1226,6 +2395,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     updateWidgetCode();
 });
+
+// Toggle collapsible sections in settings page independently
+function toggleSettingsSection(header) {
+    const card = header.closest('.collapsible-card');
+    if (!card) return;
+    const content = card.querySelector('.collapsible-content');
+    const icon = header.querySelector('.collapse-icon');
+    if (!content) return;
+    
+    const isClosed = (content.style.display === 'none');
+    if (isClosed) {
+        content.style.display = 'block';
+        if (icon) icon.style.transform = 'rotate(0deg)';
+    } else {
+        content.style.display = 'none';
+        if (icon) icon.style.transform = 'rotate(-90deg)';
+    }
+}
 </script>
 
 <?php include __DIR__ . '/_shell_footer.php'; ?>

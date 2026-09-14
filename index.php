@@ -41,6 +41,31 @@ if ($res_rev) {
     }
 }
 
+// Hero "Live Interactive Preview" — use a real top-rated tenant with verified reviews when available,
+// otherwise fall back to the static demo so the hero always looks polished for traffic.
+$hero_demo_name   = 'Acme Bistro & Cafe';
+$hero_demo_avatar = 'A';
+$hero_demo_rating = 5;
+$res_demo = $conn->query(
+    "SELECT c.company_name,
+            (SELECT COUNT(*) FROM ratings r WHERE r.company_id = c.id AND r.reported = 0) AS review_count,
+            (SELECT AVG(r.rating) FROM ratings r WHERE r.company_id = c.id AND r.reported = 0) AS avg_score
+       FROM customers c
+      ORDER BY review_count DESC, avg_score DESC
+      LIMIT 1"
+);
+if ($res_demo && $row_demo = $res_demo->fetch_assoc()) {
+    $real_demo_name = trim((string)($row_demo['company_name'] ?? ''));
+    if ($real_demo_name !== '' && (int)$row_demo['review_count'] > 0) {
+        $hero_demo_name   = $real_demo_name;
+        $hero_demo_avatar = strtoupper(mb_substr($real_demo_name, 0, 1));
+        $real_avg = (float)$row_demo['avg_score'];
+        if ($real_avg > 0) {
+            $hero_demo_rating = max(1, min(5, (int)round($real_avg)));
+        }
+    }
+}
+
 // Data for the "Get Started" quote modal
 $modal_categories = [];
 $category_result = $conn->query("SELECT id, name FROM categories ORDER BY name ASC");
@@ -716,6 +741,19 @@ if ($plan_result) {
             border-top: 1px solid var(--border-line);
             padding-top: 10px;
         }
+        .rq-company {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            margin-bottom: 10px;
+        }
+        .rq-company i {
+            color: #65a30d;
+            font-size: 13px;
+        }
         .rq-author strong {
             color: var(--primary-dark);
         }
@@ -930,12 +968,47 @@ if ($plan_result) {
             font-size: 13px;
             margin-bottom: 16px;
         }
+        .form-alert-duplicate {
+            background: #fffbeb;
+            color: #92400e;
+            border: 1px solid #fcd34d;
+            padding: 14px 16px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            margin-bottom: 16px;
+            line-height: 1.55;
+        }
+        .form-alert-duplicate strong {
+            display: block;
+            font-size: 14px;
+            margin-bottom: 4px;
+            color: #78350f;
+        }
+        .form-alert-duplicate .dup-ref {
+            font-family: monospace;
+            font-size: 12.5px;
+            background: #fef3c7;
+            border: 1px solid #fcd34d;
+            border-radius: 6px;
+            padding: 3px 8px;
+            display: inline-block;
+            margin-top: 6px;
+        }
         .form-nav {
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 12px;
             margin-top: 20px;
+        }
+        /* Level 1 shows only Continue; pin it to the right side */
+        #quoteNextBtn {
+            margin-left: auto;
+        }
+        /* Ensure the `hidden` attribute actually hides buttons whose
+           classes set a `display` value (e.g. .btn-lime display:inline-flex) */
+        .form-nav button[hidden] {
+            display: none !important;
         }
         .btn-back {
             background: transparent;
@@ -944,6 +1017,21 @@ if ($plan_result) {
             font-weight: 600;
             cursor: pointer;
             font-size: 14px;
+        }
+        .btn-cancel {
+            background: transparent;
+            border: 1px solid var(--border-line);
+            color: var(--text-muted);
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+            transition: border-color .15s ease, color .15s ease;
+        }
+        .btn-cancel:hover {
+            border-color: #cbd5e1;
+            color: #475569;
         }
         .quote-success {
             text-align: center;
@@ -1056,9 +1144,9 @@ if ($plan_result) {
                         <i class="fa-solid fa-bolt"></i> Live Interactive Preview
                     </div>
                     <div class="demo-biz-header">
-                        <div class="demo-biz-avatar">A</div>
+                        <div class="demo-biz-avatar"><?php echo htmlspecialchars($hero_demo_avatar); ?></div>
                         <div class="demo-biz-info">
-                            <h3>Acme Bistro &amp; Cafe</h3>
+                            <h3><?php echo htmlspecialchars($hero_demo_name); ?></h3>
                             <p>Powered by Optibiz Counter QR Stand</p>
                         </div>
                     </div>
@@ -1066,20 +1154,27 @@ if ($plan_result) {
                     <div class="demo-question">How was your experience today?</div>
 
                     <div class="interactive-stars" id="demoStars">
-                        <button type="button" class="star-btn" data-score="1" title="1 Star"><i class="fa-solid fa-star"></i></button>
-                        <button type="button" class="star-btn" data-score="2" title="2 Stars"><i class="fa-solid fa-star"></i></button>
-                        <button type="button" class="star-btn" data-score="3" title="3 Stars"><i class="fa-solid fa-star"></i></button>
-                        <button type="button" class="star-btn" data-score="4" title="4 Stars"><i class="fa-solid fa-star"></i></button>
-                        <button type="button" class="star-btn active" data-score="5" title="5 Stars"><i class="fa-solid fa-star"></i></button>
+                        <?php for ($i = 1; $i <= 5; $i++): ?>
+                        <button type="button" class="star-btn<?php echo $hero_demo_rating === $i ? ' active' : ''; ?>" data-score="<?php echo $i; ?>" title="<?php echo $i; ?> Star<?php echo $i > 1 ? 's' : ''; ?>"><i class="fa-solid fa-star"></i></button>
+                        <?php endfor; ?>
                     </div>
 
                     <div class="demo-feedback-box" id="demoFeedback">
+                        <?php if ($hero_demo_rating >= 4): ?>
                         <div class="routing-pill google">
                             <i class="fa-brands fa-google"></i> Google Review Booster Triggered!
                         </div>
-                        <p style="color:#166534;font-size:12.5px;font-weight:600">
-                            ★ 5-Star score detected: Customer is auto-redirected to Google Reviews &amp; an Instagram Social Proof Card is generated!
+                        <p style="color:#0f172a;font-size:12.5px;font-weight:600">
+                            ★ <?php echo $hero_demo_rating; ?>-Star score detected: Customer is auto-redirected to Google Reviews &amp; an Instagram Social Proof Card is generated!
                         </p>
+                        <?php else: ?>
+                        <div class="routing-pill private">
+                            <i class="fa-solid fa-shield-halved"></i> Private Feedback Shield Activated
+                        </div>
+                        <p style="color:#c2410c;font-size:12.5px;font-weight:600">
+                            ⚠ <?php echo $hero_demo_rating; ?>-Star score caught: Routed privately to the manager before reaching Google or social media!
+                        </p>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -1234,7 +1329,7 @@ if ($plan_result) {
 
         <div style="text-align:center;margin-top:40px">
             <a href="companies.php" class="btn-lime">
-                View All Companies in Directory <i class="fa-solid fa-arrow-right"></i>
+                View All Businesses in Directory <i class="fa-solid fa-arrow-right"></i>
             </a>
         </div>
     </section>
@@ -1258,6 +1353,10 @@ if ($plan_result) {
                     <?php endfor; ?>
                 </div>
                 <p class="rq-comment">"<?php echo htmlspecialchars(mb_substr($rev['comment'] ?: 'Excellent service and great attention to detail!', 0, 140)); ?><?php echo mb_strlen($rev['comment'] ?? '') > 140 ? '…' : ''; ?>"</p>
+                <div class="rq-company">
+                    <i class="fa-solid fa-building"></i>
+                    <span><?php echo htmlspecialchars($rev['company_name'] ?? 'Verified Business'); ?></span>
+                </div>
                 <div class="rq-author">
                     <strong><?php echo htmlspecialchars($rev['customer_name'] ?: 'Verified Customer'); ?></strong>
                     <span><i class="fa-solid fa-circle-check"></i> Verified</span>
@@ -1352,7 +1451,7 @@ if ($plan_result) {
             <!-- Multi-step form view -->
             <div id="quoteFormWrap">
                 <div style="margin-bottom:24px">
-                    <h2 id="quoteModalTitle" style="font-size:24px;font-weight:800;color:var(--primary-dark)">Start Your 14-Day Free Trial</h2>
+                    <h2 id="quoteModalTitle" style="font-size:24px;font-weight:800;color:var(--primary-dark)">Get Started</h2>
                     <p style="font-size:13px;color:var(--text-muted)">Set up your company workspace in under 60 seconds. No credit card required.</p>
                 </div>
 
@@ -1432,7 +1531,7 @@ if ($plan_result) {
                     <!-- Step 3: Plan & Scale -->
                     <div class="form-section">
                         <h3>Plan &amp; Scale</h3>
-                        <p class="subtitle">Pick a plan to get started with your 14-day free trial.</p>
+                        <p class="subtitle">Pick a plan that fits your business needs.</p>
 
                         <div class="form-group">
                             <label for="q_plan">Subscription Plan *</label>
@@ -1472,8 +1571,11 @@ if ($plan_result) {
                         <button type="button" class="btn-lime" id="quoteNextBtn">
                             Continue <i class="fa-solid fa-arrow-right"></i>
                         </button>
+                        <button type="button" class="btn-cancel" id="quoteCancelBtn" hidden>
+                            Cancel
+                        </button>
                         <button type="submit" class="btn-lime" id="quoteSubmitBtn" hidden>
-                            Start 14-Day Free Trial <i class="fa-solid fa-rocket"></i>
+                            Submit <i class="fa-solid fa-paper-plane"></i>
                         </button>
                     </div>
                 </form>
@@ -1549,6 +1651,7 @@ if ($plan_result) {
         var backBtn     = document.getElementById('quoteBackBtn');
         var nextBtn     = document.getElementById('quoteNextBtn');
         var submitBtn   = document.getElementById('quoteSubmitBtn');
+        var cancelBtn   = document.getElementById('quoteCancelBtn');
         var alertBox    = document.getElementById('quoteAlert');
 
         var TOTAL_STEPS = sections.length;
@@ -1558,10 +1661,20 @@ if ($plan_result) {
         function hideAlert() {
             alertBox.hidden = true;
             alertBox.textContent = '';
+            alertBox.className = 'form-alert';
         }
         function showAlert(message) {
+            alertBox.className = 'form-alert';
             alertBox.textContent = message;
             alertBox.hidden = false;
+        }
+        function showDuplicateAlert(data) {
+            alertBox.className = 'form-alert-duplicate';
+            alertBox.hidden = false;
+            alertBox.innerHTML =
+                '<strong>⚠ Duplicate Request Detected</strong>' +
+                (data.message || 'A request from this company already exists.') +
+                (data.existing_ref ? '<br><span class="dup-ref">Reference: ' + data.existing_ref + ' &nbsp;|&nbsp; Status: ' + (data.existing_status || '—') + ' &nbsp;|&nbsp; Submitted: ' + (data.existing_date || '—') + '</span>' : '');
         }
         function clearInvalidMarks(scope) {
             var fields = scope.querySelectorAll('.invalid');
@@ -1599,9 +1712,10 @@ if ($plan_result) {
                     stepLines[i].classList.toggle('active', i < currentStep - 1);
                 }
             }
-            backBtn.hidden   = currentStep === 1;
+            backBtn.hidden   = currentStep === 1 || currentStep === TOTAL_STEPS;
             nextBtn.hidden   = currentStep === TOTAL_STEPS;
             submitBtn.hidden = currentStep !== TOTAL_STEPS;
+            cancelBtn.hidden = currentStep !== TOTAL_STEPS;
             hideAlert();
         }
 
@@ -1629,6 +1743,7 @@ if ($plan_result) {
         }
 
         closeBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', closeModal);
         document.getElementById('quoteDoneBtn').addEventListener('click', closeModal);
         modal.addEventListener('click', function (e) {
             if (e.target === modal) closeModal();
@@ -1715,7 +1830,11 @@ if ($plan_result) {
                     formWrap.hidden = true;
                     successView.hidden = false;
                 } else {
-                    showAlert(data.message || 'Something went wrong. Please try again.');
+                    if (data.duplicate) {
+                        showDuplicateAlert(data);
+                    } else {
+                        showAlert(data.message || 'Something went wrong. Please try again.');
+                    }
                 }
             })
             .catch(function () {
@@ -1724,7 +1843,7 @@ if ($plan_result) {
             .finally(function () {
                 submitting = false;
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = 'Start 14-Day Free Trial <i class="fa-solid fa-rocket"></i>';
+                submitBtn.innerHTML = 'Submit <i class="fa-solid fa-paper-plane"></i>';
             });
         });
 

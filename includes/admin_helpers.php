@@ -149,6 +149,18 @@ if (!function_exists('admin_ensure_schema')) {
     }
 }
 
+function ensureRatingsServiceColumn($conn) {
+    if (!is_object($conn) || !method_exists($conn, 'query')) return;
+    $chk = @$conn->query("SHOW COLUMNS FROM ratings LIKE 'service_id'");
+    if ($chk && $chk->num_rows === 0) {
+        @$conn->query("ALTER TABLE ratings ADD COLUMN service_id INT NULL AFTER question_id");
+    }
+    $idx = @$conn->query("SHOW INDEX FROM ratings WHERE Key_name = 'idx_ratings_service'");
+    if ($idx && $idx->num_rows === 0) {
+        @$conn->query("ALTER TABLE ratings ADD INDEX idx_ratings_service (service_id)");
+    }
+}
+
 /* ============================================================
    Tolerant query wrappers
    ============================================================ */
