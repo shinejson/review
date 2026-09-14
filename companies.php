@@ -1083,7 +1083,7 @@ if ($r_all) {
                         <?php endif; ?>
 
                         <div class="cmp-card-actions">
-                            <a class="cmp-btn cmp-btn-view" href="rate/index.php?company=<?php echo (int)$c['id']; ?>"
+                            <a class="cmp-btn cmp-btn-view" href="rate/index.php?company=<?php echo (int)$c['id']; ?>&tenant=<?php echo urlencode(slugify($c['company_name'])); ?>"
                                onclick="trackCompanyClick(<?php echo (int)$c['id']; ?>, 'company_click')">
                                 <i class="fa-solid fa-star" aria-hidden="true"></i> View &amp; Rate
                             </a>
@@ -1228,7 +1228,7 @@ if ($r_all) {
                                 <?php endif; ?>
 
                                 <div class="cmp-card-actions">
-                                    <a class="cmp-btn cmp-btn-view" href="rate/index.php?company=<?php echo (int)$c['id']; ?>"
+                                    <a class="cmp-btn cmp-btn-view" href="rate/index.php?company=<?php echo (int)$c['id']; ?>&tenant=<?php echo urlencode(slugify($c['company_name'])); ?>"
                                        onclick="trackCompanyClick(<?php echo (int)$c['id']; ?>, 'company_click')">
                                         <i class="fa-solid fa-star" aria-hidden="true"></i> View &amp; Rate
                                     </a>

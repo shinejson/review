@@ -131,11 +131,8 @@ foreach ($companies_list as $c) {
 }
 $company_name = $selected_company['company_name'] ?? 'Your Business';
 
-// Base public URL for campaign link builder
-$base_scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$base_host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
-$app_path    = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME']))), '/');
-$public_rate_url = "{$base_scheme}://{$base_host}{$app_path}/rate/?company={$company_id}";
+// Base public URL for campaign link builder with tenant name
+$public_rate_url = getCompanyPublicRatingUrl($company_id, $company_name);
 
 /* ---------- Render Page ---------- */
 $robots    = 'noindex, nofollow';

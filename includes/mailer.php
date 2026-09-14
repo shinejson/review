@@ -12,11 +12,11 @@ if (!function_exists('sa_get_mail_config')) {
     /**
      * Retrieve all active email configuration settings.
      */
-    function sa_get_mail_config($conn = null)
+    function sa_get_mail_config($conn = null, $reload = false)
     {
         global $conn;
-        $site_name = function_exists('sa_setting') && $conn ? sa_setting($conn, 'site_name', 'Optibiz') : 'Optibiz';
-        $admin_mail = function_exists('sa_setting') && $conn ? sa_setting($conn, 'admin_email', 'admin@example.com') : 'admin@example.com';
+        $site_name = function_exists('sa_setting') && $conn ? sa_setting($conn, 'site_name', 'Optibiz', $reload) : 'Optibiz';
+        $admin_mail = function_exists('sa_setting') && $conn ? sa_setting($conn, 'admin_email', 'admin@example.com', $reload) : 'admin@example.com';
 
         $defaults = [
             'mail_driver'     => 'smtp',
@@ -36,7 +36,7 @@ if (!function_exists('sa_get_mail_config')) {
 
         $res = [];
         foreach ($defaults as $k => $def) {
-            $val = function_exists('sa_setting') ? sa_setting($conn, $k, '') : '';
+            $val = function_exists('sa_setting') ? sa_setting($conn, $k, '', $reload) : '';
             $res[$k] = ($val !== '') ? $val : $def;
         }
 

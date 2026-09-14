@@ -2,36 +2,76 @@
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 
-// Support ?tenant=ID routing — resolves to that tenant's first registered company.
-// Also supports legacy ?company=ID routing.
-if (isset($_GET['tenant']) && (int)$_GET['tenant'] > 0) {
-    $tenant_lookup_id = (int)$_GET['tenant'];
-    $t_resolve = $conn->prepare("SELECT id FROM customers WHERE tenant_id = ? ORDER BY id ASC LIMIT 1");
-    $t_resolve->bind_param("i", $tenant_lookup_id);
-    $t_resolve->execute();
-    $t_row = $t_resolve->get_result()->fetch_assoc();
-    $t_resolve->close();
+// Resolve company identifier:
+// Supports:
+// 1. ?company=4&tenant=airport-west-hotel
+// 2. ?company=4-airport-west-hotel (composite ID + slug)
+// 3. ?company=4 (legacy numeric)
+// 4. ?company=airport-west-hotel (slug lookup)
+// 5. ?tenant=3 or ?tenant=airport-west-hotel (tenant lookup & canonical redirect)
+$company_id   = 0;
+$company_slug = '';
 
-    if ($t_row) {
-        // Redirect to company-specific URL for cleaner routing
-        $redirect_url = '?company=' . (int)$t_row['id'];
-        if (!empty($_GET['tab'])) $redirect_url .= '&tab=' . urlencode($_GET['tab']);
-        if (!empty($_GET['name'])) $redirect_url .= '&name=' . urlencode($_GET['name']);
-        if (!empty($_GET['email'])) $redirect_url .= '&email=' . urlencode($_GET['email']);
-        if (!empty($_GET['ref_code'])) $redirect_url .= '&ref_code=' . urlencode($_GET['ref_code']);
-        if (!empty($_GET['ref'])) $redirect_url .= '&ref=' . urlencode($_GET['ref']);
-        header('Location: ' . $redirect_url, true, 302);
-        exit;
+if (isset($_GET['company'])) {
+    $raw_comp = trim((string)$_GET['company']);
+    if (ctype_digit($raw_comp)) {
+        $company_id = (int)$raw_comp;
+    } elseif (preg_match('/^(\d+)[-_](.*)$/', $raw_comp, $m)) {
+        $company_id   = (int)$m[1];
+        $company_slug = $m[2];
+    } else {
+        $company_slug = $raw_comp;
     }
+}
 
-    // Tenant has no companies yet — show a friendly holding page
-    $t_info_stmt = $conn->prepare("SELECT company_name FROM tenants WHERE id = ? LIMIT 1");
-    $t_info_stmt->bind_param("i", $tenant_lookup_id);
-    $t_info_stmt->execute();
-    $t_info = $t_info_stmt->get_result()->fetch_assoc();
-    $t_info_stmt->close();
-    $tenant_name = htmlspecialchars($t_info['company_name'] ?? 'This workspace');
-    ?>
+// If company ID was not numeric but passed as slug, resolve via database
+if ($company_id <= 0 && $company_slug !== '') {
+    $slug_clean = strtolower($company_slug);
+    $s_stmt = $conn->prepare("SELECT id FROM customers WHERE LOWER(REPLACE(REPLACE(REPLACE(company_name, ' ', '-'), '&', ''), '--', '-')) = ? OR LOWER(company_name) = ? LIMIT 1");
+    if ($s_stmt) {
+        $s_stmt->bind_param("ss", $slug_clean, $slug_clean);
+        $s_stmt->execute();
+        $s_row = $s_stmt->get_result()->fetch_assoc();
+        $s_stmt->close();
+        if ($s_row) {
+            $company_id = (int)$s_row['id'];
+        }
+    }
+}
+
+// Fallback: If company_id is still unknown, support ?tenant= routing
+if ($company_id <= 0 && isset($_GET['tenant']) && trim((string)$_GET['tenant']) !== '') {
+    $tenant_param = trim((string)$_GET['tenant']);
+    if (ctype_digit($tenant_param) && (int)$tenant_param > 0) {
+        $tenant_lookup_id = (int)$tenant_param;
+        $t_resolve = $conn->prepare("SELECT id, company_name FROM customers WHERE tenant_id = ? ORDER BY id ASC LIMIT 1");
+        $t_resolve->bind_param("i", $tenant_lookup_id);
+        $t_resolve->execute();
+        $t_row = $t_resolve->get_result()->fetch_assoc();
+        $t_resolve->close();
+
+        if ($t_row) {
+            // Redirect to company URL with tenant slug included
+            $company_slug_part = !empty($t_row['company_name']) ? '&tenant=' . urlencode(slugify($t_row['company_name'])) : '';
+            $redirect_url = '?company=' . (int)$t_row['id'] . $company_slug_part;
+            if (!empty($_GET['tab'])) $redirect_url .= '&tab=' . urlencode($_GET['tab']);
+            if (!empty($_GET['name'])) $redirect_url .= '&name=' . urlencode($_GET['name']);
+            if (!empty($_GET['email'])) $redirect_url .= '&email=' . urlencode($_GET['email']);
+            if (!empty($_GET['ref_code'])) $redirect_url .= '&ref_code=' . urlencode($_GET['ref_code']);
+            if (!empty($_GET['ref'])) $redirect_url .= '&ref=' . urlencode($_GET['ref']);
+            if (!empty($_GET['src'])) $redirect_url .= '&src=' . urlencode($_GET['src']);
+            header('Location: ' . $redirect_url, true, 302);
+            exit;
+        }
+
+        // Tenant has no companies yet — show a friendly holding page
+        $t_info_stmt = $conn->prepare("SELECT company_name FROM tenants WHERE id = ? LIMIT 1");
+        $t_info_stmt->bind_param("i", $tenant_lookup_id);
+        $t_info_stmt->execute();
+        $t_info = $t_info_stmt->get_result()->fetch_assoc();
+        $t_info_stmt->close();
+        $tenant_name = htmlspecialchars($t_info['company_name'] ?? 'This workspace');
+        ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -57,10 +97,22 @@ if (isset($_GET['tenant']) && (int)$_GET['tenant'] > 0) {
 </div>
 </body>
 </html><?php
-    exit;
+        exit;
+    } else {
+        // Tenant passed as string slug (e.g. ?tenant=airport-west-hotel)
+        $slug_clean = strtolower($tenant_param);
+        $s_stmt = $conn->prepare("SELECT c.id FROM customers c JOIN tenants t ON c.tenant_id = t.id WHERE LOWER(REPLACE(REPLACE(REPLACE(c.company_name, ' ', '-'), '&', ''), '--', '-')) = ? OR LOWER(REPLACE(REPLACE(REPLACE(t.company_name, ' ', '-'), '&', ''), '--', '-')) = ? LIMIT 1");
+        if ($s_stmt) {
+            $s_stmt->bind_param("ss", $slug_clean, $slug_clean);
+            $s_stmt->execute();
+            $s_row = $s_stmt->get_result()->fetch_assoc();
+            $s_stmt->close();
+            if ($s_row) {
+                $company_id = (int)$s_row['id'];
+            }
+        }
+    }
 }
-
-$company_id = isset($_GET['company']) ? (int)$_GET['company'] : 0;
 
 if ($company_id <= 0) {
     header('Location: ../companies.php', true, 302);
@@ -288,7 +340,8 @@ if (!empty($_SERVER['DOCUMENT_ROOT'])) {
 $app_web_root = '/' . trim($app_web_root, '/');
 if ($app_web_root === '/') $app_web_root = '';
 
-$canonical_url   = $__scheme . '://' . $__host . (!empty($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : ($app_web_root . '/rate/index.php?company=' . $company_id));
+$tenant_slug_part = !empty($brand_name) ? '&tenant=' . urlencode(slugify($brand_name)) : '';
+$canonical_url    = $__scheme . '://' . $__host . $app_web_root . '/rate/index.php?company=' . $company_id . $tenant_slug_part;
 $brand_logo_full = !empty($brand_logo) ? ($__scheme . '://' . $__host . $app_web_root . '/' . ltrim($brand_logo, '/')) : '';
 $meta_desc       = "Read verified customer reviews and ratings for " . $brand_name . ". Overall score of " . number_format($avg_rating, 1) . "/5.0 based on " . number_format($total_ratings) . " customer review(s).";
 

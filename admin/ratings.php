@@ -529,7 +529,7 @@ include __DIR__ . '/_shell.php';
         <a href="whatsapp_sender.php" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;font-weight:700;background:#dcfce7;color:#15803d;border:1px solid #86efac;">
             💬 Ask for Reviews
         </a>
-        <a href="../rate/index.php?tenant=<?php echo (int)$current_tenant_id; ?>" target="_blank" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;">
+        <a href="<?php echo htmlspecialchars(getCompanyPublicRatingUrl($default_company_id, $default_company_name)); ?>" target="_blank" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;">
             ↗ View Public Portal
         </a>
         <button type="button" class="btn btn-primary" onclick="openCreateRatingModal()">
@@ -1044,7 +1044,7 @@ include __DIR__ . '/_shell.php';
                                     🎨 Social Card ↗
                                 </a>
                             <?php endif; ?>
-                            <a href="<?php echo $BASE; ?>rate/index.php?company=<?php echo (int)$r['company_id']; ?>" target="_blank" rel="noopener" class="btn-link" style="font-size:12px;">
+                            <a href="<?php echo htmlspecialchars(getCompanyPublicRatingUrl($r['company_id'], $r['company_name'] ?? '')); ?>" target="_blank" rel="noopener" class="btn-link" style="font-size:12px;">
                                 View Public Rating Page ↗
                             </a>
                             <button type="button" class="btn-link" style="font-size:12px;" onclick='copyQuote(<?php echo json_encode($r["comment"] ?: $r["customer_name"]." rated ".$r["rating"]." stars"); ?>)'>

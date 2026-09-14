@@ -282,12 +282,14 @@ $formatted_created = $account_created ? date('M d, Y', strtotime($account_create
 // Tenant-specific public review link — uses ?tenant= so it always works for that tenant
 // even if they have no companies yet; rate/index.php will auto-resolve to their first company.
 $public_review_tenant_id = $is_tenant ? (int)$tenant_id : 0;
-$public_review_qs        = $public_review_tenant_id > 0 ? '?tenant=' . $public_review_tenant_id : '';
-
-// Build an absolute URL for display/copy (works regardless of current subfolder)
-$__scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$__root   = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
-$public_review_url  = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/rate/index.php' . $public_review_qs;
+$public_review_first_comp = !empty($usage_stats['companies']) ? $usage_stats['companies'][0] : null;
+if ($public_review_first_comp) {
+    $public_review_url = getCompanyPublicRatingUrl($public_review_first_comp['id'], $public_review_first_comp['company_name']);
+    $public_review_qs  = '?company=' . (int)$public_review_first_comp['id'] . '&tenant=' . urlencode(slugify($public_review_first_comp['company_name']));
+} else {
+    $public_review_qs  = $public_review_tenant_id > 0 ? ('?tenant=' . $public_review_tenant_id . ($display_title ? '&tenant_slug=' . urlencode(slugify($display_title)) : '')) : '';
+    $public_review_url = getCompanyPublicRatingUrl(0, $display_title, $public_review_tenant_id > 0 ? ['tenant' => $public_review_tenant_id] : []);
+}
 $widget_base_url    = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/widget.php';
 $widget_default_url = $widget_base_url . $public_review_qs;
 
@@ -888,7 +890,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                     <label for="companySelect">Select Company Listing</label>
                     <select id="companySelect" onchange="updateShareLink(this.value)">
                         <?php foreach ($usage_stats['companies'] as $comp): ?>
-                            <option value="<?php echo (int)$comp['id']; ?>" data-name="<?php echo htmlspecialchars($comp['company_name']); ?>">
+                            <option value="<?php echo (int)$comp['id']; ?>" data-name="<?php echo htmlspecialchars($comp['company_name']); ?>" data-slug="<?php echo htmlspecialchars(slugify($comp['company_name'])); ?>" data-url="<?php echo htmlspecialchars(getCompanyPublicRatingUrl($comp['id'], $comp['company_name'])); ?>">
                                 <?php echo htmlspecialchars($comp['company_name']); ?>
                             </option>
                         <?php endforeach; ?>
@@ -1085,13 +1087,22 @@ function toggleAdminPw(fieldId, btn) {
    Share Link Updater
    ============================================================ */
 function updateShareLink(companyId) {
-    var input = document.getElementById('shareUrlInput');
-    var btn   = document.getElementById('previewRatingBtn');
-    if (!input || !companyId) return;
+    var select = document.getElementById('companySelect');
+    var input  = document.getElementById('shareUrlInput');
+    var btn    = document.getElementById('previewRatingBtn');
+    if (!input) return;
 
-    var url = window.location.origin + '<?php echo $BASE; ?>rate/index.php?company=' + companyId;
-    input.value = url;
-    if (btn) btn.href = url;
+    var opt = select ? select.options[select.selectedIndex] : null;
+    var url = opt && opt.getAttribute('data-url') ? opt.getAttribute('data-url') : '';
+    if (!url && companyId) {
+        var slug = opt ? (opt.getAttribute('data-slug') || '') : '';
+        var root = '<?php echo rtrim($__root, "/"); ?>';
+        url = window.location.origin + root + '/rate/index.php?company=' + encodeURIComponent(companyId) + (slug ? '&tenant=' + encodeURIComponent(slug) : '');
+    }
+    if (url) {
+        input.value = url;
+        if (btn) btn.href = url;
+    }
 }
 
 function copyShareUrl() {

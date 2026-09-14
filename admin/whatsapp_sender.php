@@ -43,10 +43,12 @@ $company_id   = (int)($company_profile['id'] ?? 0);
 $brand_name   = !empty($company_profile['company_name']) ? $company_profile['company_name'] : ($tenant['company_name'] ?? 'Your Business');
 $brand_logo   = $tenant['logo'] ?? '';
 
-// Build base public review URL
-$__scheme   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$__root     = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
-$base_url   = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/rate/index.php?tenant=' . (int)$tenant_id;
+// Build base public review URL with tenant name
+if ($company_id > 0) {
+    $base_url = getCompanyPublicRatingUrl($company_id, $brand_name);
+} else {
+    $base_url = getCompanyPublicRatingUrl(0, $brand_name, ['tenant' => (int)$tenant_id]);
+}
 
 // Handle AJAX or POST to log an invite
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') === 'log_invite') {

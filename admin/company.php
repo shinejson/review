@@ -135,10 +135,13 @@ if ($company_id > 0) {
     $avg_score     = round((float)($stat['avg'] ?? 0), 1);
 }
 
-// Build public rating URL
-$__scheme   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$__root     = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
-$public_url = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/rate/index.php?tenant=' . (int)$tenant_id;
+// Build public rating URL with tenant name
+$brand_name_for_slug = !empty($company_profile['company_name']) ? $company_profile['company_name'] : ($tenant['company_name'] ?? '');
+if ($company_id > 0) {
+    $public_url = getCompanyPublicRatingUrl($company_id, $brand_name_for_slug);
+} else {
+    $public_url = getCompanyPublicRatingUrl(0, $brand_name_for_slug, ['tenant' => (int)$tenant_id]);
+}
 
 // WhatsApp click-to-chat (customers.whatsapp_number)
 $wa_number  = $company_profile['whatsapp_number'] ?? '';

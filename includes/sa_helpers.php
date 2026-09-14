@@ -90,10 +90,10 @@ if (!function_exists('sa_scalar')) {
 
 if (!function_exists('sa_setting')) {
     /** Read a value from the `settings` table (cached per request). */
-    function sa_setting($conn, $key, $default = '')
+    function sa_setting($conn, $key, $default = '', $reload = false)
     {
         static $cache = null;
-        if ($cache === null) {
+        if ($cache === null || $reload) {
             $cache = [];
             foreach (sa_query($conn, "SELECT setting_key, setting_value FROM settings", 'settings') as $row) {
                 $cache[$row['setting_key']] = $row['setting_value'];

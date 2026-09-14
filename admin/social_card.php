@@ -40,10 +40,12 @@ $brand_name     = !empty($company_profile['company_name']) ? $company_profile['c
 $brand_category = !empty($company_profile['category_name']) ? $company_profile['category_name'] : 'Verified Business';
 $brand_logo     = $tenant['logo'] ?? '';
 
-// Build base public review URL
-$__scheme   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$__root     = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
-$public_url = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/rate/index.php?tenant=' . (int)$tenant_id;
+// Build base public review URL with tenant name
+if ($company_id > 0) {
+    $public_url = getCompanyPublicRatingUrl($company_id, $brand_name);
+} else {
+    $public_url = getCompanyPublicRatingUrl(0, $brand_name, ['tenant' => (int)$tenant_id]);
+}
 
 // Fetch top positive reviews with text comments (4 & 5 stars)
 $reviews = [];

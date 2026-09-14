@@ -1205,7 +1205,7 @@ if ($plan_result) {
 
         <div class="companies-grid">
             <?php foreach ($featured_companies as $fc): ?>
-            <a href="rate/index.php?company=<?php echo (int) $fc['id']; ?>" class="company-preview-card">
+            <a href="rate/index.php?company=<?php echo (int) $fc['id']; ?>&tenant=<?php echo urlencode(slugify($fc['company_name'])); ?>" class="company-preview-card">
                 <div class="c-card-top">
                     <div class="c-card-logo">
                         <?php if (!empty($fc['logo'])): ?>

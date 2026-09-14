@@ -309,7 +309,7 @@ include __DIR__ . '/_shell.php';
 <?php foreach ($customers as $row):
     $avg = getAverageRating($row['id'], $conn);
     $cnt = getRatingCount($row['id'], $conn);
-    $rate_url = $assetBase . '/rate/index.php?company=' . (int) $row['id'];
+    $rate_url = getCompanyPublicRatingUrl($row['id'], $row['company_name']);
 ?>
                 <tr>
                     <td><?php echo (int) $row['id']; ?></td>

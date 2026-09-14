@@ -63,9 +63,11 @@ $wa_number  = $company_profile['whatsapp_number'] ?? '';
 $wa_display = function_exists('whatsappDisplay') ? whatsappDisplay($wa_number) : $wa_number;
 
 // Target review URL (tagged with &src=qr for offline scan analytics)
-$__scheme   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$__root     = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
-$public_url = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/rate/index.php?tenant=' . (int)$tenant_id . '&src=qr';
+if ($company_id > 0) {
+    $public_url = getCompanyPublicRatingUrl($company_id, $brand_name, ['src' => 'qr']);
+} else {
+    $public_url = getCompanyPublicRatingUrl(0, $brand_name, ['tenant' => (int)$tenant_id, 'src' => 'qr']);
+}
 
 // Direct QR Code image (high-res PNG, margin 15)
 $qr_api_url = 'https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=15&format=png&data=' . rawurlencode($public_url);

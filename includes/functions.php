@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/mailer.php';
+require_once __DIR__ . '/sa_helpers.php';
 
 function sanitize($data) {
     if (is_array($data)) {
@@ -1687,51 +1688,76 @@ function ensureRealIdSchema($conn) {
     if (!in_array('email_verified_at', $tenantCols, true)) {
         @$conn->query("ALTER TABLE tenants ADD COLUMN email_verified_at DATETIME NULL AFTER setup_token_expires");
     }
-    // Ensure unique index on public_id (ignore if already exists)
-    @$conn->query("ALTER TABLE tenants ADD UNIQUE KEY uniq_tenant_public_id (public_id)");
+    // Ensure unique index on public_id (check first or catch exception)
+    try {
+        $idxCheck = @$conn->query("SHOW INDEX FROM tenants WHERE Key_name = 'uniq_tenant_public_id'");
+        if ($idxCheck && $idxCheck->num_rows === 0) {
+            @$conn->query("ALTER TABLE tenants ADD UNIQUE KEY uniq_tenant_public_id (public_id)");
+        }
+        if ($idxCheck) $idxCheck->close();
+    } catch (Throwable $e) {
+        // Index already exists or cannot be created
+    }
 
     // Backfill existing tenants without public_id
-    $chk = @$conn->query("SELECT id FROM tenants WHERE public_id IS NULL OR public_id = '' LIMIT 50");
-    if ($chk) {
-        while ($row = $chk->fetch_assoc()) {
-            $pid = generateRealPublicId($conn, 'tenants', 'public_id', 'OPT-', 8);
-            @$conn->query("UPDATE tenants SET public_id = '" . $conn->real_escape_string($pid) . "' WHERE id = " . (int)$row['id']);
+    try {
+        $chk = @$conn->query("SELECT id FROM tenants WHERE public_id IS NULL OR public_id = '' LIMIT 50");
+        if ($chk) {
+            while ($row = $chk->fetch_assoc()) {
+                $pid = generateRealPublicId($conn, 'tenants', 'public_id', 'OPT-', 8);
+                @$conn->query("UPDATE tenants SET public_id = '" . $conn->real_escape_string($pid) . "' WHERE id = " . (int)$row['id']);
+            }
+            $chk->close();
         }
-        $chk->close();
-    }
+    } catch (Throwable $e) {}
 
     // Quote requests: public_id, converted_tenant_id, setup_email_sent
     $quoteCols = [];
-    $res2 = @$conn->query("SHOW COLUMNS FROM quote_requests");
-    if ($res2) {
-        while ($r = $res2->fetch_assoc()) { $quoteCols[] = $r['Field']; }
-        $res2->close();
-    } else {
-        // Table may not exist yet, create with public_id included
+    try {
+        $res2 = @$conn->query("SHOW COLUMNS FROM quote_requests");
+        if ($res2) {
+            while ($r = $res2->fetch_assoc()) { $quoteCols[] = $r['Field']; }
+            $res2->close();
+        } else {
+            return;
+        }
+    } catch (Throwable $e) {
         return;
     }
-    if (!in_array('public_id', $quoteCols, true)) {
-        @$conn->query("ALTER TABLE quote_requests ADD COLUMN public_id VARCHAR(32) NULL AFTER id");
-    }
-    if (!in_array('converted_tenant_id', $quoteCols, true)) {
-        @$conn->query("ALTER TABLE quote_requests ADD COLUMN converted_tenant_id INT NULL AFTER public_id");
-    }
-    if (!in_array('setup_email_sent', $quoteCols, true)) {
-        @$conn->query("ALTER TABLE quote_requests ADD COLUMN setup_email_sent TINYINT(1) NOT NULL DEFAULT 0 AFTER converted_tenant_id");
-    }
-    if (!in_array('setup_token', $quoteCols, true)) {
-        @$conn->query("ALTER TABLE quote_requests ADD COLUMN setup_token VARCHAR(128) NULL AFTER setup_email_sent");
-    }
-    @$conn->query("ALTER TABLE quote_requests ADD UNIQUE KEY uniq_quote_public_id (public_id)");
 
-    $chk2 = @$conn->query("SELECT id FROM quote_requests WHERE public_id IS NULL OR public_id = '' LIMIT 50");
-    if ($chk2) {
-        while ($row = $chk2->fetch_assoc()) {
-            $pid = generateRealPublicId($conn, 'quote_requests', 'public_id', 'QTE-', 8);
-            @$conn->query("UPDATE quote_requests SET public_id = '" . $conn->real_escape_string($pid) . "' WHERE id = " . (int)$row['id']);
+    try {
+        if (!in_array('public_id', $quoteCols, true)) {
+            @$conn->query("ALTER TABLE quote_requests ADD COLUMN public_id VARCHAR(32) NULL AFTER id");
         }
-        $chk2->close();
-    }
+        if (!in_array('converted_tenant_id', $quoteCols, true)) {
+            @$conn->query("ALTER TABLE quote_requests ADD COLUMN converted_tenant_id INT NULL AFTER public_id");
+        }
+        if (!in_array('setup_email_sent', $quoteCols, true)) {
+            @$conn->query("ALTER TABLE quote_requests ADD COLUMN setup_email_sent TINYINT(1) NOT NULL DEFAULT 0 AFTER converted_tenant_id");
+        }
+        if (!in_array('setup_token', $quoteCols, true)) {
+            @$conn->query("ALTER TABLE quote_requests ADD COLUMN setup_token VARCHAR(128) NULL AFTER setup_email_sent");
+        }
+    } catch (Throwable $e) {}
+
+    try {
+        $idxCheck2 = @$conn->query("SHOW INDEX FROM quote_requests WHERE Key_name = 'uniq_quote_public_id'");
+        if ($idxCheck2 && $idxCheck2->num_rows === 0) {
+            @$conn->query("ALTER TABLE quote_requests ADD UNIQUE KEY uniq_quote_public_id (public_id)");
+        }
+        if ($idxCheck2) $idxCheck2->close();
+    } catch (Throwable $e) {}
+
+    try {
+        $chk2 = @$conn->query("SELECT id FROM quote_requests WHERE public_id IS NULL OR public_id = '' LIMIT 50");
+        if ($chk2) {
+            while ($row = $chk2->fetch_assoc()) {
+                $pid = generateRealPublicId($conn, 'quote_requests', 'public_id', 'QTE-', 8);
+                @$conn->query("UPDATE quote_requests SET public_id = '" . $conn->real_escape_string($pid) . "' WHERE id = " . (int)$row['id']);
+            }
+            $chk2->close();
+        }
+    } catch (Throwable $e) {}
 }
 
 function generateRealPublicId($conn, $table, $column, $prefix = 'OPT-', $len = 8) {
@@ -1801,6 +1827,66 @@ function getPlatformBaseUrl() {
         }
     }
     return rtrim($scheme . '://' . $host . $basePath, '/');
+}
+
+if (!function_exists('slugify')) {
+    /**
+     * Convert any business or company name into a clean, lowercase URL-safe slug.
+     * e.g. "Acme Cafe & Bistro" -> "acme-cafe-bistro"
+     */
+    function slugify($text) {
+        $text = (string)$text;
+        if (function_exists('iconv')) {
+            $trans = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+            if ($trans !== false) $text = $trans;
+        }
+        $text = preg_replace('/[^a-z0-9]+/i', '-', strtolower(trim($text)));
+        $text = trim($text, '-');
+        return $text ?: 'business';
+    }
+}
+
+if (!function_exists('getCompanyPublicRatingUrl')) {
+    /**
+     * Generate the complete public rating URL for a company with the tenant name included.
+     * e.g. http://localhost/rate/rate/index.php?company=4&tenant=airport-west-hotel
+     */
+    function getCompanyPublicRatingUrl($company_id, $company_name = '', $extra_params = []) {
+        $scheme  = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host    = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        
+        $appWebRoot = '';
+        if (!empty($_SERVER['DOCUMENT_ROOT'])) {
+            $docRoot = str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT']) ?: $_SERVER['DOCUMENT_ROOT']);
+            $appDir  = str_replace('\\', '/', dirname(__DIR__));
+            if ($docRoot && strpos(strtolower($appDir), strtolower($docRoot)) === 0) {
+                $appWebRoot = substr($appDir, strlen($docRoot));
+            }
+        }
+        if ($appWebRoot === '' && !empty($_SERVER['SCRIPT_NAME'])) {
+            $script = str_replace('\\', '/', $_SERVER['SCRIPT_NAME']);
+            if (preg_match('#^(.*?)/(admin|superadmin|api|rate)(/|$)#i', $script, $m)) {
+                $appWebRoot = rtrim($m[1], '/');
+            }
+        }
+        $appWebRoot = '/' . trim($appWebRoot, '/');
+        if ($appWebRoot === '/') $appWebRoot = '';
+
+        $params = [];
+        if ((int)$company_id > 0) {
+            $params['company'] = (int)$company_id;
+        }
+        if (!empty($company_name)) {
+            $params['tenant'] = slugify($company_name);
+        }
+        if (!empty($extra_params) && is_array($extra_params)) {
+            foreach ($extra_params as $k => $v) {
+                if ($v !== '' && $v !== null) $params[$k] = $v;
+            }
+        }
+        $query = !empty($params) ? ('?' . http_build_query($params)) : '';
+        return $scheme . '://' . $host . $appWebRoot . '/rate/index.php' . $query;
+    }
 }
 
 function sendTenantSetupEmail($conn, $tenant, $setup_token, $is_new_registration = true) {

@@ -144,10 +144,12 @@ $search_term    = trim($_GET['q'] ?? '');
 
 $questions = getAdminCommunityQuestions($conn, $tenant_id, $current_filter, $search_term);
 
-// Public rating page link
-$__scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$__root   = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
-$public_qa_url = $__scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $__root . '/rate/index.php?tenant=' . (int)$tenant_id . '#tab=qa';
+// Public rating page link with tenant name
+if ($company_id > 0) {
+    $public_qa_url = getCompanyPublicRatingUrl($company_id, $brand_name) . '#tab=qa';
+} else {
+    $public_qa_url = getCompanyPublicRatingUrl(0, $brand_name, ['tenant' => (int)$tenant_id]) . '#tab=qa';
+}
 
 $BASE      = '../';
 $pageTitle = 'Community Q&A';
