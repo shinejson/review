@@ -571,33 +571,59 @@ if ($stmt->execute()) {
                  GET VERIFIED BADGE — post-signup follow & like steps
                  ============================================================ -->
             <div id="engageCard" data-rating-id="<?php echo (int)$rating_id; ?>" data-company-id="<?php echo (int)$company_id; ?>"
-                 style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:16px;padding:22px 20px;margin-bottom:26px;text-align:left;">
-                <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
-                    <div style="width:38px;height:38px;border-radius:10px;background:#dcfce7;border:1px solid #86efac;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:19px;">🛡️</div>
-                    <div>
-                        <strong style="font-size:14.5px;color:#091a27;display:block;">Get Your Verified Customer Badge</strong>
-                        <span style="font-size:12px;color:#64748b;">Earn the green ✓ badge on your review — two quick taps:</span>
+                 style="background:linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);border:2px solid #86efac;border-radius:16px;padding:24px 22px;margin-bottom:26px;text-align:left;box-shadow:0 4px 16px rgba(34,197,94,0.15);">
+                
+                <!-- Header with Badge Preview -->
+                <div style="display:flex;align-items:start;gap:14px;margin-bottom:16px;">
+                    <div style="width:48px;height:48px;border-radius:12px;background:#16a34a;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:24px;box-shadow:0 4px 12px rgba(22,163,74,0.3);">✓</div>
+                    <div style="flex:1;">
+                        <strong style="font-size:16px;color:#14532d;display:block;margin-bottom:4px;">🎯 Get Your Verified Customer Badge</strong>
+                        <p style="font-size:13px;color:#166534;margin:0;line-height:1.5;">Stand out! Complete 2 quick steps to earn the green <span style="background:#16a34a;color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;">✓ Verified</span> badge on your review.</p>
+                    </div>
+                </div>
+
+                <!-- Benefits Banner -->
+                <div style="background:#ffffff;border:1px solid #86efac;border-radius:10px;padding:12px 14px;margin-bottom:16px;">
+                    <div style="font-size:12px;font-weight:700;color:#15803d;margin-bottom:6px;">Why get verified?</div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">
+                        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#166534;">
+                            <span style="font-size:14px;">🌟</span> <span>Build credibility</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#166534;">
+                            <span style="font-size:14px;">🎁</span> <span>Exclusive offers</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#166534;">
+                            <span style="font-size:14px;">⚡</span> <span>Priority support</span>
+                        </div>
                     </div>
                 </div>
 
                 <?php if (!empty($engage_targets)): ?>
+                    <!-- Progress Indicator -->
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+                        <div style="flex:1;height:4px;background:#cbd5e1;border-radius:99px;overflow:hidden;">
+                            <div id="engageProgress" style="width:0%;height:100%;background:#16a34a;transition:width 0.5s ease;"></div>
+                        </div>
+                        <span id="engageProgressText" style="font-size:11px;font-weight:700;color:#15803d;white-space:nowrap;">0/2 Done</span>
+                    </div>
+
                     <!-- STEP 1: FOLLOW -->
-                    <div id="engageStepFollow" style="border:1px solid #e2e8f0;background:#ffffff;border-radius:12px;padding:14px;margin-top:12px;transition:all .25s ease;">
-                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                            <div style="font-size:13px;color:#334155;font-weight:600;">
-                                <span style="display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#0f172a;color:#fff;font-size:11px;font-weight:800;margin-right:7px;">1</span>
-                                Follow <strong><?php echo htmlspecialchars($company_name); ?></strong>
+                    <div id="engageStepFollow" style="border:2px solid #cbd5e1;background:#ffffff;border-radius:12px;padding:16px;margin-bottom:12px;transition:all .3s ease;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+                            <div style="font-size:14px;color:#0f172a;font-weight:700;">
+                                <span id="followBadge" style="display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#e2e8f0;color:#64748b;font-size:12px;font-weight:800;margin-right:8px;transition:all 0.3s;">1</span>
+                                Follow <?php echo htmlspecialchars($company_name); ?>
                             </div>
-                            <button type="button" id="engageFollowConfirm"
-                                    style="padding:8px 16px;border-radius:99px;border:1.5px solid #059669;background:#ffffff;color:#059669;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;transition:all .2s ease;">
-                                ✓ I have followed
+                            <button type="button" id="engageFollowConfirm" onclick="confirmStep('follow')"
+                                    style="padding:9px 18px;border-radius:99px;border:2px solid #16a34a;background:#ffffff;color:#16a34a;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;transition:all .2s ease;white-space:nowrap;">
+                                ✓ I've Followed
                             </button>
                         </div>
-                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
                             <?php foreach ($engage_targets as $t): ?>
                             <a href="<?php echo htmlspecialchars($t['url']); ?>" target="_blank" rel="noopener noreferrer"
                                onclick="engageMarkPlatform('<?php echo htmlspecialchars($t['key']); ?>')"
-                               style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:99px;background:<?php echo htmlspecialchars($t['bg']); ?>;color:<?php echo htmlspecialchars($t['color']); ?>;border:1px solid <?php echo htmlspecialchars($t['color']); ?>33;font-size:12px;font-weight:700;text-decoration:none;transition:transform .15s ease;">
+                               style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:99px;background:<?php echo htmlspecialchars($t['bg']); ?>;color:<?php echo htmlspecialchars($t['color']); ?>;border:1px solid <?php echo htmlspecialchars($t['color']); ?>33;font-size:12.5px;font-weight:700;text-decoration:none;transition:transform .15s ease;box-shadow:0 2px 6px rgba(0,0,0,0.08);">
                                 <span><?php echo $t['icon']; ?></span> <?php echo htmlspecialchars($t['label']); ?> ↗
                             </a>
                             <?php endforeach; ?>
@@ -605,63 +631,101 @@ if ($stmt->execute()) {
                     </div>
 
                     <!-- STEP 2: LIKE -->
-                    <div id="engageStepLike" style="border:1px solid #e2e8f0;background:#ffffff;border-radius:12px;padding:14px;margin-top:10px;transition:all .25s ease;">
-                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                            <div style="font-size:13px;color:#334155;font-weight:600;">
-                                <span style="display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#0f172a;color:#fff;font-size:11px;font-weight:800;margin-right:7px;">2</span>
+                    <div id="engageStepLike" style="border:2px solid #cbd5e1;background:#ffffff;border-radius:12px;padding:16px;margin-bottom:12px;transition:all .3s ease;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+                            <div style="font-size:14px;color:#0f172a;font-weight:700;">
+                                <span id="likeBadge" style="display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#e2e8f0;color:#64748b;font-size:12px;font-weight:800;margin-right:8px;transition:all 0.3s;">2</span>
                                 Like our latest post or page
                             </div>
-                            <button type="button" id="engageLikeConfirm"
-                                    style="padding:8px 16px;border-radius:99px;border:1.5px solid #059669;background:#ffffff;color:#059669;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;transition:all .2s ease;">
-                                ♥ I have liked
+                            <button type="button" id="engageLikeConfirm" onclick="confirmStep('like')"
+                                    style="padding:9px 18px;border-radius:99px;border:2px solid #16a34a;background:#ffffff;color:#16a34a;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;transition:all .2s ease;white-space:nowrap;">
+                                ♥ I've Liked
                             </button>
                         </div>
-                        <div style="margin-top:10px;">
+                        <div>
                             <a href="<?php echo htmlspecialchars($engage_like_url); ?>" target="_blank" rel="noopener noreferrer"
-                               style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:99px;background:#fdf2f8;color:#be185d;border:1px solid #fbcfe8;font-size:12px;font-weight:700;text-decoration:none;">
-                                ♥ Open our page &amp; tap Like ↗
+                               style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:99px;background:#fdf2f8;color:#be185d;border:1px solid #fbcfe8;font-size:12.5px;font-weight:700;text-decoration:none;box-shadow:0 2px 6px rgba(0,0,0,0.08);">
+                                ♥ Open Page &amp; Tap Like ↗
                             </a>
                         </div>
                     </div>
 
-                    <!-- Optional phone / WhatsApp for the customer list -->
-                    <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                        <label for="engagePhone" style="font-size:12px;color:#64748b;font-weight:600;">Your WhatsApp number (optional, for offers):</label>
+                    <!-- Optional phone / WhatsApp -->
+                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+                        <label for="engagePhone" style="font-size:12px;color:#475569;font-weight:600;display:block;margin-bottom:6px;">💬 WhatsApp number (optional - for exclusive offers):</label>
                         <input type="tel" id="engagePhone" placeholder="e.g. 024 123 4567"
-                               style="padding:7px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;width:190px;font-family:inherit;">
+                               style="padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;width:100%;max-width:250px;font-family:inherit;">
                     </div>
 
-                    <!-- Success state (revealed once both steps are confirmed) -->
-                    <div id="engageSuccess" style="display:none;margin-top:14px;padding:16px;background:#dcfce7;border:1px solid #86efac;border-radius:12px;text-align:center;">
-                        <div style="font-size:28px;line-height:1;margin-bottom:8px;">🎉</div>
-                        <div class="badge-verified" style="margin:0 0 8px;"><span>✓</span> Verified Customer Badge Earned!</div>
-                        <p style="font-size:12.5px;color:#166534;margin:0;line-height:1.5;">Thank you for supporting <strong><?php echo htmlspecialchars($company_name); ?></strong> — your review now displays the official <strong>Verified Customer</strong> badge.</p>
+                    <!-- Success state -->
+                    <div id="engageSuccess" style="display:none;padding:18px;background:#dcfce7;border:2px solid#16a34a;border-radius:12px;text-align:center;animation:slideIn 0.5s ease;">
+                        <div style="font-size:48px;line-height:1;margin-bottom:10px;">🎉</div>
+                        <div style="display:inline-flex;align-items:center;gap:6px;background:#16a34a;color:#fff;padding:6px 14px;border-radius:99px;font-size:13px;font-weight:700;margin-bottom:10px;">
+                            <span>✓</span> Verified Customer Badge Earned!
+                        </div>
+                        <p style="font-size:13px;color:#15803d;margin:0;line-height:1.6;font-weight:500;">Thank you for supporting <strong><?php echo htmlspecialchars($company_name); ?></strong>!<br>Your review now displays the official <strong>Verified Customer</strong> badge.</p>
                     </div>
                 <?php else: ?>
-                    <p style="font-size:12.5px;color:#475569;margin:12px 0 0;line-height:1.55;">
-                        <?php echo htmlspecialchars($company_name); ?> has not published follow links yet. You can still earn the badge by adding your MoMo transaction reference on the review form.
-                    </p>
+                    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px;text-align:center;">
+                        <p style="font-size:12.5px;color:#92400e;margin:0;line-height:1.55;">
+                            <strong><?php echo htmlspecialchars($company_name); ?></strong> hasn't published social links yet. You can still earn the verified badge by providing your MoMo transaction reference in the review form above.
+                        </p>
+                    </div>
                 <?php endif; ?>
             </div>
+            <style>
+            @keyframes slideIn {
+                from { opacity: 0; transform: translateY(-10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            </style>
             <script>
             (function() {
                 var card = document.getElementById('engageCard');
                 if (!card) return;
                 var followedPlatform = '';
+                var completedSteps = 0;
+                
                 window.engageMarkPlatform = function(p) { followedPlatform = p; };
 
-                function markDone(stepId, btnId, label) {
-                    var step = document.getElementById(stepId);
-                    if (step) { step.style.borderColor = '#86efac'; step.style.background = '#f0fdf4'; }
-                    var btn = document.getElementById(btnId);
-                    if (btn) { btn.textContent = label; btn.style.background = '#059669'; btn.style.color = '#ffffff'; btn.style.borderColor = '#059669'; }
+                function updateProgress() {
+                    var bar = document.getElementById('engageProgress');
+                    var text = document.getElementById('engageProgressText');
+                    if (bar) bar.style.width = (completedSteps / 2 * 100) + '%';
+                    if (text) text.textContent = completedSteps + '/2 Done';
                 }
 
-                function confirmStep(step) {
+                function markDone(stepId, btnId, badgeId, label) {
+                    var step = document.getElementById(stepId);
+                    if (step) { 
+                        step.style.borderColor = '#16a34a'; 
+                        step.style.background = '#f0fdf4';
+                        step.style.transform = 'scale(0.98)';
+                        setTimeout(function() { step.style.transform = 'scale(1)'; }, 200);
+                    }
+                    var btn = document.getElementById(btnId);
+                    if (btn) { 
+                        btn.textContent = label; 
+                        btn.style.background = '#16a34a'; 
+                        btn.style.color = '#ffffff'; 
+                        btn.style.borderColor = '#16a34a';
+                        btn.disabled = true;
+                    }
+                    var badge = document.getElementById(badgeId);
+                    if (badge) {
+                        badge.textContent = '✓';
+                        badge.style.background = '#16a34a';
+                        badge.style.color = '#ffffff';
+                    }
+                    completedSteps++;
+                    updateProgress();
+                }
+
+                window.confirmStep = function(step) {
                     var btn = step === 'follow' ? document.getElementById('engageFollowConfirm') : document.getElementById('engageLikeConfirm');
                     if (!btn || btn.disabled) return;
                     btn.disabled = true;
-                    btn.textContent = 'Saving…';
+                    btn.textContent = '⏳ Saving...';
 
                     var fd = new FormData();
                     fd.append('action', step);
@@ -680,21 +744,21 @@ if ($stmt->execute()) {
                         .then(function(data) {
                             if (!data.success) {
                                 btn.disabled = false;
-                                btn.textContent = step === 'follow' ? '✓ I have followed' : '♥ I have liked';
+                                btn.textContent = step === 'follow' ? '✓ I\'ve Followed' : '♥ I\'ve Liked';
                                 alert(data.message || 'Could not save your step. Please try again.');
                                 return;
                             }
                             if (step === 'follow' && data.is_following) {
-                                markDone('engageStepFollow', 'engageFollowConfirm', '✓ Followed');
+                                markDone('engageStepFollow', 'engageFollowConfirm', 'followBadge', '✓ Followed');
                             }
                             if (step === 'like' && data.is_liked) {
-                                markDone('engageStepLike', 'engageLikeConfirm', '✓ Liked');
+                                markDone('engageStepLike', 'engageLikeConfirm', 'likeBadge', '✓ Liked');
                             }
                             if (data.is_verified) {
                                 var ok = document.getElementById('engageSuccess');
                                 if (ok) {
                                     ok.style.display = 'block';
-                                    ok.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                    ok.scrollIntoView({ behavior: 'smooth', block: 'center' });
                                 }
                             }
                         })

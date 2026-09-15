@@ -535,7 +535,15 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                 <dl class="admin-kv-list">
                     <div class="admin-kv-row">
                         <dt>Account ID</dt>
-                        <dd>#<?php echo (int)($is_tenant ? $tenant_id : ($_SESSION['admin_id'] ?? 1)); ?></dd>
+                        <dd>
+                            <?php 
+                            if ($is_tenant && !empty($tenant['public_id'])) {
+                                echo '<span style="display:inline-block;padding:4px 10px;background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);border-radius:6px;font-family:monospace;font-size:12px;font-weight:600;letter-spacing:0.5px;">' . htmlspecialchars($tenant['public_id']) . '</span>';
+                            } else {
+                                echo '#' . (int)($is_tenant ? $tenant_id : ($_SESSION['admin_id'] ?? 1));
+                            }
+                            ?>
+                        </dd>
                     </div>
                     <div class="admin-kv-row">
                         <dt>Account Type</dt>
@@ -1156,6 +1164,9 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
         box-shadow: 0 2px 10px rgba(0,0,0,0.02);
         transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
+    .collapsible-card.is-collapsed {
+        padding-bottom: 22px;
+    }
     :root[data-theme='dark'] .customizer-card {
         background: #0f1f2e;
         border-color: rgba(255,255,255,0.08);
@@ -1170,6 +1181,18 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
         border-bottom: 1px solid var(--line);
         cursor: pointer;
         user-select: none;
+        transition: all 0.2s ease;
+    }
+    .collapsible-card.is-collapsed .customizer-card-header {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+    }
+    .customizer-card-header:hover .customizer-card-title {
+        color: #10b981;
+    }
+    :root[data-theme='dark'] .customizer-card-header:hover .customizer-card-title {
+        color: var(--lime);
     }
     .customizer-card-title {
         margin: 0;
@@ -1179,6 +1202,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
         display: flex;
         align-items: center;
         gap: 8px;
+        transition: color 0.15s ease;
     }
     .customizer-card-desc {
         margin: 4px 0 0;
@@ -1198,8 +1222,13 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
     }
     .customizer-collapse-icon {
         display: inline-block;
-        transition: transform 0.25s ease;
-        font-size: 12px;
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        font-size: 11px;
+        color: var(--muted);
+        user-select: none;
+    }
+    .collapsible-card.is-collapsed .customizer-collapse-icon {
+        transform: rotate(-90deg);
     }
     .preset-card-btn {
         border: 1.5px solid var(--line);
@@ -1301,31 +1330,148 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
     :root[data-theme='dark'] .customizer-preview-frame {
         border-color: rgba(255,255,255,0.08);
     }
-    .color-input-pair {
+    /* Color Palette Settings Cards */
+    .color-settings-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+    @media (max-width: 680px) {
+        .color-settings-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    .color-setting-item {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px 14px;
         display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition: all 0.2s ease;
+    }
+    .color-setting-item:hover {
+        border-color: #cbd5e1;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+    :root[data-theme='dark'] .color-setting-item {
+        background: rgba(255,255,255,0.025);
+        border-color: rgba(255,255,255,0.08);
+    }
+    :root[data-theme='dark'] .color-setting-item:hover {
+        border-color: rgba(255,255,255,0.15);
+        background: rgba(255,255,255,0.04);
+    }
+    .color-setting-header {
+        display: flex;
+        justify-content: space-between;
         align-items: center;
         gap: 8px;
     }
-    .color-picker-swatch {
+    .color-setting-title {
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0;
+        cursor: pointer;
+    }
+    .color-setting-hint {
+        font-size: 11px;
+        color: var(--muted);
+        background: rgba(0,0,0,0.04);
+        padding: 2px 7px;
+        border-radius: 4px;
+        white-space: nowrap;
+        font-weight: 500;
+    }
+    :root[data-theme='dark'] .color-setting-hint {
+        background: rgba(255,255,255,0.06);
+        color: #94a3b8;
+    }
+    .color-input-pair {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+    }
+    .color-swatch-wrapper {
+        position: relative;
         width: 38px;
         height: 38px;
-        padding: 0;
-        border: 1px solid var(--line);
-        border-radius: 8px;
+        min-width: 38px;
+        max-width: 38px;
+        border-radius: 9px;
+        overflow: hidden;
         cursor: pointer;
-        background: transparent;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.12), inset 0 0 0 1px rgba(0,0,0,0.08);
         flex-shrink: 0;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .color-swatch-wrapper:hover {
+        transform: scale(1.05);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2), inset 0 0 0 1px rgba(0,0,0,0.15);
+    }
+    input[type="color"].color-picker-swatch {
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        position: absolute;
+        top: -8px;
+        left: -8px;
+        width: calc(100% + 16px) !important;
+        height: calc(100% + 16px) !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+        outline: none !important;
+        background: none !important;
+        cursor: pointer;
+    }
+    input[type="color"].color-picker-swatch::-webkit-color-swatch-wrapper {
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+    }
+    input[type="color"].color-picker-swatch::-webkit-color-swatch {
+        border: none !important;
+        padding: 0 !important;
+    }
+    input[type="color"].color-picker-swatch::-moz-color-swatch {
+        border: none !important;
+        padding: 0 !important;
     }
     .color-hex-text {
-        font-family: monospace;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
         text-transform: uppercase;
-        font-size: 13px;
-        width: 100%;
-        padding: 9px 12px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--bg);
-        color: var(--ink);
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.5px;
+        width: 100% !important;
+        height: 38px !important;
+        padding: 0 12px !important;
+        border: 1px solid var(--line) !important;
+        border-radius: 8px !important;
+        background: #ffffff !important;
+        color: var(--ink) !important;
+        box-sizing: border-box !important;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+    }
+    .color-hex-text:focus {
+        outline: none !important;
+        border-color: #10b981 !important;
+        box-shadow: 0 0 0 3px rgba(16,185,129,0.15) !important;
+    }
+    :root[data-theme='dark'] .color-hex-text {
+        background: #0b1520 !important;
+        border-color: rgba(255,255,255,0.12) !important;
+        color: #f1f5f9 !important;
+    }
+    :root[data-theme='dark'] .color-hex-text:focus {
+        border-color: var(--lime) !important;
+        box-shadow: 0 0 0 3px rgba(194,245,66,0.15) !important;
     }
     .device-toggle-btn {
         padding: 4px 10px;
@@ -1384,7 +1530,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
             <input type="hidden" name="action" value="update_public_customization">
 
             <!-- Card 1: 1-Click Color Presets -->
-            <div class="collapsible-card customizer-card">
+            <div class="collapsible-card customizer-card is-collapsed">
                 <div class="customizer-card-header" onclick="toggleSettingsSection(this)">
                     <div>
                         <h4 class="customizer-card-title">
@@ -1398,7 +1544,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                     </div>
                 </div>
 
-                <div class="collapsible-content">
+                <div class="collapsible-content" style="display: none;">
                     <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));gap:10px;" id="themePresetsGrid">
                         <button type="button" class="preset-card-btn" onclick="applyColorPreset('emerald')">
                             <div style="display:flex;gap:5px;">
@@ -1484,7 +1630,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
             </div>
 
             <!-- Card 2: Detailed Color Palette -->
-            <div class="collapsible-card customizer-card">
+            <div class="collapsible-card customizer-card is-collapsed">
                 <div class="customizer-card-header" onclick="toggleSettingsSection(this)">
                     <div>
                         <h4 class="customizer-card-title">
@@ -1495,100 +1641,117 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                     <span class="customizer-collapse-icon collapse-icon">▼</span>
                 </div>
 
-                <div class="collapsible-content">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                        <!-- Primary Color -->
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label for="c_primary" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                                <span>Primary Action Color</span>
-                                <span style="font-size:11px;color:var(--muted);">(Buttons, Active Tabs)</span>
-                            </label>
+                <div class="collapsible-content" style="display: none;">
+                    <div class="color-settings-grid">
+                        <!-- Primary Action Color -->
+                        <div class="color-setting-item">
+                            <div class="color-setting-header">
+                                <label for="c_primary" class="color-setting-title">Primary Action Color</label>
+                                <span class="color-setting-hint">Buttons, Active Tabs</span>
+                            </div>
                             <div class="color-input-pair">
-                                <input type="color" id="c_primary_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['primary_color'] ?? '#10b981'); ?>">
-                                <input type="text" id="c_primary" name="primary_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['primary_color'] ?? '#10b981'); ?>" maxlength="7">
+                                <div class="color-swatch-wrapper" title="Click to pick color">
+                                    <input type="color" id="c_primary_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['primary_color'] ?? '#10b981'); ?>">
+                                </div>
+                                <input type="text" id="c_primary" name="primary_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['primary_color'] ?? '#10b981'); ?>" maxlength="7" spellcheck="false">
                             </div>
                         </div>
 
                         <!-- Secondary / Hover Color -->
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label for="c_secondary" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                                <span>Hover / Accent Color</span>
-                                <span style="font-size:11px;color:var(--muted);">(Button Hover States)</span>
-                            </label>
-                            <div class="color-input-pair">
-                                <input type="color" id="c_secondary_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['secondary_color'] ?? '#059669'); ?>">
-                                <input type="text" id="c_secondary" name="secondary_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['secondary_color'] ?? '#059669'); ?>" maxlength="7">
+                        <div class="color-setting-item">
+                            <div class="color-setting-header">
+                                <label for="c_secondary" class="color-setting-title">Hover / Accent Color</label>
+                                <span class="color-setting-hint">Button Hover States</span>
                             </div>
-                        </div>
-
-                        <!-- Star Rating Color -->
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label for="c_star" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                                <span>Rating Stars Color</span>
-                                <span style="font-size:11px;color:var(--muted);">(★ Star Icons)</span>
-                            </label>
                             <div class="color-input-pair">
-                                <input type="color" id="c_star_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['star_color'] ?? '#f59e0b'); ?>">
-                                <input type="text" id="c_star" name="star_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['star_color'] ?? '#f59e0b'); ?>" maxlength="7">
+                                <div class="color-swatch-wrapper" title="Click to pick color">
+                                    <input type="color" id="c_secondary_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['secondary_color'] ?? '#059669'); ?>">
+                                </div>
+                                <input type="text" id="c_secondary" name="secondary_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['secondary_color'] ?? '#059669'); ?>" maxlength="7" spellcheck="false">
                             </div>
                         </div>
 
                         <!-- Page Background -->
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label for="c_page_bg" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                                <span>Page Background</span>
-                                <span style="font-size:11px;color:var(--muted);">(Outer Background)</span>
-                            </label>
+                        <div class="color-setting-item">
+                            <div class="color-setting-header">
+                                <label for="c_page_bg" class="color-setting-title">Page Background</label>
+                                <span class="color-setting-hint">Outer Portal Canvas</span>
+                            </div>
                             <div class="color-input-pair">
-                                <input type="color" id="c_page_bg_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['page_bg'] ?? '#f8fafc'); ?>">
-                                <input type="text" id="c_page_bg" name="page_bg" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['page_bg'] ?? '#f8fafc'); ?>" maxlength="7">
+                                <div class="color-swatch-wrapper" title="Click to pick color">
+                                    <input type="color" id="c_page_bg_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['page_bg'] ?? '#f8fafc'); ?>">
+                                </div>
+                                <input type="text" id="c_page_bg" name="page_bg" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['page_bg'] ?? '#f8fafc'); ?>" maxlength="7" spellcheck="false">
                             </div>
                         </div>
 
                         <!-- Card / Surface Background -->
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label for="c_card_bg" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                                <span>Container Background</span>
-                                <span style="font-size:11px;color:var(--muted);">(Main Card Surface)</span>
-                            </label>
+                        <div class="color-setting-item">
+                            <div class="color-setting-header">
+                                <label for="c_card_bg" class="color-setting-title">Container Background</label>
+                                <span class="color-setting-hint">Main Card Surface</span>
+                            </div>
                             <div class="color-input-pair">
-                                <input type="color" id="c_card_bg_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['card_bg'] ?? '#ffffff'); ?>">
-                                <input type="text" id="c_card_bg" name="card_bg" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['card_bg'] ?? '#ffffff'); ?>" maxlength="7">
+                                <div class="color-swatch-wrapper" title="Click to pick color">
+                                    <input type="color" id="c_card_bg_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['card_bg'] ?? '#ffffff'); ?>">
+                                </div>
+                                <input type="text" id="c_card_bg" name="card_bg" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['card_bg'] ?? '#ffffff'); ?>" maxlength="7" spellcheck="false">
                             </div>
                         </div>
 
                         <!-- Card Border Color -->
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label for="c_card_border" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                                <span>Card Border Color</span>
-                            </label>
+                        <div class="color-setting-item">
+                            <div class="color-setting-header">
+                                <label for="c_card_border" class="color-setting-title">Card Border Color</label>
+                                <span class="color-setting-hint">Dividers &amp; Outlines</span>
+                            </div>
                             <div class="color-input-pair">
-                                <input type="color" id="c_card_border_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['card_border'] ?? '#e2e8f0'); ?>">
-                                <input type="text" id="c_card_border" name="card_border" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['card_border'] ?? '#e2e8f0'); ?>" maxlength="7">
+                                <div class="color-swatch-wrapper" title="Click to pick color">
+                                    <input type="color" id="c_card_border_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['card_border'] ?? '#e2e8f0'); ?>">
+                                </div>
+                                <input type="text" id="c_card_border" name="card_border" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['card_border'] ?? '#e2e8f0'); ?>" maxlength="7" spellcheck="false">
+                            </div>
+                        </div>
+
+                        <!-- Star Rating Color -->
+                        <div class="color-setting-item">
+                            <div class="color-setting-header">
+                                <label for="c_star" class="color-setting-title">Rating Stars Color</label>
+                                <span class="color-setting-hint">★ Star Icons</span>
+                            </div>
+                            <div class="color-input-pair">
+                                <div class="color-swatch-wrapper" title="Click to pick color">
+                                    <input type="color" id="c_star_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['star_color'] ?? '#f59e0b'); ?>">
+                                </div>
+                                <input type="text" id="c_star" name="star_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['star_color'] ?? '#f59e0b'); ?>" maxlength="7" spellcheck="false">
                             </div>
                         </div>
 
                         <!-- Primary Headings & Text -->
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label for="c_text" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                                <span>Headings &amp; Text</span>
-                                <span style="font-size:11px;color:var(--muted);">(Main Typography)</span>
-                            </label>
+                        <div class="color-setting-item">
+                            <div class="color-setting-header">
+                                <label for="c_text" class="color-setting-title">Headings &amp; Text</label>
+                                <span class="color-setting-hint">Main Typography</span>
+                            </div>
                             <div class="color-input-pair">
-                                <input type="color" id="c_text_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['text_color'] ?? '#0f172a'); ?>">
-                                <input type="text" id="c_text" name="text_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['text_color'] ?? '#0f172a'); ?>" maxlength="7">
+                                <div class="color-swatch-wrapper" title="Click to pick color">
+                                    <input type="color" id="c_text_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['text_color'] ?? '#0f172a'); ?>">
+                                </div>
+                                <input type="text" id="c_text" name="text_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['text_color'] ?? '#0f172a'); ?>" maxlength="7" spellcheck="false">
                             </div>
                         </div>
 
                         <!-- Muted Text -->
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label for="c_muted" style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                                <span>Muted Subtext</span>
-                                <span style="font-size:11px;color:var(--muted);">(Timestamps, Labels)</span>
-                            </label>
+                        <div class="color-setting-item">
+                            <div class="color-setting-header">
+                                <label for="c_muted" class="color-setting-title">Muted Subtext</label>
+                                <span class="color-setting-hint">Timestamps, Labels</span>
+                            </div>
                             <div class="color-input-pair">
-                                <input type="color" id="c_muted_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['muted_color'] ?? '#64748b'); ?>">
-                                <input type="text" id="c_muted" name="muted_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['muted_color'] ?? '#64748b'); ?>" maxlength="7">
+                                <div class="color-swatch-wrapper" title="Click to pick color">
+                                    <input type="color" id="c_muted_picker" class="color-picker-swatch" value="<?php echo htmlspecialchars($page_customization['muted_color'] ?? '#64748b'); ?>">
+                                </div>
+                                <input type="text" id="c_muted" name="muted_color" class="color-hex-text" value="<?php echo htmlspecialchars($page_customization['muted_color'] ?? '#64748b'); ?>" maxlength="7" spellcheck="false">
                             </div>
                         </div>
                     </div>
@@ -1596,7 +1759,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
             </div>
 
             <!-- Card 3: Layout & Structure -->
-            <div class="collapsible-card customizer-card">
+            <div class="collapsible-card customizer-card is-collapsed">
                 <div class="customizer-card-header" onclick="toggleSettingsSection(this)">
                     <div>
                         <h4 class="customizer-card-title">
@@ -1607,7 +1770,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                     <span class="customizer-collapse-icon collapse-icon">▼</span>
                 </div>
 
-                <div class="collapsible-content">
+                <div class="collapsible-content" style="display: none;">
                     <!-- Container Width / Style -->
                     <div class="form-group" style="margin-bottom:18px;">
                         <label style="font-size:13px;font-weight:700;margin-bottom:8px;display:block;color:var(--ink);">Page Container Style</label>
@@ -1705,7 +1868,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
             </div>
 
             <!-- Card 4: Component Visibility Toggles -->
-            <div class="collapsible-card customizer-card">
+            <div class="collapsible-card customizer-card is-collapsed">
                 <div class="customizer-card-header" onclick="toggleSettingsSection(this)">
                     <div>
                         <h4 class="customizer-card-title">
@@ -1716,7 +1879,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                     <span class="customizer-collapse-icon collapse-icon">▼</span>
                 </div>
 
-                <div class="collapsible-content">
+                <div class="collapsible-content" style="display: none;">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                         <label class="custom-toggle-card">
                             <input type="checkbox" name="show_banner" value="1" <?php echo !empty($page_customization['show_banner']) ? 'checked' : ''; ?> onchange="syncCustomizerPreview()">
@@ -1767,7 +1930,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
             </div>
 
             <!-- Card 5: Custom CSS Code (Optional) -->
-            <div class="collapsible-card customizer-card">
+            <div class="collapsible-card customizer-card is-collapsed">
                 <div class="customizer-card-header" onclick="toggleSettingsSection(this)">
                     <div>
                         <h4 class="customizer-card-title">
@@ -1781,7 +1944,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                     </div>
                 </div>
 
-                <div class="collapsible-content">
+                <div class="collapsible-content" style="display: none;">
                     <textarea name="custom_css" rows="4" placeholder="/* e.g. .rt-submit-btn { font-size: 16px; } */" style="width:100%;font-family:monospace;font-size:12.5px;padding:12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);line-height:1.5;resize:vertical;"><?php echo htmlspecialchars($page_customization['custom_css'] ?? ''); ?></textarea>
                 </div>
             </div>
@@ -2404,11 +2567,13 @@ function toggleSettingsSection(header) {
     const icon = header.querySelector('.collapse-icon');
     if (!content) return;
     
-    const isClosed = (content.style.display === 'none');
+    const isClosed = card.classList.contains('is-collapsed') || content.style.display === 'none' || window.getComputedStyle(content).display === 'none';
     if (isClosed) {
+        card.classList.remove('is-collapsed');
         content.style.display = 'block';
         if (icon) icon.style.transform = 'rotate(0deg)';
     } else {
+        card.classList.add('is-collapsed');
         content.style.display = 'none';
         if (icon) icon.style.transform = 'rotate(-90deg)';
     }

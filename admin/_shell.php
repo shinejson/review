@@ -246,18 +246,18 @@ $activeNav = $activeNav ?? 'dashboard';
       <?php if ($is_tenant && !empty($tenant_all_branches)): ?>
       <!-- Active Branch Switcher -->
       <div class="admin-branch-switcher-wrap" style="position:relative;">
-        <button type="button" class="admin-branch-btn" onclick="toggleBranchDropdown(this)" aria-expanded="false" style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:9px;background:var(--card-surface, #ffffff);border:1px solid var(--line, #e2e8f0);color:var(--ink, #0f172a);font-size:12.5px;font-weight:700;cursor:pointer;transition:all 0.15s;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+        <button type="button" class="admin-branch-btn" onclick="toggleBranchDropdown(this)" aria-expanded="false" style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:9px;background:var(--card);border:1px solid var(--line);color:var(--ink);font-size:12.5px;font-weight:700;cursor:pointer;transition:all 0.15s;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
           <span style="width:20px;height:20px;border-radius:5px;background:rgba(194,245,66,0.22);color:#15803d;display:flex;align-items:center;justify-content:center;font-size:11px;">🏢</span>
           <span style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo htmlspecialchars($active_company_row['company_name'] ?? 'Primary'); ?>">
             <?php echo htmlspecialchars($active_company_row['company_name'] ?? 'Primary'); ?>
           </span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--muted, #64748b);"><polyline points="6 9 12 15 18 9"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--muted);"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         
-        <div class="admin-branch-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;width:280px;background:var(--card-surface, #ffffff);border:1px solid var(--line, #e2e8f0);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.15);z-index:1000;overflow:hidden;">
-          <div style="padding:10px 14px;border-bottom:1px solid var(--line, #e2e8f0);background:var(--subtle, #f8fafc);display:flex;align-items:center;justify-content:space-between;">
-            <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted, #64748b);">Workspace Branches</span>
-            <span style="font-size:11px;font-weight:800;background:rgba(194,245,66,0.25);color:var(--ink, #0f172a);padding:1px 7px;border-radius:99px;"><?php echo count($tenant_all_branches); ?></span>
+        <div class="admin-branch-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;width:280px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.15);z-index:1000;overflow:hidden;">
+          <div style="padding:10px 14px;border-bottom:1px solid var(--line);background:var(--bg);display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">Workspace Branches</span>
+            <span style="font-size:11px;font-weight:800;background:rgba(194,245,66,0.25);color:var(--ink);padding:1px 7px;border-radius:99px;"><?php echo count($tenant_all_branches); ?></span>
           </div>
           <div style="max-height:260px;overflow-y:auto;padding:4px 0;">
             <?php foreach ($tenant_all_branches as $b): 
@@ -265,12 +265,12 @@ $activeNav = $activeNav ?? 'dashboard';
             ?>
             <a href="?switch_company=<?php echo (int)$b['id']; ?>" style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;text-decoration:none;transition:background 0.15s;background:<?php echo $is_active_b ? 'rgba(194,245,66,0.14)' : 'transparent'; ?>;">
               <div style="display:flex;align-items:center;gap:10px;overflow:hidden;">
-                <span style="width:26px;height:26px;border-radius:6px;background:<?php echo $is_active_b ? 'var(--lime, #c2f542)' : 'var(--line, #e2e8f0)'; ?>;color:var(--ink, #0f172a);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;">
+                <span style="width:26px;height:26px;border-radius:6px;background:<?php echo $is_active_b ? 'var(--lime)' : 'var(--line)'; ?>;color:var(--ink);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;">
                   <?php echo htmlspecialchars(strtoupper(mb_substr($b['company_name'], 0, 1))); ?>
                 </span>
                 <div style="overflow:hidden;">
-                  <div style="font-size:12.5px;font-weight:700;color:var(--ink, #0f172a);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($b['company_name']); ?></div>
-                  <div style="font-size:11px;color:var(--muted, #64748b);">#<?php echo (int)$b['id']; ?> &middot; <?php echo htmlspecialchars($b['category_name'] ?? 'Branch'); ?></div>
+                  <div style="font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($b['company_name']); ?></div>
+                  <div style="font-size:11px;color:var(--muted);">#<?php echo (int)$b['id']; ?> &middot; <?php echo htmlspecialchars($b['category_name'] ?? 'Branch'); ?></div>
                 </div>
               </div>
               <?php if ($is_active_b): ?>
@@ -279,8 +279,8 @@ $activeNav = $activeNav ?? 'dashboard';
             </a>
             <?php endforeach; ?>
           </div>
-          <div style="padding:9px 14px;border-top:1px solid var(--line, #e2e8f0);background:var(--subtle, #f8fafc);display:flex;align-items:center;justify-content:space-between;">
-            <a href="company.php" style="font-size:11.5px;font-weight:700;color:var(--ink, #0f172a);text-decoration:none;">Manage Branches</a>
+          <div style="padding:9px 14px;border-top:1px solid var(--line);background:var(--bg);display:flex;align-items:center;justify-content:space-between;">
+            <a href="company.php" style="font-size:11.5px;font-weight:700;color:var(--ink);text-decoration:none;">Manage Branches</a>
             <a href="company.php?new=1" style="font-size:11.5px;font-weight:800;color:#15803d;text-decoration:none;display:inline-flex;align-items:center;gap:3px;">+ Add New</a>
           </div>
         </div>
