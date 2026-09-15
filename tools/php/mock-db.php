@@ -386,11 +386,29 @@ class MockMysqli
         $out = [];
         foreach (array_map('trim', explode(',', isset($cols[1]) ? $cols[1] : '*')) as $col) {
             $col = trim($col, '` ');
+            // "i.*" / "sp.*" — a wildcard on a joined table
+            if (preg_match('/^[a-z]+\s*\.\s*\*$/i', $col)) {
+                return $row;
+            }
             if ($col === '*') {
                 return $row;
             }
+            if (strpos($col, '(') !== false) {
+                continue;                       // aggregates are handled earlier
+            }
+            $alias = null;
+            if (preg_match('/^(.+?)\s+AS\s+([a-z_][a-z0-9_]*)$/i', $col, $m)) {
+                $col = trim($m[1]);
+                $alias = $m[2];
+            }
+            if (strpos($col, '.') !== false) {
+                $col = trim(substr($col, strrpos($col, '.') + 1), '` ');
+            }
+            $key = $alias !== null ? $alias : $col;
             if (array_key_exists($col, $row)) {
-                $out[$col] = $row[$col];
+                $out[$key] = $row[$col];
+            } elseif ($alias !== null && array_key_exists($alias, $row)) {
+                $out[$alias] = $row[$alias];
             }
         }
         return $out;
@@ -400,6 +418,330 @@ class MockMysqli
     {
         $ts = strtotime($dateStr);
         return $ts ? date('Y-m', $ts) : '';
+    }
+
+    /* ------------------------------------------------------------
+       Billing fixtures
+       ------------------------------------------------------------ */
+
+    /** Fixture rows for one of the billing tables. */
+    private function payRows($tbl)
+    {
+        return (isset($this->data[$tbl]) && is_array($this->data[$tbl])) ? $this->data[$tbl] : [];
+    }
+
+    /** Attach the tenant / invoice / plan columns the billing screens project. */
+    private function payDecorate($tbl, $rows)
+    {
+        $D = $this->data;
+        $tenants = [];
+        foreach ($this->tenants() as $t) {
+            $tenants[(int) $t['id']] = $t;
+        }
+        $invoices = [];
+        foreach ($D['payment_invoices'] as $inv) {
+            $invoices[(int) $inv['id']] = $inv;
+        }
+        $plans = [];
+        foreach ($D['subscription_plans'] as $p) {
+            $plans[(int) $p['id']] = $p['plan_name'];
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            if (isset($row['tenant_id']) && isset($tenants[(int) $row['tenant_id']])) {
+                $t = $tenants[(int) $row['tenant_id']];
+                $row['company_name'] = $t['company_name'];
+                $row['tenant_email'] = $t['email'];
+                $row['tenant_phone'] = isset($t['phone']) ? $t['phone'] : '';
+                $row['email'] = $t['email'];
+            }
+            if (!empty($row['invoice_id']) && isset($invoices[(int) $row['invoice_id']])) {
+                $inv = $invoices[(int) $row['invoice_id']];
+                $row['invoice_number'] = $inv['invoice_number'];
+                $row['invoice_months'] = $inv['months'];
+                $row['invoice_status'] = $inv['status'];
+                if (empty($row['plan_id'])) {
+                    $row['plan_id'] = $inv['plan_id'];
+                }
+                if (empty($row['subject'])) {
+                    $row['subject'] = $inv['subject'];
+                }
+                if (empty($row['months'])) {
+                    $row['months'] = $inv['months'];
+                }
+            }
+            if (!array_key_exists('invoice_number', $row)) {
+                $row['invoice_number'] = null;      // LEFT JOIN with nothing attached
+            }
+            if ($tbl === 'payment_invoices') {
+                /* "(SELECT COUNT(*) … ) AS pending_payments" — the approval badge */
+                $row['pending_payments'] = 0;
+                foreach ($D['subscription_payments'] as $pay) {
+                    if ((int) $pay['invoice_id'] === (int) $row['id'] && $pay['status'] === 'pending') {
+                        $row['pending_payments']++;
+                    }
+                }
+            }
+            if (!array_key_exists('plan_name', $row)) {
+                $row['plan_name'] = (!empty($row['plan_id']) && isset($plans[(int) $row['plan_id']]))
+                    ? $plans[(int) $row['plan_id']] : null;
+            }
+            $out[] = $row;
+        }
+        return $out;
+    }
+
+    /** Read a billing column for a predicate, honouring the table alias. */
+    private function payColValue($row, $prefix, $col)
+    {
+        if ($prefix === 'i') {
+            if ($col === 'status' && array_key_exists('invoice_status', $row)) {
+                return $row['invoice_status'];
+            }
+            if ($col === 'id' && array_key_exists('invoice_id', $row)) {
+                return $row['invoice_id'];
+            }
+            if ($col === 'months' && array_key_exists('invoice_months', $row)) {
+                return $row['invoice_months'];
+            }
+        }
+        if ($prefix === 't' && $col === 'id' && array_key_exists('tenant_id', $row)) {
+            return $row['tenant_id'];
+        }
+        return array_key_exists($col, $row) ? $row[$col] : null;
+    }
+
+    /** Apply the WHERE clauses the billing screens build. */
+    private function payWhere($tbl, $rows, $s, $o)
+    {
+        $preds = [];
+
+        if (preg_match_all("/\b(?:(t|i|sp|r|p)\.)?([a-z_]+)\s*=\s*'([^']*)'/i", $o, $mm, PREG_SET_ORDER)) {
+            foreach ($mm as $m) { $preds[] = [$m[1], $m[2], '=', $m[3]]; }
+        }
+        if (preg_match_all("/\b(?:(t|i|sp|r|p)\.)?([a-z_]+)\s*(?:<>|!=)\s*'([^']*)'/i", $o, $mm, PREG_SET_ORDER)) {
+            foreach ($mm as $m) { $preds[] = [$m[1], $m[2], '!=', $m[3]]; }
+        }
+        if (preg_match_all('/\b(?:(t|i|sp|r|p)\.)?([a-z_]+)\s*=\s*(\d+)(?![\w.])/i', $o, $mm, PREG_SET_ORDER)) {
+            foreach ($mm as $m) { $preds[] = [$m[1], $m[2], '=', $m[3]]; }
+        }
+        /* IN lists are read from the raw SQL: their brackets sit inside a
+           pair the subquery stripper blanks out. */
+        if (preg_match_all('/\b(?:(t|i|sp|r|p)\.)?([a-z_]+)\s+IN\s*\(([^)]*)\)/i', $s, $mm, PREG_SET_ORDER)) {
+            foreach ($mm as $m) {
+                $vals = [];
+                foreach (explode(',', $m[3]) as $v) {
+                    $v = trim($v);
+                    $vals[] = is_numeric($v) ? $v : trim($v, "' ");
+                }
+                $preds[] = [$m[1], $m[2], 'IN', $vals];
+            }
+        }
+        if (preg_match_all("/\b(?:(t|i|sp|r|p)\.)?([a-z_]+)\s+LIKE\s*'([^']*)'/i", $o, $mm, PREG_SET_ORDER)) {
+            foreach ($mm as $m) { $preds[] = [$m[1], $m[2], 'LIKE', trim($m[3], '%')]; }
+        }
+        if (preg_match_all('/\b(?:(t|i|sp|r|p)\.)?([a-z_]+)\s+IS\s+NOT\s+NULL/i', $o, $mm, PREG_SET_ORDER)) {
+            foreach ($mm as $m) { $preds[] = [$m[1], $m[2], 'NOTNULL', null]; }
+        }
+        if (preg_match_all('/\b(?:(t|i|sp|r|p)\.)?([a-z_]+)\s+IS\s+NULL/i', $o, $mm, PREG_SET_ORDER)) {
+            foreach ($mm as $m) { $preds[] = [$m[1], $m[2], 'ISNULL', null]; }
+        }
+        /* Date windows live inside DATE_SUB(...)/CURDATE() calls, which the
+           subquery stripper blanks out, so they are read from the raw SQL. */
+        if ($this->has($s, 'due_date < CURDATE()')) {
+            $preds[] = [null, 'due_date', 'PAST', null];
+        }
+
+        $from = null;
+        $to = null;
+        if (preg_match('/created_at >= DATE_SUB\(CURDATE\(\), INTERVAL (\d+) DAY\)/', $s, $m)) {
+            $from = strtotime('-' . (int) $m[1] . ' day');
+        }
+        if (preg_match('/created_at < DATE_SUB\(CURDATE\(\), INTERVAL (\d+) DAY\)/', $s, $m)) {
+            $to = strtotime('-' . (int) $m[1] . ' day');
+        }
+        if (preg_match("/created_at >= '(\d{4}-\d{2}-\d{2})[^']*'/", $s, $m)) {
+            $from = strtotime($m[1]);
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            $ok = true;
+            foreach ($preds as $p) {
+                $val = $this->payColValue($row, $p[0], $p[1]);
+                switch ($p[2]) {
+                    case '=':
+                        $ok = is_numeric($p[3]) ? ((float) $val === (float) $p[3]) : ((string) $val === (string) $p[3]);
+                        break;
+                    case '!=':
+                        $ok = (string) $val !== (string) $p[3];
+                        break;
+                    case 'IN':
+                        $ok = false;
+                        foreach ($p[3] as $want) {
+                            if ((string) $val === (string) $want) { $ok = true; break; }
+                        }
+                        break;
+                    case 'LIKE':
+                        $needle = function_exists('mb_strtolower') ? mb_strtolower($p[3]) : strtolower($p[3]);
+                        $ok = $needle === '' || strpos(strtolower((string) $val), $needle) !== false;
+                        break;
+                    case 'NOTNULL':
+                        $ok = $val !== null && $val !== '';
+                        break;
+                    case 'ISNULL':
+                        $ok = $val === null || $val === '';
+                        break;
+                    case 'PAST':
+                        $ok = !empty($val) && strtotime((string) $val) < strtotime('today');
+                        break;
+                }
+                if (!$ok) {
+                    break;
+                }
+            }
+            if ($ok && ($from !== null || $to !== null)) {
+                $ts = strtotime((string) $this->payColValue($row, null, 'created_at'));
+                if ($from !== null && $ts < $from) { $ok = false; }
+                if ($to !== null && $ts >= $to) { $ok = false; }
+            }
+            if ($ok) {
+                $out[] = $row;
+            }
+        }
+        return $out;
+    }
+
+    /** Monthly buckets: SUM(amount|total) plus COUNT(*). */
+    private function payByMonth($tbl, $rows)
+    {
+        $col = $tbl === 'payment_invoices' ? 'total' : 'amount';
+        $agg = [];
+        foreach ($rows as $r) {
+            $ym = $this->monthKey($r['created_at']);
+            if (!isset($agg[$ym])) {
+                $agg[$ym] = ['ym' => $ym, 'total' => 0, 'c' => 0];
+            }
+            $agg[$ym]['total'] += (float) (isset($r[$col]) ? $r[$col] : 0);
+            $agg[$ym]['c']++;
+        }
+        $out = [];
+        foreach ($agg as $ym => $a) {
+            $out[] = [
+                'ym' => $ym,
+                'total' => $a['total'],
+                'SUM(' . $col . ')' => $a['total'],
+                'c' => $a['c'],
+                'cnt' => $a['c'],
+                'COUNT(*)' => $a['c'],
+            ];
+        }
+        return $out;
+    }
+
+    /** Grouped totals (gateway breakdown, payment methods). */
+    private function payByGroup($rows, $col, $withSource = false)
+    {
+        $agg = [];
+        foreach ($rows as $r) {
+            $value = isset($r[$col]) && $r[$col] !== null && $r[$col] !== '' ? (string) $r[$col] : 'offline';
+            $key = $withSource ? $value . '|' . (isset($r['source']) ? $r['source'] : '') : $value;
+            if (!isset($agg[$key])) {
+                $agg[$key] = [$col => $value, 'payments' => 0, 'total' => 0];
+                if ($withSource) {
+                    $agg[$key]['source'] = isset($r['source']) ? $r['source'] : '';
+                }
+            }
+            $agg[$key]['payments']++;
+            $agg[$key]['total'] += (float) (isset($r['amount']) ? $r['amount'] : 0);
+        }
+        usort($agg, function ($a, $b) {
+            return $b['total'] <=> $a['total'];
+        });
+        return array_values($agg);
+    }
+
+    /** Revenue per plan. */
+    private function payByPlan($rows)
+    {
+        $agg = [];
+        foreach ($rows as $r) {
+            $plan = (!empty($r['plan_name'])) ? (string) $r['plan_name'] : 'No plan';
+            if (!isset($agg[$plan])) {
+                $agg[$plan] = ['plan_name' => $plan, 'payments' => 0, 'total' => 0];
+            }
+            $agg[$plan]['payments']++;
+            $agg[$plan]['total'] += (float) (isset($r['amount']) ? $r['amount'] : 0);
+        }
+        usort($agg, function ($a, $b) {
+            return $b['total'] <=> $a['total'];
+        });
+        return array_values($agg);
+    }
+
+    /** One entry point for every billing statement. */
+    private function payQuery($tbl, $s, $o)
+    {
+        $rows = $this->payWhere($tbl, $this->payDecorate($tbl, $this->payRows($tbl)), $s, $o);
+        $D = $this->data;
+
+        if (preg_match('/GROUP BY\s+ym/i', $o)) {
+            return $this->payByMonth($tbl, $rows);
+        }
+        if (preg_match('/GROUP BY\s+gateway_key/i', $o)) {
+            return $this->payByGroup($rows, 'gateway_key', $this->has($o, 'source'));
+        }
+        if (preg_match('/GROUP BY\s+payment_method/i', $o)) {
+            return $this->payByGroup($rows, 'payment_method');
+        }
+        if (preg_match('/GROUP BY\s+plan_name/i', $o)) {
+            foreach ($rows as $i => $r) {
+                if (empty($r['plan_name']) && !empty($r['plan_id'])) {
+                    foreach ($D['subscription_plans'] as $p) {
+                        if ((int) $p['id'] === (int) $r['plan_id']) {
+                            $rows[$i]['plan_name'] = $p['plan_name'];
+                        }
+                    }
+                }
+            }
+            return $this->payByPlan($rows);
+        }
+
+        if (preg_match('/^\s*SELECT\s+COUNT\s*\(/i', $s)) {
+            $n = count($rows);
+            return [['COUNT(*)' => $n, 'c' => $n, 'cnt' => $n, 'count' => $n]];
+        }
+        if (preg_match('/^\s*SELECT\s+COALESCE\s*\(\s*SUM\s*\(\s*(?:[a-z]+\.)?([a-z_]+)\s*\)/i', $s, $m)) {
+            $col = $m[1];
+            $sum = 0.0;
+            foreach ($rows as $r) {
+                $sum += (float) (isset($r[$col]) ? $r[$col] : 0);
+            }
+            return [['SUM(' . $col . ')' => $sum, 'total' => $sum, 'value' => $sum]];
+        }
+        if (preg_match('/^\s*SELECT\s+COALESCE\s*\(\s*MAX\s*\(\s*([a-z_]+)\s*\)/i', $s, $m)) {
+            $max = 0;
+            foreach ($rows as $r) {
+                $max = max($max, (int) (isset($r['id']) ? $r['id'] : 0));
+            }
+            return [['MAX(' . $m[1] . ')' => $max, 'max_id' => $max]];
+        }
+
+        if ($this->has($o, 'ORDER BY sp.created_at DESC') || $this->has($o, 'ORDER BY r.created_at DESC')) {
+            usort($rows, function ($a, $b) {
+                return strcmp((string) $b['created_at'], (string) $a['created_at']);
+            });
+        } elseif ($this->has($o, 'ORDER BY id DESC')) {
+            usort($rows, function ($a, $b) {
+                return (int) $b['id'] <=> (int) $a['id'];
+            });
+        }
+
+        if (preg_match('/LIMIT (\d+)(?:\s+OFFSET (\d+))?/i', $o, $m)) {
+            $rows = array_slice($rows, isset($m[2]) ? (int) $m[2] : 0, (int) $m[1]);
+        }
+        return array_map(function ($r) use ($s) { return $this->project($r, $s); }, $rows);
     }
 
     private function monthList($count)
@@ -507,9 +849,39 @@ class MockMysqli
         if ($this->has($s, 'information_schema.tables')) {
             preg_match("/table_name = '([a-z_]+)'/i", $s, $m);
             $known = ['super_admins', 'subscription_plans', 'tenants', 'admins', 'categories', 'customers', 'ratings', 'settings', 'quote_requests',
-                      'subscription_requests', 'social_accounts', 'social_posts', 'user_sessions'];
+                      'subscription_requests', 'social_accounts', 'social_posts', 'user_sessions',
+                      'payment_gateways', 'payment_invoices', 'subscription_payments', 'payment_refunds', 'payment_events'];
             $c = (isset($m[1]) && in_array($m[1], $known, true)) ? 1 : 0;
             return [['c' => $c]];
+        }
+
+        /* ---- billing schema probe (pay_add_columns on the ledger) ---- */
+        if (preg_match('/^SHOW COLUMNS FROM `?([a-z_]+)`?/i', $s, $sc)
+            && in_array($sc[1], ['payment_gateways', 'payment_invoices', 'subscription_payments', 'payment_refunds', 'payment_events'], true)) {
+            // The fixture database is already migrated, so no ALTER is issued.
+            $cols = ['id', 'tenant_id', 'invoice_id', 'receipt_number', 'amount', 'currency', 'fee',
+                     'payment_method', 'gateway_key', 'gateway_reference', 'transaction_ref', 'channel',
+                     'status', 'source', 'payer_name', 'payer_email', 'payer_phone', 'months_extended',
+                     'notes', 'reject_reason', 'recorded_by', 'verified_by', 'verified_at', 'paid_at', 'created_at'];
+            return array_map(function ($c) {
+                return ['Field' => $c, 'Type' => 'text', 'Null' => 'YES', 'Key' => '', 'Default' => null, 'Extra' => ''];
+            }, $cols);
+        }
+
+        /* ---- recurring revenue (financial centre MRR / ARPU) ---- */
+        if ($tbl === 'tenants' && $this->has($s, 'SUM(subscription_price)') && !$this->has($s, 'GROUP BY')) {
+            $rows = $this->tenants();
+            if (preg_match("/subscription_status = '([a-z]+)'/", $s, $m)) {
+                $status = $m[1];
+                $rows = array_values(array_filter($rows, function ($t) use ($status) {
+                    return $t['subscription_status'] === $status;
+                }));
+            }
+            $sum = 0.0;
+            foreach ($rows as $t) {
+                $sum += (float) $t['subscription_price'];
+            }
+            return [['SUM(subscription_price)' => $sum, 'mrr' => $sum, 'total' => $sum]];
         }
 
         /* ---- table row counts (settings health check) ---- */
@@ -662,6 +1034,12 @@ class MockMysqli
                     'trial_count' => $trials,
                     'mrr' => number_format($planMrr, 2, '.', ''),
                 ]);
+            }
+            if (preg_match('/WHERE (?:p\.)?id = (\d+)/', $o, $m)) {
+                $id = (int) $m[1];
+                $rows = array_values(array_filter($rows, function ($r) use ($id) {
+                    return (int) $r['id'] === $id;
+                }));
             }
             if ($this->has($s, "status = 'active'")) {
                 $rows = array_values(array_filter($rows, function ($r) {
@@ -958,6 +1336,35 @@ class MockMysqli
 
         /* ---- tenants ---- */
         if ($tbl === 'tenants') {
+            /* Renewal radar (superadmin/finance.php): the workspaces closest
+               to expiry plus how many invoices are still open on each. */
+            if ($this->has($s, 'AS open_invoices')) {
+                $open = [];
+                foreach ($D['payment_invoices'] as $inv) {
+                    if (in_array($inv['status'], ['open', 'overdue', 'processing'], true)) {
+                        $tid = (int) $inv['tenant_id'];
+                        $open[$tid] = (isset($open[$tid]) ? $open[$tid] : 0) + 1;
+                    }
+                }
+                $out = [];
+                foreach ($this->tenants() as $t) {
+                    if (!in_array($t['subscription_status'], ['active', 'trial'], true)) {
+                        continue;
+                    }
+                    if (empty($t['subscription_end_date'])) {
+                        continue;
+                    }
+                    $t['open_invoices'] = isset($open[(int) $t['id']]) ? $open[(int) $t['id']] : 0;
+                    $out[] = $t;
+                }
+                usort($out, function ($a, $b) {
+                    return strcmp((string) $a['subscription_end_date'], (string) $b['subscription_end_date']);
+                });
+                if (preg_match('/LIMIT (\d+)/i', $s, $m)) {
+                    $out = array_slice($out, 0, (int) $m[1]);
+                }
+                return $out;
+            }
             // full plan + tenant row (admin/subscription.php, admin/index.php)
             if ($this->has($s, 'p.plan_name') && preg_match('/t.id = (\d+)/', $s, $mf)) {
                 foreach ($this->tenants() as $t) {
@@ -1382,6 +1789,15 @@ class MockMysqli
                 $rows = array_slice($rows, 0, (int) $m[1]);
             }
             return $rows;
+        }
+
+        /* ============================================================
+           Payments & billing (includes/payments.php and the screens
+           that read it: superadmin/finance.php, payment_gateways.php,
+           admin/subscription.php, admin/payment_checkout.php)
+           ============================================================ */
+        if (in_array($tbl, ['payment_gateways', 'payment_invoices', 'subscription_payments', 'payment_refunds', 'payment_events'], true)) {
+            return $this->payQuery($tbl, $s, $o);
         }
 
         /* ---- writes ---- */
