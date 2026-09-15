@@ -345,6 +345,7 @@ if ($cat_res) {
             align-items: baseline;
             gap: 6px;
             margin: 18px 0 6px;
+            flex-wrap: wrap;
         }
         .card-price {
             font-size: 46px;
@@ -356,6 +357,30 @@ if ($cat_res) {
             font-size: 15px;
             color: var(--text-muted);
             font-weight: 500;
+        }
+        .annual-discount-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--accent-green-bg);
+            color: var(--accent-green-text);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            margin: 8px 0;
+            animation: pulse-green 2s infinite;
+        }
+        .annual-discount-badge i {
+            font-size: 11px;
+        }
+        @keyframes pulse-green {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(77, 124, 15, 0.3);
+            }
+            50% {
+                box-shadow: 0 0 0 8px rgba(77, 124, 15, 0);
+            }
         }
         .annual-subtext {
             font-size: 12.5px;
@@ -1112,8 +1137,11 @@ if ($cat_res) {
             <?php foreach ($plans as $p): 
                 $is_featured = (stripos($p['plan_name'], 'pro') !== false);
                 $monthly_price = (float)$p['price'];
-                $annual_price_per_month = round($monthly_price * 0.8, 2);
+                $discount_percent = (int)($p['annual_discount_percent'] ?? 0);
+                $annual_price_per_month = round($monthly_price * (1 - $discount_percent / 100), 2);
                 $annual_billed_total = round($annual_price_per_month * 12, 2);
+                $savings = round($monthly_price * 12 - $annual_billed_total, 2);
+                $discount_text = $discount_percent > 0 ? sprintf('%d%%', $discount_percent) : '20%';
             ?>
             <div class="pricing-card <?php echo $is_featured ? 'featured' : ''; ?>" data-plan-id="<?php echo (int)$p['id']; ?>">
                 <?php if ($is_featured): ?>
@@ -1143,9 +1171,16 @@ if ($cat_res) {
                         <div class="card-period">/month</div>
                     </div>
 
+                    <?php if ($discount_percent > 0): ?>
+                    <div class="annual-discount-badge">
+                        <i class="fa-solid fa-tag"></i>
+                        <span><?php echo $discount_text; ?> OFF annual</span>
+                    </div>
+                    <?php endif; ?>
+
                     <div class="annual-subtext"
-                         data-monthly=""
-                         data-annual="Billed annually at <?php echo fmt_price($annual_billed_total, $currency_symbol, $currency_position); ?>/yr">
+                         data-monthly="<?php echo fmt_price($monthly_price, $currency_symbol, $currency_position); ?>/mo"
+                         data-annual="Billed annually at <?php echo fmt_price($annual_billed_total, $currency_symbol, $currency_position); ?>/yr <?php echo $savings > 0 ? ' – Save ' . fmt_price($savings, $currency_symbol, $currency_position) . '/yr' : ''; ?>">
                     </div>
                 </div>
 

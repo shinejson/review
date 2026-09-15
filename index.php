@@ -76,7 +76,7 @@ if ($category_result) {
 }
 
 $modal_plans = [];
-$plan_result = $conn->query("SELECT id, plan_name, price FROM subscription_plans WHERE status = 'active' ORDER BY price ASC");
+$plan_result = $conn->query("SELECT id, plan_name, price, annual_discount_percent FROM subscription_plans WHERE status = 'active' ORDER BY price ASC");
 if ($plan_result) {
     while ($row = $plan_result->fetch_assoc()) {
         $modal_plans[] = $row;
@@ -959,6 +959,17 @@ if ($plan_result) {
             border-color: var(--primary-dark);
             outline: none;
         }
+        .form-group select option {
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .form-group select option small {
+            display: block;
+            color: #15803d;
+            font-weight: 600;
+            font-size: 11px;
+            margin-top: 2px;
+        }
         .form-alert {
             background: #fef2f2;
             color: #b91c1c;
@@ -1063,6 +1074,146 @@ if ($plan_result) {
             }
             .hero-title { font-size: 34px; }
             .form-row { grid-template-columns: 1fr; }
+        }
+
+        /* Trusted Companies Section */
+        .trusted-section {
+            padding: 80px 5%;
+            background: linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
+        }
+        .trusted-section .section-header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+        .trusted-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 30px;
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+        .trusted-logo {
+            background: white;
+            padding: 25px 20px;
+            border-radius: 12px;
+            text-align: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border-line);
+        }
+        .trusted-logo:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            border-color: var(--accent-lime);
+        }
+        .trusted-logo-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 12px;
+        }
+        .trusted-logo-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-main);
+            line-height: 1.3;
+        }
+
+        /* Our Team Section */
+        .team-section {
+            padding: 80px 5%;
+            background: var(--primary-dark);
+            color: white;
+        }
+        .team-section .section-header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+        .team-section .section-tag {
+            color: var(--accent-lime);
+        }
+        .team-section .section-title {
+            color: white;
+        }
+        .team-section .section-subtitle {
+            color: #94a3b8;
+        }
+        .team-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 30px;
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+        .team-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 30px 20px;
+            border-radius: 12px;
+            text-align: center;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .team-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-4px);
+            border-color: var(--accent-lime);
+        }
+        .team-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: var(--accent-lime);
+            color: var(--primary-dark);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 15px rgba(194, 245, 66, 0.3);
+        }
+        .team-name {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .team-role {
+            font-size: 13px;
+            color: var(--accent-lime);
+            margin-bottom: 12px;
+        }
+        .team-bio {
+            font-size: 13px;
+            color: #94a3b8;
+            line-height: 1.5;
+        }
+        .team-social {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .team-social a {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+        .team-social a:hover {
+            background: var(--accent-lime);
+            color: var(--primary-dark);
         }
     </style>
 </head>
@@ -1381,6 +1532,125 @@ if ($plan_result) {
         </div>
     </section>
 
+    <!-- Trusted Companies Section -->
+    <section class="trusted-section">
+        <div class="section-header">
+            <span class="section-tag">Trusted By Businesses</span>
+            <h2 class="section-title">Companies That Trust Optibiz</h2>
+            <p class="section-subtitle">Join hundreds of satisfied businesses using Optibiz to grow their online presence and customer trust.</p>
+        </div>
+
+        <div class="trusted-grid">
+            <div class="trusted-logo">
+                <div class="trusted-logo-icon" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                    <i class="fa-solid fa-store"></i>
+                </div>
+                <div class="trusted-logo-name">Volta Logistics</div>
+            </div>
+            <div class="trusted-logo">
+                <div class="trusted-logo-icon" style="background: linear-gradient(135deg, #f093fb, #f5576c);">
+                    <i class="fa-solid fa-apple-whole"></i>
+                </div>
+                <div class="trusted-logo-name">Harmattan Foods</div>
+            </div>
+            <div class="trusted-logo">
+                <div class="trusted-logo-icon" style="background: linear-gradient(135deg, #4facfe, #00f2fe);">
+                    <i class="fa-solid fa-plane"></i>
+                </div>
+                <div class="trusted-logo-name">Kotoka Ground Services</div>
+            </div>
+            <div class="trusted-logo">
+                <div class="trusted-logo-icon" style="background: linear-gradient(135deg, #43e97b, #38f9d7);">
+                    <i class="fa-solid fa-leaf"></i>
+                </div>
+                <div class="trusted-logo-name">GreenEarth Africa</div>
+            </div>
+            <div class="trusted-logo">
+                <div class="trusted-logo-icon" style="background: linear-gradient(135deg, #fa709a, #fee140);">
+                    <i class="fa-solid fa-hotel"></i>
+                </div>
+                <div class="trusted-logo-name">Osu Hotels Ltd</div>
+            </div>
+            <div class="trusted-logo">
+                <div class="trusted-logo-icon" style="background: linear-gradient(135deg, #a18cd1, #fbc2eb);">
+                    <i class="fa-solid fa-car"></i>
+                </div>
+                <div class="trusted-logo-name">Accra Auto Mart</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Our Team Section -->
+    <section class="team-section" id="team">
+        <div class="section-header">
+            <span class="section-tag">Behind The Platform</span>
+            <h2 class="section-title">Meet Our Team</h2>
+            <p class="section-subtitle">The passionate people building Ghana's leading review and reputation platform.</p>
+        </div>
+
+        <div class="team-grid">
+            <div class="team-card">
+                <div class="team-avatar">
+                    <span>SA</span>
+                </div>
+                <div class="team-name">Samuel Asante</div>
+                <div class="team-role">Founder &amp; CEO</div>
+                <div class="team-bio">
+                    Founder of Optibiz with 10+ years experience in digital marketing and customer engagement across West Africa.
+                </div>
+                <div class="team-social">
+                    <a href="#"><i class="fa-brands fa-linkedin"></i></a>
+                    <a href="#"><i class="fa-brands fa-x-twitter"></i></a>
+                </div>
+            </div>
+
+            <div class="team-card">
+                <div class="team-avatar">
+                    <span>EK</span>
+                </div>
+                <div class="team-name">Elsie Kumah</div>
+                <div class="team-role">Head of Product</div>
+                <div class="team-bio">
+                    Leads product development and UX design, ensuring Optibiz delivers the best experience for businesses and customers.
+                </div>
+                <div class="team-social">
+                    <a href="#"><i class="fa-brands fa-linkedin"></i></a>
+                    <a href="#"><i class="fa-brands fa-github"></i></a>
+                </div>
+            </div>
+
+            <div class="team-card">
+                <div class="team-avatar">
+                    <span>MO</span>
+                </div>
+                <div class="team-name">Michael Osei</div>
+                <div class="team-role">Senior Developer</div>
+                <div class="team-bio">
+                    Full-stack developer building scalable features and integrations that power Optibiz's review and reputation tools.
+                </div>
+                <div class="team-social">
+                    <a href="#"><i class="fa-brands fa-linkedin"></i></a>
+                    <a href="#"><i class="fa-brands fa-github"></i></a>
+                </div>
+            </div>
+
+            <div class="team-card">
+                <div class="team-avatar">
+                    <span>AN</span>
+                </div>
+                <div class="team-name">Ama Nkrumah</div>
+                <div class="team-role">Customer Success</div>
+                <div class="team-bio">
+                    Helps businesses maximize their use of Optibiz, providing onboarding support and ongoing success coaching.
+                </div>
+                <div class="team-social">
+                    <a href="#"><i class="fa-brands fa-linkedin"></i></a>
+                    <a href="#"><i class="fa-solid fa-envelope"></i></a>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Footer -->
     <footer class="site-footer" id="contact">
         <div class="footer-grid-container">
@@ -1537,9 +1807,17 @@ if ($plan_result) {
                             <label for="q_plan">Subscription Plan *</label>
                             <select id="q_plan" name="plan_id" required>
                                 <option value="" disabled selected>Select a plan</option>
-                                <?php foreach ($modal_plans as $plan): ?>
+                                <?php foreach ($modal_plans as $plan): 
+                                    $discount = (int)($plan['annual_discount_percent'] ?? 0);
+                                    $annual_price = $discount > 0 ? round((float)$plan['price'] * (1 - $discount / 100), 2) : round((float)$plan['price'] * 0.8, 2);
+                                    $annual_total = round($annual_price * 12, 2);
+                                    $savings = round((float)$plan['price'] * 12 - $annual_total, 2);
+                                ?>
                                 <option value="<?php echo (int)$plan['id']; ?>">
                                     <?php echo htmlspecialchars($plan['plan_name']); ?> — $<?php echo number_format((float)$plan['price'], 2); ?>/month
+                                    <?php if ($discount > 0): ?>
+                                    <small>($<?php echo number_format($annual_total, 2); ?>/yr – Save $<?php echo number_format($savings, 2); ?>)</small>
+                                    <?php endif; ?>
                                 </option>
                                 <?php endforeach; ?>
                             </select>

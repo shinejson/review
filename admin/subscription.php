@@ -349,6 +349,40 @@ include __DIR__ . '/_shell.php';
             }
             <?php endif; ?>
         </style>
+        <style>
+            .price-monthly {
+                font-size: 28px;
+                font-weight: 800;
+                color: var(--primary-dark);
+            }
+            .price-monthly span {
+                font-size: 14px;
+                font-weight: 500;
+                color: var(--text-muted);
+            }
+            .price-annual {
+                display: block;
+                margin-top: 8px;
+                padding: 8px 12px;
+                background: var(--accent-green-bg);
+                border-radius: 8px;
+                font-size: 13px;
+                color: var(--accent-green-text);
+                font-weight: 600;
+            }
+            .annual-label {
+                font-weight: 700;
+                margin-right: 4px;
+            }
+            .annual-price {
+                font-weight: 800;
+                margin: 0 4px;
+            }
+            .annual-savings {
+                color: #15803d;
+                font-weight: 700;
+            }
+        </style>
         <?php endif; ?>
 
         <?php if ($flash): ?>
@@ -386,7 +420,20 @@ include __DIR__ . '/_shell.php';
                         <span class="plan-status"><?php echo sa_e($tenant['subscription_status'] ?? 'unknown'); ?></span>
                     </div>
                     <div class="plan-price">
-                        <?php echo sa_e(sa_money($current_price)); ?><span>/ month</span>
+                        <?php 
+                            $plan_discount = (int)($tenant['annual_discount_percent'] ?? 0);
+                            $annual_price = $plan_discount > 0 ? round($current_price * (1 - $plan_discount / 100), 2) : round($current_price * 0.8, 2);
+                            $annual_total = round($annual_price * 12, 2);
+                            $savings = round($current_price * 12 - $annual_total, 2);
+                        ?>
+                        <span class="price-monthly"><?php echo sa_e(sa_money($current_price)); ?><span>/ month</span></span>
+                        <?php if ($plan_discount > 0): ?>
+                        <span class="price-annual">
+                            <span class="annual-label">Annual:</span>
+                            <span class="annual-price"><?php echo sa_e(sa_money($annual_total)); ?>/yr</span>
+                            <span class="annual-savings">Save <?php echo sa_e(sa_money($savings)); ?></span>
+                        </span>
+                        <?php endif; ?>
                     </div>
                     <p class="plan-description">
                         <?php echo sa_e($tenant['features'] ?? 'Contact us to have a plan assigned to this workspace.'); ?>
@@ -510,7 +557,20 @@ include __DIR__ . '/_shell.php';
                                 <?php endif; ?>
                             </div>
                             <div class="admin-plan-price">
-                                <?php echo sa_e(sa_money((float) $plan['price'])); ?><span>/ month</span>
+                                <?php 
+                                    $plan_discount = (int)($plan['annual_discount_percent'] ?? 0);
+                                    $annual_price = $plan_discount > 0 ? round((float)$plan['price'] * (1 - $plan_discount / 100), 2) : round((float)$plan['price'] * 0.8, 2);
+                                    $annual_total = round($annual_price * 12, 2);
+                                    $savings = round((float)$plan['price'] * 12 - $annual_total, 2);
+                                ?>
+                                <span class="price-monthly"><?php echo sa_e(sa_money((float) $plan['price'])); ?><span>/ month</span></span>
+                                <?php if ($plan_discount > 0): ?>
+                                <span class="price-annual">
+                                    <span class="annual-label">Annual:</span>
+                                    <span class="annual-price"><?php echo sa_e(sa_money($annual_total)); ?>/yr</span>
+                                    <span class="annual-savings">Save <?php echo sa_e(sa_money($savings)); ?></span>
+                                </span>
+                                <?php endif; ?>
                             </div>
                             <ul class="admin-plan-features">
                                 <li><b><?php echo sa_e(sa_num((int) $plan['max_customers'])); ?></b> companies</li>

@@ -30,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $max_ratings = max(0, (int) ($_POST['max_ratings'] ?? 0));
         $max_customers = max(0, (int) ($_POST['max_customers'] ?? 0));
         $status = ($_POST['status'] ?? 'active') === 'inactive' ? 'inactive' : 'active';
+        $annual_discount_percent = max(0, min(100, (int) ($_POST['annual_discount_percent'] ?? 0)));
 
         // Features arrive as one-per-line or comma separated; normalise to lines
         $raw_features = (string) ($_POST['features'] ?? '');
@@ -42,20 +43,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             sa_flash('error', 'The price cannot be negative.');
         } elseif ($action === 'create') {
             $stmt = $conn->prepare(
-                "INSERT INTO subscription_plans (plan_name, price, max_ratings, max_customers, features, status)
-                 VALUES (?, ?, ?, ?, ?, ?)"
+                "INSERT INTO subscription_plans (plan_name, price, max_ratings, max_customers, features, status, annual_discount_percent)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)"
             );
-            $stmt->bind_param("sdiiss", $name, $price, $max_ratings, $max_customers, $features_text, $status);
+            $stmt->bind_param("sdiissii", $name, $price, $max_ratings, $max_customers, $features_text, $status, $annual_discount_percent);
             $stmt->execute();
             sa_flash($stmt->error ? 'error' : 'success', $stmt->error ? 'Could not create the plan: ' . $stmt->error : $name . ' was added to the catalogue.');
             $stmt->close();
         } else {
             $stmt = $conn->prepare(
                 "UPDATE subscription_plans
-                    SET plan_name = ?, price = ?, max_ratings = ?, max_customers = ?, features = ?, status = ?
+                    SET plan_name = ?, price = ?, max_ratings = ?, max_customers = ?, features = ?, status = ?, annual_discount_percent = ?
                   WHERE id = ?"
             );
-            $stmt->bind_param("sdiissi", $name, $price, $max_ratings, $max_customers, $features_text, $status, $id);
+            $stmt->bind_param("sdiissiii", $name, $price, $max_ratings, $max_customers, $features_text, $status, $annual_discount_percent, $id);
             $stmt->execute();
             sa_flash($stmt->error ? 'error' : 'success', $stmt->error ? 'Could not save the plan: ' . $stmt->error : $name . ' was updated.');
             $stmt->close();
@@ -229,7 +230,8 @@ include __DIR__ . '/_shell.php';
                     data-ratings="<?php echo (int) $p['max_ratings']; ?>"
                     data-customers="<?php echo (int) $p['max_customers']; ?>"
                     data-status="<?php echo sa_e($p['status']); ?>"
-                    data-features="<?php echo sa_e(implode("\n", $features)); ?>">
+                    data-features="<?php echo sa_e(implode("\n", $features)); ?>"
+                    data-discount="<?php echo (int) ($p['annual_discount_percent'] ?? 0); ?>">
                 <?php echo sa_icon('edit'); ?> Edit
             </button>
             <form method="POST" action="plans.php" style="display:inline">
@@ -297,6 +299,11 @@ include __DIR__ . '/_shell.php';
                         <option value="inactive">Hidden from new tenants</option>
                     </select>
                 </div>
+                <div class="sa-field">
+                    <label for="pf_discount">Annual Discount (%)</label>
+                    <input id="pf_discount" type="number" min="0" max="100" name="annual_discount_percent" value="0" placeholder="0">
+                    <span class="sa-hint">Discount for annual billing (e.g. 15 = 15% off when paying yearly)</span>
+                </div>
                 <div class="sa-field" style="grid-column:1/-1">
                     <label for="pf_features">Features</label>
                     <textarea id="pf_features" name="features" placeholder="One feature per line, e.g.&#10;Advanced analytics&#10;Priority support&#10;Custom branding"></textarea>
@@ -332,6 +339,7 @@ include __DIR__ . '/_shell.php';
             document.getElementById('pf_ratings').value = d.ratings;
             document.getElementById('pf_customers').value = d.customers;
             document.getElementById('pf_status').value = d.status;
+            document.getElementById('pf_discount').value = d.discount || 0;
             document.getElementById('pf_features').value = d.features;
             document.getElementById('pf_title').textContent = 'Edit plan';
             document.getElementById('pf_subtitle').textContent = 'Changes apply to every tenant on this plan.';
@@ -349,9 +357,10 @@ include __DIR__ . '/_shell.php';
             document.getElementById('pf_ratings').value = '100';
             document.getElementById('pf_customers').value = '10';
             document.getElementById('pf_status').value = 'active';
+            document.getElementById('pf_discount').value = '10';
             document.getElementById('pf_features').value = '';
             document.getElementById('pf_title').textContent = 'Create a plan';
-            document.getElementById('pf_subtitle').textContent = 'Prices are monthly. Limits are enforced per tenant.';
+            document.getElementById('pf_subtitle').textContent = 'Prices are monthly. Annual billing gets discounts. Limits are enforced per tenant.';
             document.getElementById('pf_submit').textContent = 'Create plan';
         });
     });
