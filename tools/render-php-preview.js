@@ -66,6 +66,8 @@ const PAGES = [
     ['superadmin/categories.php', 'categories.html', ''],
     ['superadmin/settings.php', 'settings.html', ''],
     ['superadmin/users.php', 'users.html', ''],
+    ['superadmin/finance.php', 'finance.html', ''],
+    ['superadmin/payment_gateways.php', 'payment_gateways.html', ''],
     ['superadmin/login.php', 'login.html', '', { anonymous: true }],
 
     /* Edge cases — checked but not written into the preview */
@@ -77,6 +79,21 @@ const PAGES = [
     ['superadmin/tenants.php', null, '?status=cancelled', { probe: 'tenants filtered to cancelled' }],
     ['superadmin/customers.php', null, '?category=4', { probe: 'customers filtered to a category' }],
     ['superadmin/customers.php', null, '?q=volta', { probe: 'customer search by name' }],
+
+    /* Billing — the financial centre, the printable invoices and the
+       tenant-facing checkout. The documents are standalone pages, so
+       they are checked as probes rather than published into .preview/. */
+    ['superadmin/finance.php', null, '?range=0', { probe: 'financial centre over all time' }],
+    ['superadmin/finance.php', null, '?range=365&status=failed', { probe: 'ledger filtered to failed payments' }],
+    ['superadmin/finance.php', null, '?q=volta&page=2', { probe: 'ledger search on a later page' }],
+    ['superadmin/finance.php', null, '?invoice=8&invoice_status=processing', { probe: 'invoices filtered by state' }],
+    ['superadmin/finance.php', null, '?export=summary', { probe: 'CSV export of the headline figures', csv: true, minBytes: 120 }],
+    ['superadmin/finance.php', null, '?export=invoices', { probe: 'CSV export of the invoice book', csv: true, minBytes: 120 }],
+    ['superadmin/finance.php', null, '?export=ledger', { probe: 'CSV export of the payment ledger', csv: true, minBytes: 120 }],
+    ['superadmin/invoice_view.php', null, '?id=9', { probe: 'invoice awaiting confirmation' }],
+    ['superadmin/invoice_view.php', null, '?id=8', { probe: 'open invoice with the online checkout' }],
+    ['superadmin/invoice_view.php', null, '?id=6', { probe: 'paid invoice prints as a receipt' }],
+    ['superadmin/invoice_view.php', null, '?id=999999', { allowRedirect: true, probe: 'unknown invoice redirects' }],
 ];
 
 function copyDir(src, dest) {
@@ -135,6 +152,20 @@ const POSTS = [
     ['settings · admin profile', 'superadmin/settings.php', 'action=save_admin&username=superadmin&email=superadmin@optibiz.com', /^UPDATE super_admins/i],
     ['settings · password', 'superadmin/settings.php', 'action=change_password&current_password=superadmin123&new_password=Sup3rSecret!&confirm_password=Sup3rSecret!', /^UPDATE super_admins/i],
     ['settings · bad password rejected', 'superadmin/settings.php', 'action=change_password&current_password=wrong&new_password=Sup3rSecret!&confirm_password=Sup3rSecret!', null],
+    ['finance · confirm payment', 'superadmin/finance.php', 'action=confirm_payment&payment_id=1&invoice_id=9', /^UPDATE subscription_payments/i],
+    ['finance · reject payment', 'superadmin/finance.php', 'action=reject_payment&payment_id=1&reason=Partial payment', /^UPDATE subscription_payments/i],
+    ['finance · record offline', 'superadmin/finance.php', 'action=record_offline&tenant_id=14&amount=250&payment_method=Bank+transfer&reference=OFF-77&months=1', /^INSERT INTO subscription_payments/i],
+    ['finance · issue invoice', 'superadmin/finance.php', 'action=issue_invoice&tenant_id=14&plan_id=2&months=6&due_date=2026-10-01&purpose=renewal&notes=Terms+invoice', /^INSERT INTO payment_invoices/i],
+    ['finance · mark invoice paid', 'superadmin/finance.php', 'action=invoice_mark_paid&invoice_id=8&amount=359.88&payment_method=Bank+transfer&reference=ECO-8891', /^INSERT INTO subscription_payments/i],
+    ['finance · cancel invoice', 'superadmin/finance.php', 'action=cancel_invoice&invoice_id=8', /^UPDATE payment_invoices/i],
+    ['finance · refund payment', 'superadmin/finance.php', 'action=refund_payment&payment_id=4&amount=50&kind=refund&reason=Duplicate', /^INSERT INTO payment_refunds/i],
+    ['finance · forged token rejected', 'superadmin/finance.php', 'action=confirm_payment&payment_id=1&invoice_id=9', null, { badCsrf: true }],
+    ['gateways · save', 'superadmin/payment_gateways.php', 'action=save_gateway&gateway_key=paystack&display_name=Paystack&is_enabled=1&mode=live&currency=GHS&public_key=pk_live_x&secret_key=sk_live_y', /^UPDATE payment_gateways/i],
+    ['gateways · toggle off', 'superadmin/payment_gateways.php', 'action=toggle_gateway&gateway_key=paystack&enable=0', /^UPDATE payment_gateways/i],
+    ['gateways · needs credentials blocked', 'superadmin/payment_gateways.php', 'action=toggle_gateway&gateway_key=flutterwave&enable=1', null],
+    ['gateways · default', 'superadmin/payment_gateways.php', 'action=make_default&gateway_key=paystack', /^(UPDATE settings|INSERT INTO settings)/i],
+    ['gateways · forged token rejected', 'superadmin/payment_gateways.php', 'action=toggle_gateway&gateway_key=paystack&enable=0', null, { badCsrf: true }],
+
     ['csrf · forged token rejected', 'superadmin/tenants.php', 'action=delete&tenant_id=5', null, { badCsrf: true }],
     ['login · valid credentials', 'superadmin/login.php', 'username=superadmin&password=superadmin123', /^INSERT INTO user_sessions/i, { anonymous: true, blank: true }],
     ['login · wrong password', 'superadmin/login.php', 'username=superadmin&password=nope', null, { anonymous: true, html: /Invalid username or password/ }],
@@ -252,16 +283,25 @@ function main() {
             const redirected = html.length === 0;
             const fatal = /Fatal error|Parse error|Uncaught/.test(html + stderr);
             const warns = [...new Set((html + stderr).match(/(Warning|Notice|Deprecated):[^<\n]{0,110}/g) || [])];
-            let ok = !fatal && warns.length === 0;
-            if (options.allowRedirect) ok = ok && redirected;
-            else ok = ok && !redirected && html.length > 4000;
+            // Downloads (CSV exports) are deliberately tiny and are not
+            // HTML, so they carry their own floor and shape.
+            const minBytes = options.minBytes || 4000;
+            let why = '';
+            if (fatal) why = 'fatal error';
+            else if (warns.length) why = warns[0].trim();
+            else if (options.allowRedirect && !redirected) why = 'expected a redirect, rendered a page';
+            else if (!options.allowRedirect && redirected) why = 'redirected instead of rendering';
+            else if (!options.allowRedirect && html.length < minBytes) why = 'output too small (' + html.length + ' B, expected ' + minBytes + '+)';
+            else if (options.csv) {
+                if (/<(html|!doctype html)/i.test(html)) why = 'expected a CSV download, got an HTML page';
+                else if (!/,/.test(html.split('\n')[0] || '')) why = 'expected a CSV header row';
+            }
+            const ok = why === '';
             if (!ok) failures++;
             const label = script.replace('superadmin/', '') + ' ' + qs;
             console.log(
                 `  [${ok ? ' ok ' : 'FAIL'}] ${label.padEnd(40)} ${options.probe}` +
-                    (fatal ? '  fatal error' : '') +
-                    (warns.length ? '  ' + warns[0].trim() : '') +
-                    (!ok && !fatal && !warns.length ? redirected ? '  redirected instead of rendering' : '  output too small' : '')
+                    (why ? '  ' + why : '')
             );
             continue;
         }

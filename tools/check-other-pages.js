@@ -52,6 +52,11 @@ const SIGNED_IN = [
     ['admin/social.php', 'social workspace'],
     ['admin/subscription.php', 'subscription'],
     ['admin/settings.php', 'settings'],
+    /* Billing: the workspace's own invoice and the online checkout.
+       Both are scoped to the signed-in tenant (Volta Logistics, id 17),
+       so the harness signs that workspace in for these two. */
+    ['admin/invoice_view.php', 'workspace invoice', '?id=9', { tenantId: 17 }],
+    ['admin/payment_checkout.php', 'online checkout', '?invoice=9', { tenantId: 17 }],
 ];
 
 /* Customers and categories moved to the super admin panel: the tenant
@@ -83,14 +88,18 @@ function sessionDir() {
 function runPhp(script, queryString, opts) {
     const o = opts || {};
     if (fs.existsSync(SQL_LOG)) fs.unlinkSync(SQL_LOG);
+    // Cases spell the query string either way ("id=9" / "?id=9"); the
+    // app only ever sees the bare form, like a real web server.
+    const qs = String(queryString || '').replace(/^\?/, '');
     const env = Object.assign({}, process.env, {
-        QUERY_STRING: queryString,
+        QUERY_STRING: qs,
         SCRIPT_NAME: '/' + script,
-        REQUEST_URI: '/' + script + (queryString ? '?' + queryString : ''),
+        REQUEST_URI: '/' + script + (qs ? '?' + qs : ''),
         SA_SQL_LOG: SQL_LOG,
         SA_ANONYMOUS: o.anonymous ? '1' : '',
         SA_NO_SUPER: o.noSuper ? '1' : '',
         SA_ADMIN_ID: o.adminId ? String(o.adminId) : '1',
+        SA_TENANT_ID: o.tenantId ? String(o.tenantId) : '',
         SA_POST: o.post ? '1' : '',
         SA_BAD_CSRF: o.badCsrf ? '1' : '',
         SA_SESSION_REVOKED: o.sessionRevoked ? '1' : '',
@@ -136,8 +145,8 @@ function main() {
     };
 
     console.log('Tenant admin panel — signed in:');
-    for (const [script, label] of SIGNED_IN) {
-        const { html, stderr } = runPhp(script, '', { noSuper: true });
+    for (const [script, label, qs, extra] of SIGNED_IN) {
+        const { html, stderr } = runPhp(script, qs || '', Object.assign({ noSuper: true }, extra || {}));
         const { fatal, warnings } = diagnostics(html, stderr);
         // The legacy admin screens are compact, so assert a complete document
         // rather than a byte count.

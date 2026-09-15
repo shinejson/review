@@ -3622,3 +3622,127 @@ a.sa-list-item:hover {
     object-fit: contain;
     padding: 6px;
 }
+
+/* ============================================================
+   Payments & billing
+   ------------------------------------------------------------
+   Bits only the financial centre and the payment-integrations
+   screen use: the filter bar, gateway marks, due-date flags and
+   the setup checklist.
+   ============================================================ */
+
+/* ---------- Filter / action toolbar ---------- */
+.sa-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px 14px;
+    padding: 16px clamp(16px, 1.6vw, 22px);
+    background: var(--sa-surface);
+    border: 1px solid var(--sa-line);
+    border-radius: var(--sa-radius);
+    box-shadow: var(--sa-shadow-sm);
+}
+
+.sa-toolbar .sa-field {
+    min-width: 132px;
+}
+
+.sa-toolbar .sa-inline-select,
+.sa-toolbar input[type='search'] {
+    min-width: 132px;
+}
+
+/* Text button that sits inside a sentence (used by the invoice notice) */
+.sa-link-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-weight: 700;
+    color: var(--sa-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.sa-link-btn:hover {
+    color: var(--sa-heading);
+}
+
+/* ---------- Compact form footer (integration cards) ---------- */
+.sa-form-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px 18px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--sa-line);
+}
+
+.sa-form-foot .sa-btn {
+    margin-left: auto;
+}
+
+.sa-field-sm {
+    max-width: 120px;
+}
+
+/* ---------- Gateway mark (Paystack / Flutterwave / bank) ---------- */
+.sa-method-mark {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    border-radius: 9px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    color: var(--mark, var(--sa-accent));
+    background: color-mix(in srgb, var(--mark, var(--sa-accent)) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--mark, var(--sa-accent)) 38%, transparent);
+}
+
+/* Fallback for engines without color-mix() */
+@supports not (background: color-mix(in srgb, red 10%, transparent)) {
+    .sa-method-mark {
+        background: var(--sa-surface-2);
+        border-color: var(--sa-line-strong);
+    }
+}
+
+/* ---------- Due-date flags ---------- */
+.sa-due {
+    display: block;
+    margin-top: 2px;
+    font-size: 11.6px;
+    font-weight: 600;
+    color: var(--sa-faint);
+}
+
+.sa-due.is-soon {
+    color: var(--sa-warning);
+}
+
+.sa-due.is-overdue {
+    color: var(--sa-danger);
+}
+
+/* ---------- Setup checklist (gateway side panels) ---------- */
+.sa-checklist {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 8px;
+    color: var(--sa-muted);
+    font-size: 12.6px;
+    line-height: 1.55;
+}
+
+.sa-checklist li::marker {
+    color: var(--sa-accent);
+    font-weight: 700;
+}
+
+.sa-checklist strong {
+    color: var(--sa-heading);
+}

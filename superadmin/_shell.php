@@ -122,6 +122,14 @@ $sa_badges = [
         0,
         'tenants'
     ),
+    /* Gateway money captured but not yet confirmed — the financial
+       centre's approval queue. 0 on installs without the billing tables. */
+    'payments' => (int) sa_scalar(
+        $conn,
+        "SELECT COUNT(*) FROM subscription_payments WHERE status = 'pending'",
+        0,
+        'subscription_payments'
+    ),
 ];
 
 $sa_nav = [
@@ -131,6 +139,8 @@ $sa_nav = [
     ['section' => 'Billing'],
     ['key' => 'tenants',       'label' => 'Tenants',        'href' => 'tenants.php',          'icon' => 'building', 'badge' => 'tenants'],
     ['key' => 'subscriptions', 'label' => 'Subscriptions',  'href' => 'subscriptions.php',    'icon' => 'card',     'badge' => 'subs', 'alert' => true],
+    ['key' => 'finance',       'label' => 'Financials',     'href' => 'finance.php',          'icon' => 'dollar',   'badge' => 'payments', 'alert' => true],
+    ['key' => 'gateways',      'label' => 'Payment integrations', 'href' => 'payment_gateways.php', 'icon' => 'key'],
     ['key' => 'plans',         'label' => 'Plans',          'href' => 'plans.php',            'icon' => 'layers'],
     ['key' => 'quotes',        'label' => 'Quote Requests', 'href' => 'quote_requests.php',   'icon' => 'inbox',    'badge' => 'quotes', 'alert' => true],
     ['section' => 'Directory'],
@@ -277,7 +287,18 @@ foreach ($sa_nav as $sa_item) {
                                 </div>
                             </a>
 <?php endif; ?>
-<?php if ($sa_badges['quotes'] == 0 && $sa_badges['subs'] == 0): ?>
+<?php if (!empty($sa_badges['payments'])): ?>
+                            <a href="finance.php#approvals" class="sa-notification-item">
+                                <div class="sa-list-icon is-warning">
+                                    <?php echo sa_icon('dollar'); ?>
+                                </div>
+                                <div class="sa-list-body">
+                                    <strong>Payments to confirm</strong>
+                                    <span><?php echo (int) $sa_badges['payments']; ?> payment<?php echo (int) $sa_badges['payments'] === 1 ? '' : 's'; ?> captured and waiting</span>
+                                </div>
+                            </a>
+<?php endif; ?>
+<?php if ($sa_badges['quotes'] == 0 && $sa_badges['subs'] == 0 && empty($sa_badges['payments'])): ?>
                             <div class="sa-notification-empty">
                                 <?php echo sa_icon('check-circle'); ?>
                                 <p>No new notifications</p>
