@@ -211,6 +211,54 @@ if ($is_tenant && $tenant_id) {
 $current_plan_id = (int) ($tenant['plan_id'] ?? 0);
 $current_price   = (float) ($tenant['subscription_price'] ?? ($tenant['plan_price'] ?? 0));
 
+/* ------------------------------------------------------------
+   Billing: invoices, the payment ledger and the checkout options
+   the platform owner has switched on.
+   ------------------------------------------------------------ */
+require_once dirname(__DIR__) . '/includes/payments.php';
+pay_ensure_schema($conn);
+
+$billing_invoices  = [];
+$billing_payments  = [];
+$billing_gateways  = [];
+$billing_due       = [];
+$billing_awaiting  = 0;
+
+if ($is_tenant && $tenant_id) {
+    $billing_invoices = admin_rows(
+        $conn,
+        "SELECT i.*, p.plan_name
+           FROM payment_invoices i
+           LEFT JOIN subscription_plans p ON p.id = i.plan_id
+          WHERE i.tenant_id = " . (int) $tenant_id . "
+          ORDER BY FIELD(i.status, 'processing', 'overdue', 'open', 'paid', 'draft', 'cancelled', 'refunded'),
+                   i.id DESC
+          LIMIT 20"
+    );
+
+    $billing_payments = admin_rows(
+        $conn,
+        "SELECT sp.*, i.invoice_number
+           FROM subscription_payments sp
+           LEFT JOIN payment_invoices i ON i.id = sp.invoice_id
+          WHERE sp.tenant_id = " . (int) $tenant_id . "
+          ORDER BY sp.created_at DESC, sp.id DESC
+          LIMIT 10"
+    );
+
+    $billing_gateways = pay_enabled_gateways($conn);
+
+    foreach ($billing_invoices as $inv) {
+        if (in_array($inv['status'], ['paid', 'cancelled', 'refunded'], true)) {
+            continue;
+        }
+        $billing_due[] = $inv;
+        if ($inv['status'] === 'processing') {
+            $billing_awaiting++;
+        }
+    }
+}
+
 /* ---------- page ---------- */
 $robots    = 'noindex, nofollow';
 $BASE      = '../';
@@ -528,6 +576,100 @@ include __DIR__ . '/_shell.php';
                     </div>
                 <?php endif; ?>
             </div>
+        </div>
+
+        <!-- Billing & invoices -->
+        <div class="form-card" id="billing">
+            <h3>Billing &amp; invoices</h3>
+            <p class="muted" style="margin-bottom:18px;">
+                Pay an invoice online, or settle it by bank transfer and tell us it is on the way.
+                Your plan updates as soon as the payment is confirmed.
+            </p>
+
+            <?php if ($billing_awaiting > 0): ?>
+            <div class="alert alert-success" style="margin-bottom:16px;">
+                We have <?php echo (int) $billing_awaiting; ?> payment<?php echo $billing_awaiting === 1 ? '' : 's'; ?>
+                waiting to be confirmed — no need to pay again.
+            </div>
+            <?php endif; ?>
+
+            <?php if (!$billing_invoices): ?>
+                <p class="muted">No invoices yet. Your next renewal will appear here.</p>
+            <?php else: ?>
+            <div class="admin-table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Invoice</th>
+                            <th scope="col">For</th>
+                            <th scope="col">Total</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Due</th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($billing_invoices as $inv): ?>
+                        <tr>
+                            <td>
+                                <strong><?php echo sa_e($inv['invoice_number']); ?></strong>
+                                <div class="table-meta"><?php echo sa_e(sa_date($inv['created_at'])); ?></div>
+                            </td>
+                            <td>
+                                <?php echo sa_e($inv['subject']); ?>
+                                <div class="table-meta"><?php echo (int) $inv['months']; ?> month<?php echo (int) $inv['months'] === 1 ? '' : 's'; ?></div>
+                            </td>
+                            <td><?php echo sa_e(sa_money($inv['total'])); ?></td>
+                            <td><?php echo sa_e(pay_status_label($inv['status'])); ?></td>
+                            <td><?php echo sa_e(sa_date($inv['due_date'], 'M j, Y', '—')); ?></td>
+                            <td>
+                                <a class="btn btn-secondary" href="invoice_view.php?id=<?php echo (int) $inv['id']; ?>">View</a>
+                                <?php if (!in_array($inv['status'], ['paid', 'cancelled', 'refunded'], true)): ?>
+                                    <?php if ($billing_gateways): ?>
+                                        <a class="btn btn-primary" href="payment_checkout.php?invoice=<?php echo (int) $inv['id']; ?>">Pay</a>
+                                    <?php else: ?>
+                                        <span class="muted">Contact us to pay</span>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($billing_payments): ?>
+            <h4 style="margin:22px 0 10px;">Recent payments</h4>
+            <div class="admin-table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Receipt</th>
+                            <th scope="col">Amount</th>
+                            <th scope="col">Method</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">When</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($billing_payments as $pay): ?>
+                        <tr>
+                            <td><strong><?php echo sa_e($pay['receipt_number']); ?></strong>
+                                <?php if (!empty($pay['invoice_number'])): ?>
+                                <div class="table-meta"><?php echo sa_e($pay['invoice_number']); ?></div>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo sa_e(pay_amount($pay['amount'], $pay['currency'])); ?></td>
+                            <td><?php echo sa_e($pay['payment_method']); ?></td>
+                            <td><?php echo sa_e(pay_status_label($pay['status'])); ?></td>
+                            <td><?php echo sa_e(sa_date($pay['created_at'])); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
         </div>
 
         <!-- Plans -->

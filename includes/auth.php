@@ -171,6 +171,8 @@ function sa_permission_list() {
         'analytics'     => 'Analytics',
         'tenants'       => 'Tenants',
         'subscriptions' => 'Subscriptions',
+        'finance'       => 'Financials',
+        'gateways'      => 'Payment integrations',
         'plans'         => 'Plans',
         'quotes'        => 'Quote requests',
         'reviews'       => 'Reviews moderation',

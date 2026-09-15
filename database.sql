@@ -300,6 +300,158 @@ CREATE TABLE IF NOT EXISTS subscription_requests (
     FOREIGN KEY (requested_plan_id) REFERENCES subscription_plans(id)
 );
 
+-- ------------------------------------------------------------
+-- PAYMENTS & BILLING
+-- ------------------------------------------------------------
+-- Payment integrations the platform owner configures
+-- (superadmin/payment_gateways.php). One row per provider; the
+-- secret key is never shown again once saved.
+CREATE TABLE IF NOT EXISTS payment_gateways (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    gateway_key VARCHAR(40) NOT NULL COMMENT 'paystack | flutterwave | bank_transfer',
+    display_name VARCHAR(100) NOT NULL,
+    is_enabled TINYINT(1) NOT NULL DEFAULT 0,
+    mode ENUM('test','live') NOT NULL DEFAULT 'test',
+    public_key VARCHAR(255) NULL,
+    secret_key VARCHAR(255) NULL,
+    webhook_secret VARCHAR(255) NULL,
+    currency VARCHAR(8) NOT NULL DEFAULT 'GHS',
+    bank_name VARCHAR(140) NULL COMMENT 'Manual transfers: bank the tenant pays into',
+    account_name VARCHAR(140) NULL,
+    account_number VARCHAR(80) NULL,
+    instructions TEXT NULL COMMENT 'What the tenant should do / quote as reference',
+    connection_status VARCHAR(20) NOT NULL DEFAULT 'unverified',
+    connection_note VARCHAR(255) NULL,
+    last_checked_at DATETIME NULL,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_gateway_key (gateway_key),
+    INDEX idx_gateway_enabled (is_enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Seed the three shipped integrations (switched off until configured).
+INSERT INTO payment_gateways (gateway_key, display_name, is_enabled, mode, currency, instructions, connection_status, connection_note, sort_order) VALUES
+('paystack', 'Paystack', 0, 'test', 'GHS', 'Cards, mobile money, bank transfer and USSD across Ghana, Nigeria, Kenya and South Africa.', 'unverified', 'Not configured yet.', 1),
+('flutterwave', 'Flutterwave', 0, 'test', 'GHS', 'Cards, mobile money, bank accounts and Barion wallets in 30+ African markets.', 'unverified', 'Not configured yet.', 2),
+('bank_transfer', 'Bank transfer / Manual', 0, 'test', 'GHS', 'Publish bank or mobile-money details, then confirm the transfer yourself before the plan activates.', 'unverified', 'Not configured yet.', 3);
+
+-- Invoices raised against a workspace (renewals, upgrades, add-ons).
+-- A tenant never re-prices itself: the invoice carries the amount and the
+-- number of months, and only a confirmed payment applies it.
+CREATE TABLE IF NOT EXISTS payment_invoices (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    invoice_number VARCHAR(40) NOT NULL,
+    tenant_id INT NOT NULL,
+    plan_id INT NULL,
+    purpose ENUM('new','renewal','upgrade','downgrade','addon') NOT NULL DEFAULT 'renewal',
+    subject VARCHAR(190) NULL,
+    amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    discount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    tax DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    currency VARCHAR(8) NOT NULL DEFAULT '',
+    months INT NOT NULL DEFAULT 12,
+    period_start DATE NULL,
+    period_end DATE NULL,
+    status ENUM('draft','open','processing','paid','overdue','cancelled','refunded') NOT NULL DEFAULT 'open'
+        COMMENT 'processing = money captured, waiting for the platform owner',
+    gateway_key VARCHAR(40) NULL,
+    checkout_reference VARCHAR(120) NULL,
+    due_date DATE NULL,
+    paid_at DATETIME NULL,
+    issued_by VARCHAR(120) NULL,
+    confirmed_by VARCHAR(120) NULL,
+    notes TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_invoice_number (invoice_number),
+    INDEX idx_invoice_tenant (tenant_id),
+    INDEX idx_invoice_status (status),
+    INDEX idx_invoice_created (created_at),
+    INDEX idx_invoice_reference (checkout_reference)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- The money ledger: one row per payment received, whether it was taken by
+-- a gateway or recorded by hand. `status` keeps unconfirmed gateway money
+-- out of the revenue figures:
+--   pending   = captured by the gateway, waiting for approval
+--   confirmed = counted as revenue (approved, or recorded manually)
+--   failed    = declined by the gateway, or rejected during review
+--   refunded  = money returned to the tenant
+CREATE TABLE IF NOT EXISTS subscription_payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    invoice_id INT NULL,
+    receipt_number VARCHAR(32) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    currency VARCHAR(8) NOT NULL DEFAULT '',
+    fee DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Gateway processing fee, when reported',
+    payment_method VARCHAR(50) NOT NULL DEFAULT 'Bank Wire',
+    gateway_key VARCHAR(40) NULL,
+    gateway_reference VARCHAR(120) NULL,
+    transaction_ref VARCHAR(100) NULL,
+    channel VARCHAR(40) NULL COMMENT 'card, mobile money, bank transfer, ussd…',
+    status VARCHAR(20) NOT NULL DEFAULT 'confirmed',
+    source VARCHAR(20) NOT NULL DEFAULT 'offline' COMMENT 'gateway | offline',
+    payer_name VARCHAR(140) NULL,
+    payer_email VARCHAR(160) NULL,
+    payer_phone VARCHAR(40) NULL,
+    months_extended INT NOT NULL DEFAULT 0,
+    notes TEXT NULL,
+    reject_reason VARCHAR(255) NULL,
+    recorded_by VARCHAR(100) NULL,
+    verified_by VARCHAR(120) NULL,
+    verified_at DATETIME NULL,
+    paid_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_tenant_pmt (tenant_id),
+    INDEX idx_receipt_num (receipt_number),
+    INDEX idx_payment_status (status),
+    INDEX idx_payment_invoice (invoice_id),
+    INDEX idx_payment_reference (gateway_reference)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Refunds and credit notes issued against a payment.
+CREATE TABLE IF NOT EXISTS payment_refunds (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    payment_id INT NULL,
+    invoice_id INT NULL,
+    amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    currency VARCHAR(8) NOT NULL DEFAULT '',
+    kind ENUM('refund','credit') NOT NULL DEFAULT 'refund',
+    reason VARCHAR(255) NULL,
+    status ENUM('pending','processed','rejected') NOT NULL DEFAULT 'pending',
+    gateway_key VARCHAR(40) NULL,
+    gateway_reference VARCHAR(120) NULL,
+    requested_by VARCHAR(120) NULL,
+    processed_by VARCHAR(120) NULL,
+    processed_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_refund_tenant (tenant_id),
+    INDEX idx_refund_payment (payment_id),
+    INDEX idx_refund_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Audit trail for every webhook and checkout callback we receive, whether
+-- or not the signature checked out.
+CREATE TABLE IF NOT EXISTS payment_events (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    gateway_key VARCHAR(40) NULL,
+    event_type VARCHAR(80) NULL,
+    reference VARCHAR(120) NULL,
+    invoice_id INT NULL,
+    payment_id INT NULL,
+    signature_valid TINYINT(1) NOT NULL DEFAULT 0,
+    ip_address VARCHAR(45) NULL,
+    payload MEDIUMTEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_event_gateway (gateway_key),
+    INDEX idx_event_reference (reference),
+    INDEX idx_event_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Social network credentials per workspace (admin/social.php).
 -- One row per platform; the access token is supplied by the workspace
 -- owner from the network's developer console.
