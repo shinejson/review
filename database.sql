@@ -120,6 +120,26 @@ CREATE TABLE IF NOT EXISTS user_sessions (
     INDEX idx_user_sessions_user (portal, user_id, logged_out_at)
 );
 
+-- System activity logs table
+-- Tracks all actions across both superadmin and admin panels
+CREATE TABLE IF NOT EXISTS system_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    portal VARCHAR(20) NOT NULL COMMENT 'superadmin or admin',
+    user_id INT NULL,
+    user_label VARCHAR(120) NULL,
+    action VARCHAR(100) NOT NULL,
+    description TEXT,
+    entity_type VARCHAR(50) NULL COMMENT 'tenant, user, subscription, backup, etc.',
+    entity_id INT NULL,
+    ip_address VARCHAR(45) NULL,
+    user_agent VARCHAR(255) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_logs_portal (portal),
+    INDEX idx_logs_user (portal, user_id),
+    INDEX idx_logs_action (action),
+    INDEX idx_logs_created (created_at)
+);
+
 -- Categories table
 CREATE TABLE IF NOT EXISTS categories (
     id INT AUTO_INCREMENT PRIMARY KEY,

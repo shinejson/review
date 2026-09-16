@@ -29,6 +29,8 @@ $perm_desc  = [
     'quotes'        => 'Inbound “Get started” requests',
     'users'         => 'Add super admins and set their access',
     'settings'      => 'Platform branding and configuration',
+    'backups'       => 'Create and manage database backups',
+    'logs'          => 'View platform activity logs',
 ];
 
 if (!function_exists('users_posted_permissions')) {
@@ -51,6 +53,8 @@ if (!function_exists('users_perm_grid')) {
             'quotes'        => 'Inbound “Get started” requests',
             'users'         => 'Add super admins and set their access',
             'settings'      => 'Platform branding and configuration',
+            'backups'       => 'Create and manage database backups',
+            'logs'          => 'View platform activity logs',
         ];
         echo '<div class="sa-perm-grid" data-sa-perm-grid>';
         foreach (sa_permission_list() as $key => $label) {

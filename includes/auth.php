@@ -180,6 +180,8 @@ function sa_permission_list() {
         'categories'    => 'Categories',
         'users'         => 'Users & roles',
         'settings'      => 'Settings',
+        'backups'       => 'Backups',
+        'logs'          => 'Activity logs',
     ];
 }
 

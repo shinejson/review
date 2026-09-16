@@ -50,8 +50,12 @@ if (!function_exists('sa_query')) {
                 return [];
             }
         }
-        $result = @$conn->query($sql);
-        if (!$result) {
+        try {
+            $result = @$conn->query($sql);
+        } catch (\Throwable $e) {
+            return [];
+        }
+        if (!$result || !is_object($result)) {
             return [];
         }
         $rows = [];
@@ -1434,11 +1438,12 @@ if (!function_exists('sa_macro_telemetry')) {
 }
 
 if (!function_exists('sa_ensure_payments_schema')) {
-    /** Auto-ensure the subscription_payments table exists for offline & recorded payments. */
+    /** Auto-ensure the subscription_payments table and columns exist. */
     function sa_ensure_payments_schema($conn)
     {
         static $done = false;
         if ($done || !$conn) return;
+        
         $conn->query(
             "CREATE TABLE IF NOT EXISTS subscription_payments (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1455,6 +1460,20 @@ if (!function_exists('sa_ensure_payments_schema')) {
                 INDEX idx_receipt_num (receipt_number)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"
         );
+
+        // If payments.php is available, run full schema synchronization
+        if (!function_exists('pay_ensure_schema') && file_exists(dirname(__DIR__) . '/includes/payments.php')) {
+            require_once dirname(__DIR__) . '/includes/payments.php';
+        }
+        if (function_exists('pay_ensure_schema')) {
+            pay_ensure_schema($conn);
+        } else {
+            // Guarantee status column exists
+            $colRes = @$conn->query("SHOW COLUMNS FROM subscription_payments LIKE 'status'");
+            if ($colRes && $colRes->num_rows === 0) {
+                @$conn->query("ALTER TABLE subscription_payments ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'confirmed' AFTER transaction_ref, ADD INDEX idx_payment_status (status)");
+            }
+        }
         $done = true;
     }
 }

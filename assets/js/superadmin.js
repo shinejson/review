@@ -658,6 +658,24 @@
         });
     }
 
+    /* ---------- Back to top ---------- */
+    function initBackToTop() {
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest ? e.target.closest('[data-sa-totop]') : null;
+            if (!btn) {
+                return;
+            }
+            e.preventDefault();
+            var content = document.getElementById('saContent') || document.querySelector('.sa-main') || window;
+            if (content && content.scrollTo) {
+                content.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+            if (window.scrollTo) {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        });
+    }
+
     onReady(function () {
         initTheme();
         initSidebar();
@@ -671,5 +689,6 @@
         initDialogs();
         initShortcuts();
         initConfirms();
+        initBackToTop();
     });
 })();

@@ -1986,9 +1986,12 @@ if (!function_exists('pay_ledger')) {
 
         return sa_query(
             $conn,
-            "SELECT sp.*, t.company_name, t.email AS tenant_email, i.invoice_number
+            "SELECT sp.*,
+                    COALESCE(t.company_name, sp.payer_name, 'Unknown Workspace') AS company_name,
+                    COALESCE(t.email, sp.payer_email, '') AS tenant_email,
+                    i.invoice_number
                FROM subscription_payments sp
-               JOIN tenants t ON t.id = sp.tenant_id
+               LEFT JOIN tenants t ON t.id = sp.tenant_id
                LEFT JOIN payment_invoices i ON i.id = sp.invoice_id
              " . $where . "
               ORDER BY sp.created_at DESC, sp.id DESC
@@ -2006,7 +2009,7 @@ if (!function_exists('pay_ledger_count')) {
         return (int) sa_scalar(
             $conn,
             "SELECT COUNT(*) FROM subscription_payments sp
-               JOIN tenants t ON t.id = sp.tenant_id
+               LEFT JOIN tenants t ON t.id = sp.tenant_id
                LEFT JOIN payment_invoices i ON i.id = sp.invoice_id
              " . $where,
             0,
@@ -2046,6 +2049,8 @@ if (!function_exists('pay_ledger_where')) {
             $where[] = "(sp.receipt_number LIKE '%" . $like . "%'
                       OR sp.gateway_reference LIKE '%" . $like . "%'
                       OR sp.transaction_ref LIKE '%" . $like . "%'
+                      OR sp.payer_name LIKE '%" . $like . "%'
+                      OR sp.payer_email LIKE '%" . $like . "%'
                       OR t.company_name LIKE '%" . $like . "%'
                       OR i.invoice_number LIKE '%" . $like . "%')";
         }

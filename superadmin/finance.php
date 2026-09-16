@@ -369,7 +369,19 @@ $renewals_due = sa_query(
     ['tenants', 'subscription_plans']
 );
 
-$total_pages = max(1, (int) ceil(max($ledger_total, $invoice_total) / $per_page));
+/* Status counts for the payment ledger segment tabs */
+$ledger_base_filters = ['gateway' => $gateway_filter, 'q' => $query];
+$ledger_counts = [
+    'all'       => pay_ledger_count($conn, array_merge($ledger_base_filters, ['status' => ''])),
+    'confirmed' => pay_ledger_count($conn, array_merge($ledger_base_filters, ['status' => 'confirmed'])),
+    'pending'   => pay_ledger_count($conn, array_merge($ledger_base_filters, ['status' => 'pending'])),
+    'refunded'  => pay_ledger_count($conn, array_merge($ledger_base_filters, ['status' => 'refunded'])),
+    'failed'    => pay_ledger_count($conn, array_merge($ledger_base_filters, ['status' => 'failed'])),
+];
+
+$ledger_pages  = max(1, (int) ceil($ledger_total / $per_page));
+$invoice_pages = max(1, (int) ceil($invoice_total / $per_page));
+$total_pages   = max($ledger_pages, $invoice_pages);
 $money       = function ($value, $decimals = 2) {
     return sa_money($value, $decimals);
 };
@@ -973,17 +985,41 @@ echo $method_bars
         </table>
     </div>
 
-<?php if ($invoice_total > count($invoices)): ?>
     <div class="sa-card-foot">
-        <span>Showing <?php echo sa_e(sa_num(count($invoices))); ?> of <?php echo sa_e(sa_num($invoice_total)); ?></span>
-        <span><a href="<?php echo sa_e($qs(['page' => $page + 1])); ?>#invoices">Load more in the ledger view</a></span>
-    </div>
-<?php else: ?>
-    <div class="sa-card-foot">
-        <span><?php echo sa_e(sa_num($invoice_total)); ?> invoice<?php echo $invoice_total === 1 ? '' : 's'; ?></span>
-        <span>Print any invoice from the actions column</span>
-    </div>
+        <div class="sa-card-foot-left">
+            <span>
+                Showing <?php echo $invoice_total > 0 ? ($offset + 1) : 0; ?>–<?php echo min($offset + $per_page, $invoice_total); ?> of <?php echo sa_e(sa_num($invoice_total)); ?> invoice<?php echo $invoice_total === 1 ? '' : 's'; ?>
+            </span>
+<?php if ($invoice_status !== ''): ?>
+            <span class="sa-filter-chip">
+                Status: <?php echo sa_e(pay_invoice_status_label($invoice_status)); ?>
+                <a href="<?php echo sa_e($qs(['invoice_status' => '', 'page' => 1])); ?>#invoices" title="Clear invoice status filter">&times;</a>
+            </span>
 <?php endif; ?>
+        </div>
+        <div class="sa-row-actions">
+<?php if ($page > 1): ?>
+            <a class="sa-btn sa-btn-sm sa-btn-ghost" href="<?php echo sa_e($qs(['page' => $page - 1])); ?>#invoices">
+                <?php echo sa_icon('chevron-left'); ?> Previous
+            </a>
+<?php endif; ?>
+<?php if ($invoice_pages > 1): ?>
+            <div class="sa-page-pills">
+<?php for ($p = max(1, $page - 2); $p <= min($invoice_pages, $page + 2); $p++): ?>
+                <a class="sa-page-pill <?php echo $p === $page ? 'is-active' : ''; ?>"
+                   href="<?php echo sa_e($qs(['page' => $p])); ?>#invoices">
+                    <?php echo $p; ?>
+                </a>
+<?php endfor; ?>
+            </div>
+<?php endif; ?>
+<?php if ($page < $invoice_pages): ?>
+            <a class="sa-btn sa-btn-sm sa-btn-ghost" href="<?php echo sa_e($qs(['page' => $page + 1])); ?>#invoices">
+                Next <?php echo sa_icon('chevron-right'); ?>
+            </a>
+<?php endif; ?>
+        </div>
+    </div>
 </section>
 
 <!-- ============ LEDGER ============ -->
@@ -1005,25 +1041,57 @@ echo $method_bars
         </div>
     </div>
 
+    <!-- 1-Click Status Filter Segment Tabs -->
+    <div class="sa-ledger-toolbar">
+        <nav class="sa-status-tabs" aria-label="Filter payments by status">
+            <a href="<?php echo sa_e($qs(['status' => '', 'page' => 1])); ?>#ledger"
+               class="sa-status-tab <?php echo $status_filter === '' ? 'is-active' : ''; ?>">
+                All
+                <span class="sa-tab-pill"><?php echo (int) $ledger_counts['all']; ?></span>
+            </a>
+            <a href="<?php echo sa_e($qs(['status' => 'confirmed', 'page' => 1])); ?>#ledger"
+               class="sa-status-tab <?php echo $status_filter === 'confirmed' ? 'is-active' : ''; ?>">
+                <span class="sa-dot sa-dot-green"></span> Confirmed
+                <span class="sa-tab-pill"><?php echo (int) $ledger_counts['confirmed']; ?></span>
+            </a>
+            <a href="<?php echo sa_e($qs(['status' => 'pending', 'page' => 1])); ?>#ledger"
+               class="sa-status-tab <?php echo $status_filter === 'pending' ? 'is-active' : ''; ?>">
+                <span class="sa-dot sa-dot-amber"></span> Pending
+                <span class="sa-tab-pill"><?php echo (int) $ledger_counts['pending']; ?></span>
+            </a>
+            <a href="<?php echo sa_e($qs(['status' => 'refunded', 'page' => 1])); ?>#ledger"
+               class="sa-status-tab <?php echo $status_filter === 'refunded' ? 'is-active' : ''; ?>">
+                <span class="sa-dot sa-dot-blue"></span> Refunded
+                <span class="sa-tab-pill"><?php echo (int) $ledger_counts['refunded']; ?></span>
+            </a>
+            <a href="<?php echo sa_e($qs(['status' => 'failed', 'page' => 1])); ?>#ledger"
+               class="sa-status-tab <?php echo $status_filter === 'failed' ? 'is-active' : ''; ?>">
+                <span class="sa-dot sa-dot-rose"></span> Failed
+                <span class="sa-tab-pill"><?php echo (int) $ledger_counts['failed']; ?></span>
+            </a>
+        </nav>
+    </div>
+
     <div class="sa-table-wrap">
-        <table class="sa-table" id="ledgerTable">
+        <table class="sa-table" id="ledgerTable" data-sa-sortable-table>
             <thead scope="col">
                 <tr>
-                    <th scope="col">Receipt</th>
-                    <th scope="col">Workspace</th>
-                    <th scope="col">Method</th>
-                    <th scope="col" class="num">Amount</th>
-                    <th scope="col" class="num">Fee</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Reference</th>
-                    <th scope="col">When</th>
-                    <th scope="col"><span class="sa-sr-only">Actions</span></th>
+                    <th scope="col" data-sa-sort="0" aria-sort="none">Receipt</th>
+                    <th scope="col" data-sa-sort="1" aria-sort="none">Workspace</th>
+                    <th scope="col" data-sa-sort="2" aria-sort="none">Source &amp; Method</th>
+                    <th scope="col" class="num" data-sa-sort="3" data-type="num" aria-sort="none">Gross</th>
+                    <th scope="col" class="num" data-sa-sort="4" data-type="num" aria-sort="none">Fee</th>
+                    <th scope="col" class="num" data-sa-sort="5" data-type="num" aria-sort="none">Net Realized</th>
+                    <th scope="col" data-sa-sort="6" aria-sort="none">Status</th>
+                    <th scope="col" data-sa-sort="7" aria-sort="none">Reference</th>
+                    <th scope="col" data-sa-sort="8" data-type="date" aria-sort="none">When</th>
+                    <th scope="col" data-no-export><span class="sa-sr-only">Actions</span></th>
                 </tr>
             </thead>
             <tbody>
 <?php if (!$ledger): ?>
                 <tr data-static>
-                    <td colspan="9">
+                    <td colspan="10">
                         <div class="sa-empty">
                             <?php echo sa_icon('card'); ?>
                             <strong>No payments in this view</strong>
@@ -1032,10 +1100,50 @@ echo $method_bars
                     </td>
                 </tr>
 <?php else: ?>
-<?php foreach ($ledger as $p): ?>
+<?php foreach ($ledger as $p):
+    $gross = (float) $p['amount'];
+    $fee = (float) $p['fee'];
+    $net = max(0, $gross - $fee);
+    $is_gateway = !empty($p['gateway_key']);
+    $ref = !empty($p['gateway_reference']) ? $p['gateway_reference'] : (!empty($p['transaction_ref']) ? $p['transaction_ref'] : '—');
+    $p_json = htmlspecialchars(json_encode([
+        'id'               => (int) $p['id'],
+        'receipt_number'   => $p['receipt_number'],
+        'status'           => $p['status'],
+        'status_badge'     => pay_badge($p['status']),
+        'company_name'     => $p['company_name'],
+        'tenant_email'     => $p['tenant_email'],
+        'payer_name'       => !empty($p['payer_name']) ? $p['payer_name'] : $p['company_name'],
+        'payer_email'      => !empty($p['payer_email']) ? $p['payer_email'] : '',
+        'payer_phone'      => !empty($p['payer_phone']) ? $p['payer_phone'] : '',
+        'gateway_key'      => !empty($p['gateway_key']) ? $p['gateway_key'] : '',
+        'gateway_label'    => !empty($p['gateway_key']) ? pay_gateway_label($p['gateway_key']) : 'Manual / Offline',
+        'payment_method'   => $p['payment_method'],
+        'channel'          => !empty($p['channel']) ? pay_channel_label($p['channel']) : '',
+        'amount'           => $gross,
+        'fee'              => $fee,
+        'net'              => $net,
+        'currency'         => $p['currency'],
+        'formatted_gross'  => pay_amount($gross, $p['currency']),
+        'formatted_fee'    => $fee > 0 ? pay_amount($fee, $p['currency']) : '0.00',
+        'formatted_net'    => pay_amount($net, $p['currency']),
+        'reference'        => $ref,
+        'created_at'       => sa_date($p['created_at']) . ' (' . pay_days_ago($p['created_at']) . ')',
+        'verified_at'      => !empty($p['verified_at']) ? sa_date($p['verified_at']) : '',
+        'verified_by'      => !empty($p['verified_by']) ? $p['verified_by'] : '',
+        'notes'            => !empty($p['notes']) ? $p['notes'] : (!empty($p['reject_reason']) ? 'Rejection: ' . $p['reject_reason'] : ''),
+    ]), ENT_QUOTES, 'UTF-8');
+?>
                 <tr>
                     <td>
-                        <span class="sa-mono"><?php echo sa_e($p['receipt_number']); ?></span>
+                        <span class="sa-mono">
+                            <button type="button" class="sa-link-btn sa-mono" style="font-weight:700"
+                                    data-sa-open-dialog="#paymentDetailDialog"
+                                    data-payment-json="<?php echo $p_json; ?>"
+                                    title="Inspect transaction details">
+                                <?php echo sa_e($p['receipt_number']); ?>
+                            </button>
+                        </span>
 <?php if (!empty($p['invoice_number'])): ?>
                         <span class="sa-hint"><?php echo sa_e($p['invoice_number']); ?></span>
 <?php endif; ?>
@@ -1050,34 +1158,51 @@ echo $method_bars
                         </div>
                     </td>
                     <td>
-<?php if (!empty($p['gateway_key'])): ?>
-                        <span style="display:inline-flex;align-items:center;gap:6px">
-                            <?php echo pay_gateway_mark($p['gateway_key'], 24); ?>
-                            <?php echo sa_e(pay_gateway_label($p['gateway_key'])); ?>
-                        </span>
+                        <div style="display:inline-flex;flex-direction:column;gap:3px;align-items:flex-start">
+                            <span class="sa-source-badge <?php echo $is_gateway ? 'sa-source-gateway' : 'sa-source-manual'; ?>">
+                                <?php echo $is_gateway ? 'Gateway' : 'Manual'; ?>
+                            </span>
+                            <span style="display:inline-flex;align-items:center;gap:6px">
+<?php if ($is_gateway): ?>
+                                <?php echo pay_gateway_mark($p['gateway_key'], 20); ?>
+                                <?php echo sa_e(pay_gateway_label($p['gateway_key'])); ?>
 <?php else: ?>
-                        <?php echo sa_e($p['payment_method']); ?>
+                                <?php echo sa_e($p['payment_method']); ?>
 <?php endif; ?>
+                            </span>
 <?php if (!empty($p['channel'])): ?>
-                        <span class="sa-hint"><?php echo sa_e(pay_channel_label($p['channel'])); ?></span>
+                            <span class="sa-hint"><?php echo sa_e(pay_channel_label($p['channel'])); ?></span>
+<?php endif; ?>
+                        </div>
+                    </td>
+                    <td class="num">
+                        <strong><?php echo sa_e(pay_amount($gross, $p['currency'])); ?></strong>
+<?php if ((int) $p['months_extended'] > 0): ?>
+                        <span class="sa-hint">+<?php echo (int) $p['months_extended']; ?> mo</span>
 <?php endif; ?>
                     </td>
                     <td class="num">
-                        <strong><?php echo sa_e(pay_amount($p['amount'], $p['currency'])); ?></strong>
-                        <?php if ((int) $p['months_extended'] > 0): ?>
-                        <span class="sa-hint">+<?php echo (int) $p['months_extended']; ?> month<?php echo (int) $p['months_extended'] === 1 ? '' : 's'; ?></span>
-                        <?php endif; ?>
+                        <?php echo $fee > 0 ? sa_e(pay_amount($fee, $p['currency'])) : '<span class="sa-hint">0.00</span>'; ?>
                     </td>
-                    <td class="num"><?php echo (float) $p['fee'] > 0 ? sa_e(pay_amount($p['fee'], $p['currency'])) : '—'; ?></td>
+                    <td class="num">
+                        <span class="sa-net-amount"><?php echo sa_e(pay_amount($net, $p['currency'])); ?></span>
+                    </td>
                     <td><?php echo pay_badge($p['status']); ?></td>
-                    <td><span class="sa-mono"><?php echo sa_e($p['gateway_reference'] !== '' ? $p['gateway_reference'] : ($p['transaction_ref'] ? $p['transaction_ref'] : '—')); ?></span></td>
+                    <td><span class="sa-mono" title="<?php echo sa_e($ref); ?>"><?php echo sa_e($ref); ?></span></td>
                     <td>
                         <?php echo sa_e(sa_date($p['created_at'])); ?>
                         <span class="sa-hint"><?php echo sa_e(pay_days_ago($p['created_at'])); ?></span>
                     </td>
                     <td>
                         <div class="sa-row-actions">
-                            <a class="sa-btn sa-btn-sm sa-btn-ghost" href="invoice_receipt.php?id=<?php echo (int) $p['id']; ?>" title="Printable receipt">
+                            <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost"
+                                    data-sa-open-dialog="#paymentDetailDialog"
+                                    data-payment-json="<?php echo $p_json; ?>"
+                                    title="Inspect full transaction details"
+                                    aria-label="Inspect payment <?php echo sa_e($p['receipt_number']); ?>">
+                                <?php echo sa_icon('eye'); ?>
+                            </button>
+                            <a class="sa-btn sa-btn-sm sa-btn-ghost" href="invoice_receipt.php?id=<?php echo (int) $p['id']; ?>" target="_blank" rel="noopener" title="Printable receipt">
                                 <?php echo sa_icon('file-text'); ?>
                             </a>
 <?php if ($p['status'] === 'confirmed'): ?>
@@ -1112,22 +1237,39 @@ echo $method_bars
     </div>
 
     <div class="sa-card-foot">
-        <span>
-            Page <?php echo (int) $page; ?> of <?php echo (int) $total_pages; ?> &middot;
-            <?php echo sa_e(sa_num($ledger_total)); ?> record<?php echo $ledger_total === 1 ? '' : 's'; ?>
-        </span>
-        <span class="sa-row-actions">
+        <div class="sa-card-foot-left">
+            <span>
+                Showing <?php echo $ledger_total > 0 ? ($offset + 1) : 0; ?>–<?php echo min($offset + $per_page, $ledger_total); ?> of <?php echo sa_e(sa_num($ledger_total)); ?> payment<?php echo $ledger_total === 1 ? '' : 's'; ?>
+            </span>
+<?php if ($status_filter !== ''): ?>
+            <span class="sa-filter-chip">
+                Status: <?php echo sa_e(pay_status_label($status_filter)); ?>
+                <a href="<?php echo sa_e($qs(['status' => '', 'page' => 1])); ?>#ledger" title="Clear status filter">&times;</a>
+            </span>
+<?php endif; ?>
+        </div>
+        <div class="sa-row-actions">
 <?php if ($page > 1): ?>
             <a class="sa-btn sa-btn-sm sa-btn-ghost" href="<?php echo sa_e($qs(['page' => $page - 1])); ?>#ledger">
                 <?php echo sa_icon('chevron-left'); ?> Previous
             </a>
 <?php endif; ?>
-<?php if ($page < $total_pages): ?>
+<?php if ($ledger_pages > 1): ?>
+            <div class="sa-page-pills">
+<?php for ($p = max(1, $page - 2); $p <= min($ledger_pages, $page + 2); $p++): ?>
+                <a class="sa-page-pill <?php echo $p === $page ? 'is-active' : ''; ?>"
+                   href="<?php echo sa_e($qs(['page' => $p])); ?>#ledger">
+                    <?php echo $p; ?>
+                </a>
+<?php endfor; ?>
+            </div>
+<?php endif; ?>
+<?php if ($page < $ledger_pages): ?>
             <a class="sa-btn sa-btn-sm sa-btn-ghost" href="<?php echo sa_e($qs(['page' => $page + 1])); ?>#ledger">
                 Next <?php echo sa_icon('chevron-right'); ?>
             </a>
 <?php endif; ?>
-        </span>
+        </div>
     </div>
 </section>
 
@@ -1459,6 +1601,86 @@ echo $method_bars
     </form>
 </dialog>
 
+<!-- ============ PAYMENT DETAIL INSPECTOR ============ -->
+<dialog class="sa-dialog" id="paymentDetailDialog" aria-labelledby="pd_title">
+    <div class="sa-dialog-panel" style="max-width:680px">
+        <div class="sa-dialog-head">
+            <div>
+                <h3 id="pd_title">Payment transaction details</h3>
+                <p>Full audit and metadata for receipt <strong id="pd_receipt" class="sa-mono"></strong></p>
+            </div>
+            <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>
+        </div>
+
+        <div class="sa-dialog-body">
+            <div class="sa-breakdown-banner">
+                <div class="sa-breakdown-item">
+                    <div class="sa-bd-label">Gross Amount</div>
+                    <div class="sa-bd-val" id="pd_gross">—</div>
+                </div>
+                <div class="sa-breakdown-item">
+                    <div class="sa-bd-label">Gateway Fee</div>
+                    <div class="sa-bd-val" id="pd_fee">—</div>
+                </div>
+                <div class="sa-breakdown-item is-net">
+                    <div class="sa-bd-label">Net Realized</div>
+                    <div class="sa-bd-val" id="pd_net">—</div>
+                </div>
+            </div>
+
+            <div class="sa-detail-grid">
+                <div class="sa-detail-card">
+                    <div class="sa-detail-label">Status</div>
+                    <div class="sa-detail-val" id="pd_status_badge">—</div>
+                </div>
+                <div class="sa-detail-card">
+                    <div class="sa-detail-label">Workspace</div>
+                    <div class="sa-detail-val" id="pd_company">—</div>
+                </div>
+                <div class="sa-detail-card">
+                    <div class="sa-detail-label">Workspace Email</div>
+                    <div class="sa-detail-val" id="pd_email">—</div>
+                </div>
+                <div class="sa-detail-card">
+                    <div class="sa-detail-label">Payer Contact</div>
+                    <div class="sa-detail-val" id="pd_payer_contact">—</div>
+                </div>
+                <div class="sa-detail-card">
+                    <div class="sa-detail-label">Payment Gateway</div>
+                    <div class="sa-detail-val" id="pd_gateway">—</div>
+                </div>
+                <div class="sa-detail-card">
+                    <div class="sa-detail-label">Method &amp; Channel</div>
+                    <div class="sa-detail-val"><span id="pd_method">—</span> <span class="sa-hint" id="pd_channel"></span></div>
+                </div>
+                <div class="sa-detail-card" style="grid-column:1/-1">
+                    <div class="sa-detail-label">Gateway &amp; Transaction Reference</div>
+                    <div class="sa-detail-val sa-mono" id="pd_reference">—</div>
+                </div>
+                <div class="sa-detail-card">
+                    <div class="sa-detail-label">Recorded At</div>
+                    <div class="sa-detail-val" id="pd_created">—</div>
+                </div>
+                <div class="sa-detail-card">
+                    <div class="sa-detail-label">Audit Verification</div>
+                    <div class="sa-detail-val" id="pd_verified">—</div>
+                </div>
+                <div class="sa-detail-card" style="grid-column:1/-1">
+                    <div class="sa-detail-label">Notes &amp; Remarks</div>
+                    <div class="sa-detail-val" id="pd_notes" style="font-weight:normal;color:var(--sa-muted)">—</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sa-dialog-foot">
+            <button type="button" class="sa-btn sa-btn-ghost" data-sa-close-dialog>Close</button>
+            <a id="pd_receipt_link" class="sa-btn sa-btn-primary" href="#" target="_blank" rel="noopener">
+                <?php echo sa_icon('file-text'); ?> Open printable receipt
+            </a>
+        </div>
+    </div>
+</dialog>
+
 <script>
 /* The dialogs are shared by every row: stash ids/amounts from the trigger
    button onto the form fields when the dialog opens. */
@@ -1467,6 +1689,33 @@ echo $method_bars
         var trigger = event.target.closest('[data-sa-open-dialog]');
         if (!trigger) return;
         var target = trigger.getAttribute('data-sa-open-dialog');
+
+        if (target === '#paymentDetailDialog') {
+            var raw = trigger.getAttribute('data-payment-json');
+            if (raw) {
+                try {
+                    var data = JSON.parse(raw);
+                    document.getElementById('pd_receipt').textContent = data.receipt_number || '—';
+                    document.getElementById('pd_status_badge').innerHTML = data.status_badge || '';
+                    document.getElementById('pd_company').textContent = data.company_name || '—';
+                    document.getElementById('pd_email').textContent = data.tenant_email || '—';
+                    var payerInfo = data.payer_name || '';
+                    if (data.payer_phone) payerInfo += ' (' + data.payer_phone + ')';
+                    document.getElementById('pd_payer_contact').textContent = payerInfo || '—';
+                    document.getElementById('pd_gateway').textContent = data.gateway_label || 'Direct / Offline';
+                    document.getElementById('pd_method').textContent = data.payment_method || '—';
+                    document.getElementById('pd_channel').textContent = data.channel ? '· ' + data.channel : '';
+                    document.getElementById('pd_gross').textContent = data.formatted_gross || '—';
+                    document.getElementById('pd_fee').textContent = data.formatted_fee || '—';
+                    document.getElementById('pd_net').textContent = data.formatted_net || '—';
+                    document.getElementById('pd_reference').textContent = data.reference || '—';
+                    document.getElementById('pd_created').textContent = data.created_at || '—';
+                    document.getElementById('pd_verified').textContent = (data.verified_by ? data.verified_by + (data.verified_at ? ' on ' + data.verified_at : '') : '—');
+                    document.getElementById('pd_notes').textContent = data.notes || 'None';
+                    document.getElementById('pd_receipt_link').href = 'invoice_receipt.php?id=' + encodeURIComponent(data.id);
+                } catch (e) {}
+            }
+        }
 
         if (target === '#markPaidDialog') {
             var id = trigger.getAttribute('data-invoice-id') || '';

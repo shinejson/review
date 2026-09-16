@@ -36,6 +36,7 @@ if (!function_exists('sa_icon')) {
             'moon'        => '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
             'menu'        => '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
             'panel-left'  => '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>',
+            'chevron-up'  => '<polyline points="18 15 12 9 6 15"/>',
             'chevron-down'=> '<polyline points="6 9 12 15 18 9"/>',
             'chevron-right'=> '<polyline points="9 18 15 12 9 6"/>',
             'chevron-left'=> '<polyline points="15 18 9 12 15 6"/>',
@@ -108,6 +109,11 @@ if (isset($_SESSION['super_admin_id'])) {
     }
 }
 
+/* Ensure billing/payments schema is up to date for financial badge & navigation */
+if (function_exists('sa_ensure_payments_schema') && isset($conn)) {
+    sa_ensure_payments_schema($conn);
+}
+
 /* Nav badge counts (cheap queries, degrade to null when unavailable) */
 $sa_badges = [
     'tenants' => (int) sa_scalar($conn, "SELECT COUNT(*) FROM tenants", 0, 'tenants'),
@@ -150,6 +156,8 @@ $sa_nav = [
     ['section' => 'System'],
     ['key' => 'users',         'label' => 'Users',          'href' => 'users.php',            'icon' => 'users'],
     ['key' => 'settings',      'label' => 'Settings',       'href' => 'settings.php',         'icon' => 'settings'],
+    ['key' => 'backups',       'label' => 'Backups',        'href' => 'backups.php',          'icon' => 'database'],
+    ['key' => 'logs',          'label' => 'Activity Logs',  'href' => 'logs.php',             'icon' => 'activity'],
 ];
 
 /* Only keep the nav items the signed-in super admin may open.
