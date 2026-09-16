@@ -23,6 +23,7 @@ require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/sa_helpers.php';
 require_once dirname(__DIR__) . '/includes/payments.php';
+require_once dirname(__DIR__) . '/includes/logging_helpers.php';
 
 requireLogin();
 requireTeamAccess('subscription');
@@ -76,6 +77,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $result = pay_start_checkout($conn, $gateway_key, $invoice, $callback);
 
         if ($result['ok'] && $result['url'] !== '') {
+            admin_log_activity(
+                $conn,
+                'payment_start',
+                'Started an online payment for invoice ' . $invoice['invoice_number'] . ' via ' . $gateway_key,
+                'payment_invoice',
+                (int) $invoice['id']
+            );
             header('Location: ' . $result['url']);
             exit();
         }
@@ -122,6 +130,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             'payload'     => 'Workspace reported a manual payment.',
         ]);
 
+        admin_log_activity(
+            $conn,
+            'payment_declared',
+            'Reported a ' . $method . ' payment for invoice ' . $invoice['invoice_number'],
+            'payment',
+            (int) $payment_id
+        );
         sa_flash('success', 'Thanks — we have logged your payment. The platform owner confirms it and your new period starts automatically.');
         redirect('subscription.php#billing');
     }

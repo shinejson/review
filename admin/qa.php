@@ -11,6 +11,7 @@
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/logging_helpers.php';
 
 requireLogin();
 requireTeamAccess('qa');
@@ -59,6 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 if ($pin_status) {
                     $conn->query("UPDATE community_questions SET is_pinned = 1 WHERE id = $qid");
                 }
+                admin_log_activity($conn, 'qa_answer', 'Answered a customer question', 'community_question', $qid);
                 header('Location: qa.php?msg=answered');
                 exit;
             } else {
@@ -72,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $qid = (int)($_POST['question_id'] ?? 0);
         if ($qid > 0) {
             togglePinQuestion($conn, $qid, $tenant_id);
+            admin_log_activity($conn, 'qa_pin', 'Pinned or unpinned a customer question', 'community_question', $qid);
             header('Location: qa.php?msg=pin_toggled');
             exit;
         }
@@ -89,6 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         } else {
             $ok = createPreEmptiveFaq($conn, $tenant_id, $company_id, $question, $answer, $pinned, $admin_id);
             if ($ok) {
+                admin_log_activity($conn, 'qa_faq', 'Published the FAQ "' . $question . '"', 'community_question', (int) $conn->insert_id);
                 header('Location: qa.php?msg=faq_created');
                 exit;
             } else {
@@ -102,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $qid = (int)($_POST['question_id'] ?? 0);
         if ($qid > 0) {
             deleteCommunityQuestion($conn, $qid, $tenant_id);
+            admin_log_activity($conn, 'qa_delete', 'Deleted a customer question', 'community_question', $qid);
             header('Location: qa.php?msg=deleted');
             exit;
         }

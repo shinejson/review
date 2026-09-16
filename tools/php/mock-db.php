@@ -811,6 +811,28 @@ class MockMysqli
                 return ['Field' => $c, 'Type' => 'text', 'Null' => 'YES', 'Key' => '', 'Default' => null, 'Extra' => ''];
             }, $cols);
         }
+        /* ---- activity log schema probe (sa_logs_ensure_schema) ---- */
+        if (stripos($s, 'SHOW COLUMNS FROM system_logs') === 0) {
+            $cols = ['id', 'portal', 'tenant_id', 'user_id', 'user_label', 'action', 'description',
+                     'entity_type', 'entity_id', 'ip_address', 'user_agent', 'created_at'];
+            if (preg_match("/LIKE '([a-z_]+)'/i", $s, $lm)) {
+                $cols = array_values(array_filter($cols, function ($c) use ($lm) {
+                    return $c === $lm[1];
+                }));
+            }
+            return array_map(function ($c) {
+                return ['Field' => $c, 'Type' => 'text', 'Null' => 'YES', 'Key' => '', 'Default' => null, 'Extra' => ''];
+            }, $cols);
+        }
+        /* ---- workspace backup schema probe ---- */
+        if (stripos($s, 'SHOW COLUMNS FROM tenant_backups') === 0) {
+            $cols = ['id', 'tenant_id', 'filename', 'format', 'size_bytes', 'table_count',
+                     'record_count', 'created_by_label', 'created_at'];
+            return array_map(function ($c) {
+                return ['Field' => $c, 'Type' => 'text', 'Null' => 'YES', 'Key' => '', 'Default' => null, 'Extra' => ''];
+            }, $cols);
+        }
+
         /* ---- workspace schema probe (ensureWhatsappColumn) ---- */
         if (stripos($s, 'SHOW COLUMNS FROM customers') === 0) {
             // the fixture database is already migrated to database.sql
@@ -849,7 +871,7 @@ class MockMysqli
         if ($this->has($s, 'information_schema.tables')) {
             preg_match("/table_name = '([a-z_]+)'/i", $s, $m);
             $known = ['super_admins', 'subscription_plans', 'tenants', 'admins', 'categories', 'customers', 'ratings', 'settings', 'quote_requests',
-                      'subscription_requests', 'social_accounts', 'social_posts', 'user_sessions',
+                      'subscription_requests', 'social_accounts', 'social_posts', 'user_sessions', 'system_logs', 'tenant_backups',
                       'payment_gateways', 'payment_invoices', 'subscription_payments', 'payment_refunds', 'payment_events'];
             $c = (isset($m[1]) && in_array($m[1], $known, true)) ? 1 : 0;
             return [['c' => $c]];
@@ -897,6 +919,8 @@ class MockMysqli
                 'ratings' => array_sum($D['star_distribution']),
                 'settings' => count($D['settings']),
                 'quote_requests' => count($D['quote_requests']),
+                'system_logs' => count($D['system_logs']),
+                'tenant_backups' => count($D['tenant_backups']),
             ];
             $c = isset($known[$table]) ? $known[$table] : 0;
             return [['COUNT(*)' => $c]];
@@ -1194,15 +1218,30 @@ class MockMysqli
             }
             if ($this->has($o, 'r.*') || $this->has($o, 'c.company_name')) {
                 $byId = [];
+                $byTenant = [];
                 foreach ($this->customersWithCategory() as $c) {
                     $byId[(int) $c['id']] = $c['company_name'];
+                    $byTenant[(int) $c['id']] = (int) $c['tenant_id'];
+                }
+                /* c.tenant_id = N scopes the join to one workspace — the
+                   backup export counts on it. */
+                $tid = 0;
+                if (preg_match('/c\.tenant_id = (\d+)/', $s, $mt)) {
+                    $tid = (int) $mt[1];
                 }
                 $out = [];
                 foreach ($D['ratings'] as $r) {
+                    $cid = (int) $r['company_id'];
+                    if ($tid !== 0 && (isset($byTenant[$cid]) ? $byTenant[$cid] : 0) !== $tid) {
+                        continue;
+                    }
                     $row = $r;
-                    $row['company_name'] = isset($byId[(int) $r['company_id']]) ? $byId[(int) $r['company_id']] : '';
+                    $row['company_name'] = isset($byId[$cid]) ? $byId[$cid] : '';
                     $out[] = $row;
                 }
+                usort($out, function ($a, $b) {
+                    return (int) $a['id'] <=> (int) $b['id'];
+                });
                 return $out;
             }
             if ($this->has($s, 'ORDER BY r.created_at DESC')) {
@@ -1329,6 +1368,22 @@ class MockMysqli
                 usort($rows, function ($a, $b) {
                     return $b['rating_count'] <=> $a['rating_count'];
                 });
+                return $rows;
+            }
+            /* plain workspace list: SELECT * FROM customers WHERE tenant_id = N
+               (the workspace backup export) — a tenant may only ever get its
+               own rows back, which is what the export relies on. */
+            if (preg_match('/tenant_id = (\d+)/', $s, $mt)) {
+                $tid  = (int) $mt[1];
+                $rows = array_values(array_filter($this->customersWithCategory(), function ($c) use ($tid) {
+                    return (int) $c['tenant_id'] === $tid;
+                }));
+                usort($rows, function ($a, $b) {
+                    return (int) $a['id'] <=> (int) $b['id'];
+                });
+                if (preg_match('/LIMIT (\d+)/i', $s, $m)) {
+                    $rows = array_slice($rows, 0, (int) $m[1]);
+                }
                 return $rows;
             }
             return $this->customersWithCategory();
@@ -1789,6 +1844,177 @@ class MockMysqli
                 $rows = array_slice($rows, 0, (int) $m[1]);
             }
             return $rows;
+        }
+
+        /* ============================================================
+           Activity log (includes/logging_helpers.php): the workspace
+           view in admin/logs.php (filtered by tenant_id) and the
+           platform view in superadmin/logs.php.
+           ============================================================ */
+        if ($tbl === 'system_logs') {
+            if (preg_match('/^\s*(INSERT|UPDATE|DELETE)/i', $s)) {
+                return [];   // writes are recorded by logWrite()
+            }
+
+            $portal = null;
+            if (preg_match("/portal = '([a-z_]+)'/", $o, $m)) {
+                $portal = $m[1];
+            }
+            $tenant = null;
+            if (preg_match('/tenant_id = (\d+)/', $s, $m)) {
+                $tenant = (int) $m[1];
+            }
+            $userId = null;
+            if (preg_match('/user_id = (\d+)/', $s, $m)) {
+                $userId = (int) $m[1];
+            }
+            $action = null;
+            if (preg_match("/action = '([^']+)'/", $s, $m)) {
+                $action = $m[1];
+            }
+            $entityType = null;
+            if (preg_match("/entity_type = '([^']+)'/", $s, $m)) {
+                $entityType = $m[1];
+            }
+            $entityId = null;
+            if (preg_match('/entity_id = (\d+)/', $s, $m)) {
+                $entityId = (int) $m[1];
+            }
+            $label = null;
+            if (preg_match("/user_label = '([^']+)'/", $s, $m)) {
+                $label = $m[1];
+            }
+            $from = null;
+            if (preg_match("/DATE\(created_at\) >= '([^']+)'/", $s, $m)) {
+                $from = $m[1];
+            }
+            $to = null;
+            if (preg_match("/DATE\(created_at\) <= '([^']+)'/", $s, $m)) {
+                $to = $m[1];
+            }
+            $needle = null;
+            if (preg_match("/LIKE '%([^']*)%'/", $s, $m)) {
+                $needle = strtolower($m[1]);
+            }
+
+            $match = array_values(array_filter($D['system_logs'], function ($r) use ($portal, $tenant, $userId, $action, $entityType, $entityId, $label, $from, $to, $needle) {
+                if ($portal !== null && $r['portal'] !== $portal) return false;
+                // tenant_id NULL (platform-wide) never matches a tenant filter,
+                // which is exactly what keeps the workspace log scoped.
+                if ($tenant !== null && (int) $r['tenant_id'] !== $tenant) return false;
+                if ($userId !== null && (int) $r['user_id'] !== $userId) return false;
+                if ($action !== null && $r['action'] !== $action) return false;
+                if ($entityType !== null && $r['entity_type'] !== $entityType) return false;
+                if ($entityId !== null && (int) $r['entity_id'] !== $entityId) return false;
+                if ($label !== null && $r['user_label'] !== $label) return false;
+                if ($from !== null && substr((string) $r['created_at'], 0, 10) < $from) return false;
+                if ($to !== null && substr((string) $r['created_at'], 0, 10) > $to) return false;
+                if ($needle !== null) {
+                    $hay = strtolower($r['action'] . ' ' . $r['description'] . ' ' . $r['user_label']);
+                    if (strpos($hay, $needle) === false) return false;
+                }
+                return true;
+            }));
+
+            /* SELECT action, COUNT(*) … GROUP BY action (filter dropdown) */
+            if ($this->has($s, 'GROUP BY action')) {
+                $counts = [];
+                foreach ($match as $r) {
+                    $counts[$r['action']] = isset($counts[$r['action']]) ? $counts[$r['action']] + 1 : 1;
+                }
+                $out = [];
+                foreach ($counts as $a => $n) {
+                    $out[] = ['action' => $a, 'count' => $n, 'COUNT(*)' => $n];
+                }
+                usort($out, function ($a, $b) {
+                    return ($b['count'] <=> $a['count']) ?: strcmp($a['action'], $b['action']);
+                });
+                if (preg_match('/LIMIT (\d+)/i', $s, $m)) {
+                    $out = array_slice($out, 0, (int) $m[1]);
+                }
+                return $out;
+            }
+
+            /* SELECT user_label, COUNT(*) … GROUP BY user_label */
+            if ($this->has($s, 'GROUP BY user_label')) {
+                $counts = [];
+                foreach ($match as $r) {
+                    $lbl = (string) $r['user_label'];
+                    if ($lbl === '') continue;
+                    $counts[$lbl] = isset($counts[$lbl]) ? $counts[$lbl] + 1 : 1;
+                }
+                $out = [];
+                foreach ($counts as $lbl => $n) {
+                    $out[] = ['user_label' => $lbl, 'count' => $n, 'COUNT(*)' => $n];
+                }
+                usort($out, function ($a, $b) {
+                    return ($b['count'] <=> $a['count']) ?: strcmp($a['user_label'], $b['user_label']);
+                });
+                if (preg_match('/LIMIT (\d+)/i', $s, $m)) {
+                    $out = array_slice($out, 0, (int) $m[1]);
+                }
+                return $out;
+            }
+
+            if ($this->has($s, 'COUNT(*)')) {
+                $n = count($match);
+                return [['COUNT(*)' => $n, 'count' => $n, 'c' => $n, 'cnt' => $n]];
+            }
+
+            $asc = $this->has($o, 'ORDER BY created_at ASC');
+            usort($match, function ($a, $b) use ($asc) {
+                $cmp = strcmp((string) $a['created_at'], (string) $b['created_at']);
+                if ($cmp === 0) {
+                    $cmp = (int) $a['id'] <=> (int) $b['id'];
+                }
+                return $asc ? $cmp : -$cmp;
+            });
+            if (preg_match('/LIMIT (\d+)(?:\s+OFFSET (\d+))?/i', $s, $m)) {
+                $match = array_slice($match, isset($m[2]) ? (int) $m[2] : 0, (int) $m[1]);
+            }
+            return array_map(function ($r) use ($s) { return $this->project($r, $s); }, $match);
+        }
+
+        /* ============================================================
+           Workspace backups (includes/tenant_backups.php), the screen
+           the tenant sees in admin/backups.php.
+           ============================================================ */
+        if ($tbl === 'tenant_backups') {
+            if (preg_match('/^\s*(INSERT|UPDATE|DELETE)/i', $s)) {
+                return [];   // registered by logWrite()
+            }
+
+            $tenant = null;
+            if (preg_match('/tenant_id = (\d+)/', $s, $m)) {
+                $tenant = (int) $m[1];
+            }
+            $id = null;
+            if (preg_match('/\bid = (\d+)/', $s, $m)) {
+                $id = (int) $m[1];
+            }
+
+            $match = array_values(array_filter($D['tenant_backups'], function ($r) use ($tenant, $id) {
+                if ($tenant !== null && (int) $r['tenant_id'] !== $tenant) return false;
+                if ($id !== null && (int) $r['id'] !== $id) return false;
+                return true;
+            }));
+
+            if ($this->has($s, 'COUNT(*)')) {
+                $n = count($match);
+                return [['COUNT(*)' => $n, 'count' => $n, 'c' => $n, 'cnt' => $n]];
+            }
+
+            usort($match, function ($a, $b) {
+                $cmp = strcmp((string) $a['created_at'], (string) $b['created_at']);
+                if ($cmp === 0) {
+                    $cmp = (int) $a['id'] <=> (int) $b['id'];
+                }
+                return -$cmp;
+            });
+            if (preg_match('/LIMIT (\d+)/i', $s, $m)) {
+                $match = array_slice($match, 0, (int) $m[1]);
+            }
+            return array_map(function ($r) use ($s) { return $this->project($r, $s); }, $match);
         }
 
         /* ============================================================

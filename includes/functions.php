@@ -3101,6 +3101,8 @@ if (!function_exists('teamPermissionLabels')) {
             'subscription' => 'Subscription',
             'settings'     => 'Workspace Settings',
             'team'         => 'Team Management',
+            'backups'      => 'Workspace Backups',
+            'logs'         => 'Activity Log',
         ];
     }
 }

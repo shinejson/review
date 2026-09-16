@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 CREATE TABLE IF NOT EXISTS system_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     portal VARCHAR(20) NOT NULL COMMENT 'superadmin or admin',
+    tenant_id INT NULL COMMENT 'Workspace the event belongs to; NULL for platform-wide events',
     user_id INT NULL,
     user_label VARCHAR(120) NULL,
     action VARCHAR(100) NOT NULL,
@@ -135,10 +136,29 @@ CREATE TABLE IF NOT EXISTS system_logs (
     user_agent VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_logs_portal (portal),
+    INDEX idx_logs_tenant (tenant_id),
     INDEX idx_logs_user (portal, user_id),
     INDEX idx_logs_action (action),
     INDEX idx_logs_created (created_at)
 );
+
+-- Workspace (tenant) backups
+-- One row per export produced by admin/backups.php; the file itself lives
+-- in backups/tenants/<tenant_id>/. Every row is tenant-scoped so a
+-- workspace can only ever list, download or delete its own files.
+CREATE TABLE IF NOT EXISTS tenant_backups (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    filename VARCHAR(190) NOT NULL,
+    format ENUM('json.gz', 'json') NOT NULL DEFAULT 'json.gz',
+    size_bytes BIGINT NOT NULL DEFAULT 0,
+    table_count INT NOT NULL DEFAULT 0 COMMENT 'Sections included in the export',
+    record_count INT NOT NULL DEFAULT 0 COMMENT 'Rows included in the export',
+    created_by_label VARCHAR(120) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_tb_tenant (tenant_id, created_at),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Categories table
 CREATE TABLE IF NOT EXISTS categories (

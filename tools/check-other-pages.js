@@ -28,6 +28,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const zlib = require('zlib');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -57,12 +58,19 @@ const SIGNED_IN = [
        so the harness signs that workspace in for these two. */
     ['admin/invoice_view.php', 'workspace invoice', '?id=9', { tenantId: 17 }],
     ['admin/payment_checkout.php', 'online checkout', '?invoice=9', { tenantId: 17 }],
+    /* The tenant panel's own backup + activity screens (the super admin
+       has the platform-wide equivalents in superadmin/*.php). */
+    ['admin/backups.php', 'workspace backups', '', { tenantId: 18 }],
+    ['admin/logs.php', 'activity log', '', { tenantId: 18 }],
+    /* The workspace customer list + email composer. Its own doc block and
+       api/submit_rating.php both point at this screen, so it stays in the
+       tenant panel; only the categories screen moved to the platform. */
+    ['admin/customers.php', 'workspace customers', '', { tenantId: 18 }],
 ];
 
-/* Customers and categories moved to the super admin panel: the tenant
-   admin portal must no longer expose these scripts at all. */
+/* Categories moved to the super admin panel: the tenant admin portal must
+   no longer expose that script at all. */
 const REMOVED = [
-    ['admin/customers.php', 'companies page'],
     ['admin/categories.php', 'categories page'],
 ];
 
@@ -179,7 +187,7 @@ function main() {
         if (!ok) fail(script + ' rendered for a tenant admin');
     }
 
-    console.log('\nMoved admin pages (customers + categories are super-admin only now):');
+    console.log('\nMoved admin pages (categories is super-admin only now):');
     for (const [script, label] of REMOVED) {
         const { html, stderr } = runPhp(script, '', { noSuper: true });
         const rendered = /<!DOCTYPE\s+html|<html[\s>]|<body/i.test(html);
@@ -188,13 +196,13 @@ function main() {
         if (!ok) fail(script + ' still renders in the tenant admin panel');
     }
 
-    console.log('\nRemaining admin screens must not link to the moved pages:');
+    console.log('\nRemaining admin screens must not link to the moved page:');
     for (const [script] of SIGNED_IN) {
         const { html } = runPhp(script, '', { noSuper: true });
-        const stale = html.match(/href="(?:\.\/)?(?:customers|categories)\.php[^"]*"/i);
+        const stale = html.match(/href="(?:\.\/)?categories\.php[^"]*"/i);
         const ok = !stale;
         console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${script.padEnd(24)} ${ok ? 'no stale links' : 'LINKS TO ' + stale[0]}`);
-        if (!ok) fail(script + ' still links to a page that moved to the super admin panel');
+        if (!ok) fail(script + ' still links to the categories page that moved to the super admin panel');
     }
 
     console.log('\nTenant admin login:');
@@ -376,6 +384,131 @@ function main() {
         const ok = notes.length === 0;
         if (!ok) failures++;
         console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${'sessions · workspace list'.padEnd(44)} ${ok ? 'lists this workspace’s sign-ins' : notes.join(', ')}`);
+    }
+
+    console.log('\nActivity log — a workspace only ever sees its own history:');
+    {
+        const notes = [];
+        const r = runPhp('admin/logs.php', '', { noSuper: true, tenantId: 18 });
+        const { fatal, warnings } = diagnostics(r.html, r.stderr);
+        if (fatal) notes.push('fatal error');
+        warnings.slice(0, 2).forEach((w) => notes.push(w.trim()));
+        const html = r.html;
+
+        /* its own actions */
+        if (!/Turned automatic renewal on/.test(html)) notes.push('missing this workspace’s own event');
+        /* what the platform did to it — a workspace must see support actions on it */
+        if (!/Moved Volta Logistics to the Enterprise plan/.test(html)) notes.push('missing platform action on this workspace');
+        /* other workspaces' rows */
+        if (/Changed the public page theme colour/.test(html)) notes.push('showed another workspace’s event');
+        if (/Solar Water Pump Installation/.test(html)) notes.push('showed a third workspace’s event');
+        /* platform-wide events that belong to nobody's workspace */
+        if (/Updated platform currency and support email/.test(html)) notes.push('showed a platform-wide event');
+
+        const ok = notes.length === 0;
+        if (!ok) failures++;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${'log · tenant scoping'.padEnd(44)} ${ok ? 'shows only this workspace’s rows' : notes.join(', ')}`);
+
+        /* platform-only view: no workspace actions at all */
+        const p = runPhp('admin/logs.php', 'source=platform', { noSuper: true, tenantId: 18 });
+        const pnotes = [];
+        if (!/Opened a support session for Volta Logistics/.test(p.html)) pnotes.push('hid the support session');
+        if (/Signed in from Accra, Ghana/.test(p.html)) pnotes.push('leaked a workspace-panel action');
+        const pok = pnotes.length === 0;
+        if (!pok) failures++;
+        console.log(`  [${pok ? ' ok ' : 'FAIL'}] ${'log · platform-only filter'.padEnd(44)} ${pok ? 'shows platform actions only' : pnotes.join(', ')}`);
+    }
+
+    console.log('\nWorkspace backups — created, scoped and refused across tenants:');
+    {
+        /* Create: the export must be written for this tenant only, and the
+           action must land in the log. */
+        const create = runPhp('admin/backups.php', 'action=create_backup', { noSuper: true, tenantId: 18, post: true });
+        const { fatal, warnings } = diagnostics(create.html, create.stderr);
+        const notes = [];
+        if (fatal) notes.push('fatal error');
+        warnings.slice(0, 2).forEach((w) => notes.push(w.trim()));
+        if (!create.writes.some((w) => /^INSERT INTO tenant_backups/i.test(w) && /-- \[18,/.test(w))) {
+            notes.push('did not register the backup for tenant 18');
+        }
+        if (!create.writes.some((w) => /^INSERT INTO system_logs/i.test(w) && /-- \["admin",18,/.test(w))) {
+            notes.push('did not log the backup against tenant 18');
+        }
+
+        /* The file itself: every section row must belong to tenant 18, and
+           no password / token may survive in it. */
+        const dir = path.join(BUILD, 'backups', 'tenants', '18');
+        const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /\.json(\.gz)?$/.test(f)) : [];
+        if (!files.length) {
+            notes.push('no backup file was written');
+        } else {
+            const raw = fs.readFileSync(path.join(dir, files[files.length - 1]));
+            let payload = null;
+            try {
+                payload = JSON.parse(files[files.length - 1].endsWith('.gz') ? zlib.gunzipSync(raw).toString('utf8') : raw.toString('utf8'));
+            } catch (e) {
+                notes.push('the backup file is not valid JSON');
+            }
+            if (payload) {
+                const foreign = [];
+                let records = 0;
+                for (const [key, section] of Object.entries(payload.sections || {})) {
+                    for (const row of section.rows || []) {
+                        records++;
+                        if (Object.prototype.hasOwnProperty.call(row, 'tenant_id') && Number(row.tenant_id) !== 18) {
+                            foreign.push(key + '#' + row.id);
+                        }
+                        for (const column of Object.keys(row)) {
+                            if (/^(password|access_token|setup_token|meta_capi_token|secret_key)$/.test(column)) {
+                                foreign.push(key + ' contains ' + column);
+                            }
+                        }
+                    }
+                }
+                if (foreign.length) notes.push('exported rows from another workspace: ' + foreign.slice(0, 3).join(', '));
+                if (!records) notes.push('the export is empty');
+            }
+        }
+
+        const ok = notes.length === 0;
+        if (!ok) failures++;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${'backups · create (scoped export)'.padEnd(44)} ${ok ? 'wrote this workspace’s rows only' : notes.join(', ')}`);
+    }
+    {
+        /* Another workspace's backup: deleting it (id 1 belongs to tenant 15)
+           must be refused, and nothing may be removed. */
+        const r = runPhp('admin/backups.php', 'action=delete_backup&backup_id=1', { noSuper: true, tenantId: 18, post: true });
+        const { fatal } = diagnostics(r.html, r.stderr);
+        const ok = !fatal && !r.writes.some((w) => /^DELETE FROM tenant_backups/i.test(w));
+        if (!ok) failures++;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${'backups · foreign delete refused'.padEnd(44)} ${ok ? 'left the other workspace’s record alone' : 'DELETED A FOREIGN BACKUP'}`);
+
+        /* Downloading it must not stream the file either. */
+        const d = runPhp('admin/backups.php', 'download=1', { noSuper: true, tenantId: 18 });
+        const dok = !diagnostics(d.html, d.stderr).fatal && !/\{|\x1f\x8b/.test(d.html) && d.html.length === 0;
+        if (!dok) failures++;
+        console.log(`  [${dok ? ' ok ' : 'FAIL'}] ${'backups · foreign download refused'.padEnd(44)} ${dok ? 'returned no file' : 'STREAMED A FOREIGN BACKUP'}`);
+    }
+
+    console.log('\nWorkspace writes land in its own activity log:');
+    {
+        /* Toggling a service must write a system_logs row tagged with this
+           workspace, so admin/logs.php fills up on its own. */
+        const r = runPhp('admin/services.php', 'action=toggle_status&service_id=1', { noSuper: true, tenantId: 18, post: true });
+        const { fatal, warnings } = diagnostics(r.html, r.stderr);
+        const notes = [];
+        if (fatal) notes.push('fatal error');
+        warnings.slice(0, 2).forEach((w) => notes.push(w.trim()));
+        const logged = r.writes.find((w) => /^INSERT INTO system_logs/i.test(w));
+        if (!logged) {
+            notes.push('the write was not logged');
+        } else {
+            if (!/"admin",18,/.test(logged)) notes.push('logged the event against another workspace');
+            if (!/"service_toggle"/.test(logged)) notes.push('logged the wrong action name');
+        }
+        const ok = notes.length === 0;
+        if (!ok) failures++;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${'services · write is logged'.padEnd(44)} ${ok ? 'recorded against this workspace' : notes.join(', ')}`);
     }
 
     console.log('\nPublic API endpoints:');

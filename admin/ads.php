@@ -81,6 +81,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
         $ok = saveTenantAdConfig($conn, $tenant_id, $company_id, $data);
         if ($ok) {
+            admin_log_activity($conn, 'ads_pixels', 'Updated the ad tracking pixels & Conversions API settings', 'company', $company_id);
             sa_flash('success', 'Ad tracking pixels & Conversions API settings updated successfully.');
         } else {
             sa_flash('error', 'Could not save ad configuration. Please try again.');
@@ -95,6 +96,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
         if (!empty($testResult['ok'])) {
             $code = $testResult['http_code'] ?? 200;
+            admin_log_activity($conn, 'ads_test_event', 'Sent a test ad conversion event to ' . $platform, 'company', $company_id);
             sa_flash('success', "Live test event dispatched successfully to {$platform} (HTTP {$code}). Check your Events Manager test panel.");
         } else {
             $err = $testResult['error'] ?? 'Unknown connection error';

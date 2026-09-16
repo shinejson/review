@@ -171,6 +171,118 @@ return [
     ],
 
     /* ============================================================
+       Activity log (system_logs)
+       ------------------------------------------------------------
+       Rows for the three portals so both readers can be exercised:
+
+         · tenant 18 (Volta Logistics) — the workspace the admin
+           panel signs in as; mix of workspace actions and events
+           the platform recorded about that workspace.
+         · tenants 15 and 13 — rows that MUST NOT appear in tenant
+           18's log, proving admin/logs.php is scoped.
+         · tenant_id NULL — platform-wide super admin events, which
+           a workspace must never see either.
+
+       `user_kind` is not a column of system_logs; the label is what
+       the UI shows.
+       ============================================================ */
+    'system_logs' => [
+        /* --- tenant 18: workspace-side activity (portal = admin) --- */
+        ['id' => 1, 'portal' => 'admin', 'tenant_id' => 18, 'user_id' => 18, 'user_label' => 'Volta Logistics',
+         'action' => 'sign_in', 'description' => 'Signed in from Accra, Ghana', 'entity_type' => 'tenant', 'entity_id' => 18,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-1 day 2 hour'))],
+        ['id' => 2, 'portal' => 'admin', 'tenant_id' => 18, 'user_id' => 18, 'user_label' => 'Volta Logistics',
+         'action' => 'profile_update', 'description' => 'Updated the workspace phone number and support email', 'entity_type' => 'tenant', 'entity_id' => 18,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-1 day 1 hour'))],
+        ['id' => 3, 'portal' => 'admin', 'tenant_id' => 18, 'user_id' => 18, 'user_label' => 'Volta Logistics',
+         'action' => 'service_create', 'description' => 'Added “Nationwide Freight Tracking” to the services catalogue', 'entity_type' => 'service', 'entity_id' => 4,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-22 hour'))],
+        ['id' => 4, 'portal' => 'admin', 'tenant_id' => 18, 'user_id' => 3, 'user_label' => 'Kwabena Mensah (team)',
+         'action' => 'team_create', 'description' => 'Invited Akosua Boateng as Reviews Team', 'entity_type' => 'team_member', 'entity_id' => 6,
+         'ip_address' => '154.160.11.72', 'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-18 hour'))],
+        ['id' => 5, 'portal' => 'admin', 'tenant_id' => 18, 'user_id' => 3, 'user_label' => 'Kwabena Mensah (team)',
+         'action' => 'review_reply', 'description' => 'Replied to the 3-star review from Kojo A. (Volta Cold Storage)', 'entity_type' => 'rating', 'entity_id' => 900,
+         'ip_address' => '154.160.11.72', 'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-9 hour'))],
+        ['id' => 6, 'portal' => 'admin', 'tenant_id' => 18, 'user_id' => 18, 'user_label' => 'Volta Logistics',
+         'action' => 'plan_request', 'description' => 'Requested a plan change (Enterprise → Enterprise, annual billing)', 'entity_type' => 'subscription', 'entity_id' => 3,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-5 hour'))],
+        ['id' => 7, 'portal' => 'admin', 'tenant_id' => 18, 'user_id' => 18, 'user_label' => 'Volta Logistics',
+         'action' => 'backup_create', 'description' => 'Created backup workspace_18_2026-09-15_090400.json.gz (412.0 KB, 16 sections, 1,284 records)', 'entity_type' => 'backup', 'entity_id' => 1,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-4 hour'))],
+        ['id' => 8, 'portal' => 'admin', 'tenant_id' => 18, 'user_id' => 18, 'user_label' => 'Volta Logistics',
+         'action' => 'backup_download', 'description' => 'Downloaded backup workspace_18_2026-09-15_090400.json.gz', 'entity_type' => 'backup', 'entity_id' => 1,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-3 hour'))],
+        ['id' => 9, 'portal' => 'admin', 'tenant_id' => 18, 'user_id' => 18, 'user_label' => 'Volta Logistics',
+         'action' => 'auto_renew', 'description' => 'Turned automatic renewal on for the Enterprise plan', 'entity_type' => 'subscription', 'entity_id' => 3,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-95 minute'))],
+
+        /* --- tenant 18: what the platform did to this workspace --- */
+        ['id' => 10, 'portal' => 'superadmin', 'tenant_id' => 18, 'user_id' => 1, 'user_label' => 'superadmin',
+         'action' => 'plan_change', 'description' => 'Moved Volta Logistics to the Enterprise plan', 'entity_type' => 'tenant', 'entity_id' => 18,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-2 day'))],
+        ['id' => 11, 'portal' => 'superadmin', 'tenant_id' => 18, 'user_id' => 1, 'user_label' => 'Support session — superadmin',
+         'action' => 'impersonate_start', 'description' => 'Opened a support session for Volta Logistics', 'entity_type' => 'tenant', 'entity_id' => 18,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-6 hour'))],
+
+        /* --- other workspaces: must never show up in tenant 18's log --- */
+        ['id' => 12, 'portal' => 'admin', 'tenant_id' => 15, 'user_id' => 15, 'user_label' => 'Cocoa Coast Exports',
+         'action' => 'sign_in', 'description' => 'Signed in from Takoradi, Ghana', 'entity_type' => 'tenant', 'entity_id' => 15,
+         'ip_address' => '41.66.202.14', 'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-7 hour'))],
+        ['id' => 13, 'portal' => 'admin', 'tenant_id' => 15, 'user_id' => 15, 'user_label' => 'Cocoa Coast Exports',
+         'action' => 'rating_settings_update', 'description' => 'Changed the public page theme colour', 'entity_type' => 'tenant', 'entity_id' => 15,
+         'ip_address' => '41.66.202.14', 'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-2 hour'))],
+        ['id' => 14, 'portal' => 'admin', 'tenant_id' => 13, 'user_id' => 13, 'user_label' => 'Tamale Solar Ltd',
+         'action' => 'service_create', 'description' => 'Added “Solar Water Pump Installation” to the services catalogue', 'entity_type' => 'service', 'entity_id' => 9,
+         'ip_address' => '154.160.11.72', 'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-30 hour'))],
+
+        /* --- platform-wide super admin events (tenant_id NULL) --- */
+        ['id' => 15, 'portal' => 'superadmin', 'tenant_id' => null, 'user_id' => 1, 'user_label' => 'superadmin',
+         'action' => 'settings_update', 'description' => 'Updated platform currency and support email', 'entity_type' => 'settings', 'entity_id' => null,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-3 day'))],
+        ['id' => 16, 'portal' => 'superadmin', 'tenant_id' => null, 'user_id' => 1, 'user_label' => 'superadmin',
+         'action' => 'backup_create', 'description' => 'Created platform backup backup_2026-09-14_020000.sql.gz (18.4 MB)', 'entity_type' => 'backup', 'entity_id' => null,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-2 day 4 hour'))],
+        ['id' => 17, 'portal' => 'superadmin', 'tenant_id' => null, 'user_id' => 1, 'user_label' => 'superadmin',
+         'action' => 'gateway_test', 'description' => 'Re-tested the Paystack live keys — available balance GH₵42,180.55', 'entity_type' => 'payment_gateway', 'entity_id' => 1,
+         'ip_address' => '197.251.200.9', 'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-4 day'))],
+    ],
+
+    /* Workspace backups (admin/backups.php / includes/tenant_backups.php).
+       Only tenant 18 has files registered, so the page proves both the
+       populated and the empty state. The .gz files themselves are written
+       at runtime by the "Create backup" action; the fixture rows older than
+       today therefore show the "file missing" badge, which is also real:
+       a restore replaces the folder and old history stays in the table. */
+    'tenant_backups' => [
+        ['id' => 3, 'tenant_id' => 18, 'filename' => 'workspace_18_2026-09-15_090400.json.gz', 'format' => 'json.gz',
+         'size_bytes' => 421888, 'table_count' => 16, 'record_count' => 1284, 'created_by_label' => 'Volta Logistics',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-4 hour'))],
+        ['id' => 2, 'tenant_id' => 18, 'filename' => 'workspace_18_2026-09-08_083000.json.gz', 'format' => 'json.gz',
+         'size_bytes' => 409600, 'table_count' => 15, 'record_count' => 1201, 'created_by_label' => 'Volta Logistics',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-8 day'))],
+        ['id' => 1, 'tenant_id' => 15, 'filename' => 'workspace_15_2026-09-01_101500.json.gz', 'format' => 'json.gz',
+         'size_bytes' => 233472, 'table_count' => 16, 'record_count' => 742, 'created_by_label' => 'Cocoa Coast Exports',
+         'created_at' => date('Y-m-d H:i:s', strtotime('-15 day'))],
+    ],
+
+    /* ============================================================
        Payments & billing
        ------------------------------------------------------------
        Fixtures for the financial centre. Paystack + the manual bank
