@@ -129,7 +129,7 @@ $companies = sa_query(
 
 $recent_ratings = sa_query(
     $conn,
-    "SELECT r.id, r.rating, r.customer_name, r.customer_email, r.comment, r.created_at,
+    "SELECT r.id, r.rating, r.created_at,
             c.company_name
        FROM ratings r
        JOIN customers c ON c.id = r.company_id
@@ -137,6 +137,12 @@ $recent_ratings = sa_query(
       ORDER BY r.created_at DESC
       LIMIT 8",
     ['ratings', 'customers']
+);
+
+$tenant_support_tickets = sa_query(
+    $conn,
+    "SELECT * FROM platform_feedback WHERE tenant_id = " . $tenant_id . " ORDER BY created_at DESC LIMIT 5",
+    ['platform_feedback']
 );
 
 $star_rows = sa_query(
@@ -432,12 +438,54 @@ include __DIR__ . '/_shell.php';
     </div>
 </section>
 
-<!-- ============ RECENT RATINGS ============ -->
+<!-- ============ TENANT SUPPORT REQUESTS ============ -->
+<?php if (!empty($tenant_support_tickets)): ?>
 <section class="sa-card sa-mt">
     <div class="sa-card-head">
         <div>
-            <h3>Latest ratings</h3>
-            <p>Most recent feedback collected for this tenant</p>
+            <h3>Platform Support Requests</h3>
+            <p>Recent questions and feedback submitted by this workspace</p>
+        </div>
+        <div class="sa-card-head-actions">
+            <a href="reviews.php?tab=support&tenant_id=<?php echo (int)$tenant_id; ?>" class="sa-btn sa-btn-sm sa-btn-ghost">
+                View in Support Center &rarr;
+            </a>
+        </div>
+    </div>
+    <div class="sa-list">
+        <?php foreach ($tenant_support_tickets as $stk): ?>
+            <?php
+                $s_badge = $stk['status'] === 'resolved' 
+                    ? '<span class="sa-badge" style="background:#f0fdf4;color:#166534;font-size:10px;">Resolved</span>'
+                    : ($stk['status'] === 'in_progress' 
+                        ? '<span class="sa-badge" style="background:#eff6ff;color:#1e40af;font-size:10px;">In Progress</span>'
+                        : '<span class="sa-badge" style="background:#fef3c7;color:#92400e;font-size:10px;">Open</span>');
+            ?>
+            <div class="sa-list-item" style="align-items:flex-start">
+                <span class="sa-list-icon is-info"><?php echo sa_icon('message'); ?></span>
+                <span class="sa-list-body">
+                    <strong>#T-<?php echo (int)$stk['id']; ?> &middot; <?php echo sa_e($stk['subject']); ?></strong>
+                    <span class="sa-muted" style="font-size:12px;"><?php echo sa_e($stk['message']); ?></span>
+                    <?php if (!empty($stk['admin_reply'])): ?>
+                        <span style="font-size:11px;color:#16a34a;margin-top:2px;">✓ Superadmin replied</span>
+                    <?php endif; ?>
+                </span>
+                <span class="sa-list-side">
+                    <?php echo $s_badge; ?>
+                    <strong style="margin-top:4px"><?php echo sa_time_ago($stk['created_at']); ?></strong>
+                </span>
+            </div>
+        <?php endforeach; ?>
+    </div>
+</section>
+<?php endif; ?>
+
+<!-- ============ RECENT RATING ACTIVITY (PRIVACY PROTECTED) ============ -->
+<section class="sa-card sa-mt">
+    <div class="sa-card-head">
+        <div>
+            <h3>Rating activity</h3>
+            <p>Recent customer review signals &middot; <span class="sa-badge" style="background:#f1f5f9;color:#64748b;font-size:10px">🔒 Protected by privacy policy</span></p>
         </div>
     </div>
 <?php if (!$recent_ratings): ?>
@@ -452,8 +500,8 @@ include __DIR__ . '/_shell.php';
         <div class="sa-list-item" style="align-items:flex-start">
             <span class="sa-list-icon is-warning"><?php echo sa_icon('star'); ?></span>
             <span class="sa-list-body">
-                <strong><?php echo sa_e($r['company_name']); ?> &middot; <?php echo sa_e($r['customer_name']); ?></strong>
-                <span><?php echo sa_e($r['comment'] !== '' && $r['comment'] !== null ? $r['comment'] : 'No comment left'); ?></span>
+                <strong><?php echo sa_e($r['company_name']); ?> &middot; Customer #<?php echo (int)$r['id']; ?></strong>
+                <span class="sa-muted" style="font-size:12px;font-style:italic">🔒 Content confidential to workspace</span>
             </span>
             <span class="sa-list-side">
                 <?php echo sa_stars($r['rating'], false); ?>

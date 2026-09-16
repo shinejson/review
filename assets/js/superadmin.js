@@ -289,7 +289,26 @@
         var inputs = document.querySelectorAll('[data-sa-search]');
         for (var i = 0; i < inputs.length; i++) {
             (function (input) {
-                var target = document.querySelector(input.getAttribute('data-sa-search'));
+                var sel = input.getAttribute('data-sa-search') || '';
+                var target = null;
+                if (sel && sel !== 'global') {
+                    try {
+                        target = document.querySelector(sel);
+                    } catch (err) {
+                        target = null;
+                    }
+                }
+                if (!target) {
+                    // Global mode (or a stale selector): bind to the first
+                    // table on the page that actually has filterable rows.
+                    var tables = document.querySelectorAll('table');
+                    for (var t = 0; t < tables.length; t++) {
+                        if (tables[t].querySelector('tbody tr[data-filterable], tbody tr[data-search]')) {
+                            target = tables[t];
+                            break;
+                        }
+                    }
+                }
                 if (!target) {
                     return;
                 }
@@ -644,18 +663,83 @@
         };
     }
 
-    /* ---------- Confirm destructive actions ---------- */
+    /* ---------- Confirm destructive actions (modal) ---------- */
     function initConfirms() {
+        var confirmDialog = document.getElementById('sa-confirm-dialog');
+        if (!confirmDialog) {
+            confirmDialog = document.createElement('dialog');
+            confirmDialog.className = 'sa-dialog';
+            confirmDialog.id = 'sa-confirm-dialog';
+            confirmDialog.innerHTML = '' +
+                '<div class="sa-dialog-inner" style="padding:24px 26px;max-width:480px;border-radius:var(--sa-radius);background:var(--sa-surface-solid);">' +
+                '<div class="sa-dialog-body" style="padding:0;margin-bottom:20px;"><p id="sa-confirm-msg" style="margin:0;font-size:14.5px;color:var(--sa-heading);line-height:1.55;font-weight:550;"></p></div>' +
+                '<div style="display:flex;gap:10px;justify-content:flex-end;">' +
+                '<button type="button" class="sa-btn sa-btn-ghost sa-dialog-close">Cancel</button>' +
+                '<button type="button" class="sa-btn sa-btn-danger sa-dialog-confirm">Confirm</button>' +
+                '</div>' +
+                '</div>';
+            document.body.appendChild(confirmDialog);
+            confirmDialog.querySelector('.sa-dialog-close').addEventListener('click', function () {
+                closeDialog(confirmDialog);
+            });
+        }
+
         document.addEventListener('click', function (e) {
             var el = e.target.closest ? e.target.closest('[data-sa-confirm]') : null;
             if (!el) {
                 return;
             }
-            if (!window.confirm(el.getAttribute('data-sa-confirm'))) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
+            e.preventDefault();
+            e.stopPropagation();
+
+            var msg = el.getAttribute('data-sa-confirm') || 'Are you sure?';
+            var msgNode = confirmDialog.querySelector('#sa-confirm-msg');
+            if (msgNode) msgNode.textContent = msg;
+
+            var href = el.getAttribute('href');
+            var okBtn = confirmDialog.querySelector('.sa-dialog-confirm');
+
+            okBtn.onclick = function () {
+                closeDialog(confirmDialog);
+                if (href) {
+                    window.location.href = href;
+                }
+            };
+
+            openDialog(confirmDialog);
         });
+    }
+
+    /* ---------- Dedicated Superadmin Logout Modal ---------- */
+    function initLogoutModal() {
+        var modal = document.getElementById('saLogoutModal');
+        if (!modal) return;
+
+        // Open modal on click of any logout trigger
+        document.addEventListener('click', function (e) {
+            var trigger = e.target.closest ? e.target.closest('[data-sa-logout-trigger]') : null;
+            if (!trigger) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            var href = trigger.getAttribute('href');
+            var confirmBtn = modal.querySelector('.sa-logout-btn-confirm');
+            if (href && confirmBtn) {
+                confirmBtn.setAttribute('href', href);
+            }
+
+            openDialog(modal);
+        });
+
+        // Close on cancel buttons
+        var closers = modal.querySelectorAll('[data-sa-close-dialog]');
+        for (var i = 0; i < closers.length; i++) {
+            closers[i].addEventListener('click', function (e) {
+                e.preventDefault();
+                closeDialog(modal);
+            });
+        }
     }
 
     /* ---------- Back to top ---------- */
@@ -677,7 +761,20 @@
     }
 
     /* ---------- Card Collapse / Expand ---------- */
+    /* ---------- Card collapse / expand ---------- */
     function initCardCollapse() {
+        // Polyfill for Element.prototype.closest (for older browsers)
+        if (!Element.prototype.closest) {
+            Element.prototype.closest = function(s) {
+                var el = this;
+                do {
+                    if (Element.prototype.matches.call(el, s)) return el;
+                    el = el.parentElement || el.parentNode;
+                } while (el !== null && el.nodeType === 1);
+                return null;
+            };
+        }
+
         // Restore saved collapsed states
         var cards = document.querySelectorAll('.sa-card[data-card-id]');
         cards.forEach(function (card) {
@@ -700,7 +797,7 @@
 
         // Click delegation
         document.addEventListener('click', function (e) {
-            var toggleBtn = e.target.closest ? e.target.closest('.sa-card-toggle') : null;
+            var toggleBtn = e.target.closest('.sa-card-toggle');
             if (!toggleBtn) return;
             if (toggleBtn.getAttribute('onclick') || toggleBtn.getAttribute('data-action') === 'refresh') return;
 
@@ -722,6 +819,38 @@
         });
     }
 
+    /* ---------- Horizontal table scroll indicators ---------- */
+    function initTableScroll() {
+        var wraps = document.querySelectorAll('.sa-table-wrap');
+        if (!wraps.length) return;
+
+        function updateWrap(wrap) {
+            var maxScroll = wrap.scrollWidth - wrap.clientWidth;
+            if (maxScroll > 2) {
+                wrap.classList.add('has-scroll');
+                wrap.classList.toggle('can-scroll-left', wrap.scrollLeft > 4);
+                wrap.classList.toggle('can-scroll-right', wrap.scrollLeft < maxScroll - 4);
+            } else {
+                wrap.classList.remove('has-scroll', 'can-scroll-left', 'can-scroll-right');
+            }
+        }
+
+        for (var i = 0; i < wraps.length; i++) {
+            (function (wrap) {
+                wrap.addEventListener('scroll', function () {
+                    updateWrap(wrap);
+                }, { passive: true });
+                updateWrap(wrap);
+            })(wraps[i]);
+        }
+
+        window.addEventListener('resize', function () {
+            for (var j = 0; j < wraps.length; j++) {
+                updateWrap(wraps[j]);
+            }
+        }, { passive: true });
+    }
+
     onReady(function () {
         initTheme();
         initSidebar();
@@ -737,5 +866,7 @@
         initConfirms();
         initBackToTop();
         initCardCollapse();
+        initTableScroll();
+        initLogoutModal();
     });
 })();

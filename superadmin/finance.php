@@ -588,7 +588,7 @@ include __DIR__ . '/_shell.php';
 
 <!-- ============ APPROVALS QUEUE ============ -->
 <?php if ($pending_payments): ?>
-<section class="sa-card sa-mt" id="approvals">
+<section class="sa-card sa-mt sa-card-collapsed" id="approvals" data-card-id="approvals">
     <div class="sa-card-head">
         <div>
             <h3>Payments awaiting confirmation</h3>
@@ -599,6 +599,7 @@ include __DIR__ . '/_shell.php';
         </div>
         <div class="sa-card-head-actions">
             <span class="sa-badge sa-badge-pending"><?php echo sa_e(sa_num(count($pending_payments))); ?> to review</span>
+            <button type="button" class="sa-card-toggle" aria-label="Expand card" title="Expand" aria-expanded="false"><?php echo sa_icon('chevron-up'); ?></button>
         </div>
     </div>
 
@@ -687,7 +688,7 @@ include __DIR__ . '/_shell.php';
 
 <!-- ============ CHARTS ============ -->
 <div class="sa-grid sa-split-2-1 sa-mt">
-    <section class="sa-card">
+    <section class="sa-card sa-card-collapsed" data-card-id="revenue_collected">
         <div class="sa-card-head">
             <div>
                 <h3>Revenue collected</h3>
@@ -696,6 +697,7 @@ include __DIR__ . '/_shell.php';
             <div class="sa-card-head-actions">
                 <span class="sa-pill"><i style="width:9px;height:3px;border-radius:2px;background:var(--sa-lime);display:inline-block"></i> Collected</span>
                 <span class="sa-pill"><i style="width:9px;height:3px;border-radius:2px;background:var(--sa-info);display:inline-block"></i> Refunded</span>
+                <button type="button" class="sa-card-toggle" aria-label="Expand card" title="Expand" aria-expanded="false"><?php echo sa_icon('chevron-up'); ?></button>
             </div>
         </div>
         <div class="sa-card-pad">
@@ -710,11 +712,14 @@ include __DIR__ . '/_shell.php';
         </div>
     </section>
 
-    <section class="sa-card">
+    <section class="sa-card sa-card-collapsed" data-card-id="gateway_mix">
         <div class="sa-card-head">
             <div>
                 <h3>Where the money comes from</h3>
                 <p>Confirmed payments by integration<?php echo $range_days ? ' — last ' . (int) $range_days . ' days' : ''; ?></p>
+            </div>
+            <div class="sa-card-head-actions">
+                <button type="button" class="sa-card-toggle" aria-label="Expand card" title="Expand" aria-expanded="false"><?php echo sa_icon('chevron-up'); ?></button>
             </div>
         </div>
         <div class="sa-card-pad">
@@ -736,11 +741,14 @@ echo sa_donut($mix_segments, ['value' => $money(array_sum(array_column($gateway_
 </div>
 
 <div class="sa-grid sa-split-1-2 sa-mt">
-    <section class="sa-card">
+    <section class="sa-card sa-card-collapsed" data-card-id="payment_channels">
         <div class="sa-card-head">
             <div>
                 <h3>Payment channels</h3>
                 <p>Cards, mobile money and transfers</p>
+            </div>
+            <div class="sa-card-head-actions">
+                <button type="button" class="sa-card-toggle" aria-label="Expand card" title="Expand" aria-expanded="false"><?php echo sa_icon('chevron-up'); ?></button>
             </div>
         </div>
         <div class="sa-card-pad">
@@ -760,7 +768,7 @@ echo $method_bars
         </div>
     </section>
 
-    <section class="sa-card">
+    <section class="sa-card sa-card-collapsed" data-card-id="renewals_due">
         <div class="sa-card-head">
             <div>
                 <h3>Renewals to collect</h3>
@@ -768,6 +776,7 @@ echo $method_bars
             </div>
             <div class="sa-card-head-actions">
                 <a class="sa-btn sa-btn-sm sa-btn-ghost" href="subscriptions.php?view=due"><?php echo sa_icon('external'); ?> Subscriptions</a>
+                <button type="button" class="sa-card-toggle" aria-label="Expand card" title="Expand" aria-expanded="false"><?php echo sa_icon('chevron-up'); ?></button>
             </div>
         </div>
         <div class="sa-table-wrap">

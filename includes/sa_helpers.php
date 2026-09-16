@@ -1478,3 +1478,36 @@ if (!function_exists('sa_ensure_payments_schema')) {
     }
 }
 
+if (!function_exists('sa_ensure_platform_feedback_schema')) {
+    /** Auto-ensure the platform_feedback table exists for tenant tickets & platform communication. */
+    function sa_ensure_platform_feedback_schema($conn)
+    {
+        static $done = false;
+        if ($done || !$conn) return;
+
+        $conn->query(
+            "CREATE TABLE IF NOT EXISTS platform_feedback (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                tenant_id INT NOT NULL,
+                company_id INT NULL,
+                ticket_type ENUM('support', 'feature_request', 'bug_report', 'billing', 'general') DEFAULT 'support',
+                priority ENUM('low', 'medium', 'high', 'urgent') DEFAULT 'medium',
+                subject VARCHAR(255) NOT NULL,
+                message TEXT NOT NULL,
+                status ENUM('open', 'in_progress', 'resolved', 'closed') DEFAULT 'open',
+                admin_notes TEXT NULL,
+                admin_reply TEXT NULL,
+                replied_at DATETIME NULL,
+                resolved_at DATETIME NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_tenant (tenant_id),
+                INDEX idx_status (status),
+                INDEX idx_created (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
+        );
+        $done = true;
+    }
+}
+
+

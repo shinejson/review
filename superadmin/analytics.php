@@ -66,6 +66,7 @@ foreach ($trend as $row) {
     $rating_series[] = $rc;
     $avg_series[] = $av;
     $table_rows[] = [
+        'ym' => $row['ym'],
         'label' => $row['label_long'],
         'new_tenants' => (int) $row['new_tenants'],
         'tenants' => (int) $row['tenants'],
@@ -131,7 +132,7 @@ $heat_cells = array_map(function ($r) {
 /* Rating totals per tenant (for the league table) */
 $tenant_league = sa_query(
     $conn,
-    "SELECT t.id, t.company_name, t.subscription_status, p.plan_name,
+    "SELECT t.id, t.public_id, t.company_name, t.subscription_status, p.plan_name,
             COUNT(DISTINCT c.id) AS companies,
             COUNT(r.id) AS rating_count,
             COALESCE(AVG(r.rating), 0) AS avg_rating
@@ -139,7 +140,7 @@ $tenant_league = sa_query(
        LEFT JOIN subscription_plans p ON p.id = t.plan_id
        LEFT JOIN customers c ON c.tenant_id = t.id
        LEFT JOIN ratings r ON r.company_id = c.id
-      GROUP BY t.id, t.company_name, t.subscription_status, p.plan_name
+      GROUP BY t.id, t.public_id, t.company_name, t.subscription_status, p.plan_name
       ORDER BY rating_count DESC, avg_rating DESC",
     ['tenants', 'subscription_plans', 'customers', 'ratings']
 );
@@ -228,7 +229,7 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <!-- ============ MACRO PLATFORM TELEMETRY & LEADS ============ -->
-<div class="sa-card sa-mb sa-anim">
+<div class="sa-card sa-mb sa-anim" data-card-id="telemetry">
     <div class="sa-card-head">
         <div>
             <div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:2px">
@@ -239,6 +240,7 @@ include __DIR__ . '/_shell.php';
         </div>
         <div class="sa-card-head-actions">
             <span class="sa-pill" style="color:var(--sa-success);"><?php echo sa_icon('activity'); ?> <?php echo sa_e(sa_num($telemetry['total_events'])); ?> interactions logged</span>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse"><?php echo sa_icon('chevron-up'); ?></button>
         </div>
     </div>
     <div class="sa-card-pad" style="padding-top:0">
@@ -292,13 +294,16 @@ include __DIR__ . '/_shell.php';
 
 <!-- ============ MAIN CHARTS ============ -->
 <div class="sa-grid sa-split-2-1">
-    <section class="sa-card">
+    <section class="sa-card" data-card-id="revenue_trend">
         <div class="sa-card-head">
             <div>
                 <h3>Revenue trend</h3>
                 <p>Cumulative monthly recurring revenue</p>
             </div>
-            <span class="sa-pill"><?php echo sa_e(sa_money($last_mrr)); ?> today</span>
+            <div class="sa-card-head-actions">
+                <span class="sa-pill"><?php echo sa_e(sa_money($last_mrr)); ?> today</span>
+                <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse"><?php echo sa_icon('chevron-up'); ?></button>
+            </div>
         </div>
         <div class="sa-card-pad">
             <?php echo sa_line_chart($labels, [
@@ -307,12 +312,13 @@ include __DIR__ . '/_shell.php';
         </div>
     </section>
 
-    <section class="sa-card">
+    <section class="sa-card" data-card-id="new_tenants">
         <div class="sa-card-head">
             <div>
                 <h3>New tenants</h3>
                 <p>Signups per month</p>
             </div>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse"><?php echo sa_icon('chevron-up'); ?></button>
         </div>
         <div class="sa-card-pad">
             <?php
@@ -327,7 +333,7 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <div class="sa-grid sa-split-2-1 sa-mt">
-    <section class="sa-card">
+    <section class="sa-card" data-card-id="ratings_volume">
         <div class="sa-card-head">
             <div>
                 <h3>Ratings volume</h3>
@@ -336,6 +342,7 @@ include __DIR__ . '/_shell.php';
             <div class="sa-card-head-actions">
                 <span class="sa-pill"><i style="width:9px;height:3px;border-radius:2px;background:var(--sa-lime);display:inline-block"></i> Volume</span>
                 <span class="sa-pill"><i style="width:9px;height:3px;border-radius:2px;background:var(--sa-info);display:inline-block"></i> Avg score</span>
+                <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse"><?php echo sa_icon('chevron-up'); ?></button>
             </div>
         </div>
         <div class="sa-card-pad">
@@ -350,12 +357,13 @@ include __DIR__ . '/_shell.php';
         </div>
     </section>
 
-    <section class="sa-card">
+    <section class="sa-card" data-card-id="score_distribution">
         <div class="sa-card-head">
             <div>
                 <h3>Score distribution</h3>
                 <p>All ratings ever recorded</p>
             </div>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse"><?php echo sa_icon('chevron-up'); ?></button>
         </div>
         <div class="sa-card-pad">
             <?php echo sa_bar_list($star_items); ?>
@@ -369,36 +377,39 @@ include __DIR__ . '/_shell.php';
 
 <!-- ============ DISTRIBUTIONS ============ -->
 <div class="sa-grid sa-cols-3 sa-mt">
-    <section class="sa-card">
+    <section class="sa-card" data-card-id="plan_mix">
         <div class="sa-card-head">
             <div>
                 <h3>Plan mix</h3>
                 <p>Tenants and MRR per plan</p>
             </div>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse"><?php echo sa_icon('chevron-up'); ?></button>
         </div>
         <div class="sa-card-pad">
             <?php echo sa_donut($plan_segments, ['value' => sa_num($m['paying'] + $m['status']['trial']), 'label' => 'Subscribed'], 150); ?>
         </div>
     </section>
 
-    <section class="sa-card">
+    <section class="sa-card" data-card-id="lifecycle">
         <div class="sa-card-head">
             <div>
                 <h3>Lifecycle</h3>
                 <p>Status of every tenant</p>
             </div>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse"><?php echo sa_icon('chevron-up'); ?></button>
         </div>
         <div class="sa-card-pad">
             <?php echo sa_donut($status_segments, ['value' => sa_num($m['tenants_total']), 'label' => 'Tenants'], 150); ?>
         </div>
     </section>
 
-    <section class="sa-card">
+    <section class="sa-card" data-card-id="top_companies">
         <div class="sa-card-head">
             <div>
                 <h3>Top companies</h3>
                 <p>Most reviewed across all tenants</p>
             </div>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse"><?php echo sa_icon('chevron-up'); ?></button>
         </div>
         <div class="sa-card-pad">
             <?php echo sa_bar_list($top_bars); ?>
@@ -407,13 +418,16 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <!-- ============ HEATMAP ============ -->
-<section class="sa-card sa-mt">
+<section class="sa-card sa-mt" data-card-id="rating_activity">
     <div class="sa-card-head">
         <div>
             <h3>Rating activity</h3>
             <p>Each square is one day — darker means more ratings collected</p>
         </div>
-        <span class="sa-pill">Last <?php echo count($heat_cells); ?> days</span>
+        <div class="sa-card-head-actions">
+            <span class="sa-pill">Last <?php echo count($heat_cells); ?> days</span>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse"><?php echo sa_icon('chevron-up'); ?></button>
+        </div>
     </div>
     <div class="sa-card-pad">
         <?php echo sa_heatmap($heat_cells, 21); ?>
@@ -421,7 +435,7 @@ include __DIR__ . '/_shell.php';
 </section>
 
 <!-- ============ TENANT LEAGUE ============ -->
-<section class="sa-card sa-mt">
+<section class="sa-card sa-mt" data-card-id="tenant_league">
     <div class="sa-card-head">
         <div>
             <h3>Tenant league table</h3>
@@ -431,11 +445,12 @@ include __DIR__ . '/_shell.php';
             <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" data-sa-export="#leagueTable" data-sa-export-name="optibiz-tenant-league">
                 <?php echo sa_icon('download'); ?> CSV
             </button>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse"><?php echo sa_icon('chevron-up'); ?></button>
         </div>
     </div>
     <div class="sa-table-wrap">
         <table class="sa-table" id="leagueTable" data-sa-sortable-table>
-            <thead scope="col">
+            <thead>
                 <tr>
                     <th data-sa-sort="0" scope="col" aria-sort="none">Tenant</th>
                     <th data-sa-sort="1" scope="col" aria-sort="none">Plan</th>
@@ -444,12 +459,13 @@ include __DIR__ . '/_shell.php';
                     <th data-sa-sort="4" data-type="num" scope="col" aria-sort="none">Ratings</th>
                     <th data-sa-sort="5" data-type="num" scope="col" aria-sort="none">Avg score</th>
                     <th data-sa-sort="6" data-type="num" scope="col" aria-sort="none">Share</th>
+                    <th data-no-export scope="col" style="width:1%;white-space:nowrap;"><span class="sa-sr-only">Actions</span></th>
                 </tr>
             </thead>
             <tbody>
 <?php if (!$tenant_league): ?>
                 <tr data-static>
-                    <td colspan="7">
+                    <td colspan="8">
                         <div class="sa-empty">
                             <?php echo sa_icon('chart'); ?>
                             <strong>No tenant data yet</strong>
@@ -464,7 +480,14 @@ include __DIR__ . '/_shell.php';
                     <td>
                         <div class="sa-cell-main">
                             <span class="sa-cell-avatar"><?php echo sa_e(sa_initials($row['company_name'])); ?></span>
-                            <span class="sa-cell-text"><strong><?php echo sa_e($row['company_name']); ?></strong></span>
+                            <div class="sa-cell-text">
+                                <a href="tenant_details.php?id=<?php echo (int) $row['id']; ?>" style="font-weight:700;color:inherit;text-decoration:none;">
+                                    <?php echo sa_e($row['company_name']); ?>
+                                </a>
+                                <?php if (!empty($row['public_id'])): ?>
+                                    <span class="sa-badge" style="font-family:monospace;background:rgba(99,102,241,0.1);color:#4338ca;border:1px solid rgba(99,102,241,0.22);font-size:10px;padding:1px 6px;margin-left:4px;border-radius:4px;font-weight:700;"><?php echo sa_e($row['public_id']); ?></span>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </td>
                     <td><span class="sa-badge sa-badge-plan"><?php echo sa_e($row['plan_name'] ? $row['plan_name'] : 'No plan'); ?></span></td>
@@ -472,8 +495,18 @@ include __DIR__ . '/_shell.php';
                     <td class="num" data-sort-value="<?php echo (int) $row['companies']; ?>"><?php echo sa_e(sa_num($row['companies'])); ?></td>
                     <td class="num" data-sort-value="<?php echo (int) $row['rating_count']; ?>"><?php echo sa_e(sa_num($row['rating_count'])); ?></td>
                     <td data-sort-value="<?php echo sa_e($row['avg_rating']); ?>"><?php echo $row['rating_count'] > 0 ? sa_stars($row['avg_rating']) : '<span class="sa-faint">—</span>'; ?></td>
-                    <td style="min-width:130px" data-sort-value="<?php echo sa_e($share); ?>">
-                        <div class="sa-progress"><i style="--w:<?php echo sa_e($share); ?>%"></i></div>
+                    <td style="min-width:140px" data-sort-value="<?php echo sa_e($share); ?>">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div class="sa-progress" style="flex:1;"><i style="--w:<?php echo sa_e($share); ?>%"></i></div>
+                            <span style="font-size:11.5px;font-weight:700;color:var(--sa-muted);min-width:38px;text-align:right;"><?php echo number_format($share, 1); ?>%</span>
+                        </div>
+                    </td>
+                    <td data-no-export style="white-space:nowrap;width:1%;">
+                        <div class="sa-row-actions" style="display:flex;align-items:center;gap:4px;">
+                            <a class="sa-btn sa-btn-sm sa-btn-ghost" href="tenant_details.php?id=<?php echo (int) $row['id']; ?>" title="View tenant profile">
+                                <?php echo sa_icon('eye'); ?>
+                            </a>
+                        </div>
                     </td>
                 </tr>
 <?php endforeach; ?>
@@ -484,7 +517,7 @@ include __DIR__ . '/_shell.php';
 </section>
 
 <!-- ============ MONTHLY BREAKDOWN ============ -->
-<section class="sa-card sa-mt">
+<section class="sa-card sa-mt" data-card-id="monthly_breakdown">
     <div class="sa-card-head">
         <div>
             <h3>Monthly breakdown</h3>
@@ -494,11 +527,12 @@ include __DIR__ . '/_shell.php';
             <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" data-sa-export="#monthlyTable" data-sa-export-name="optibiz-monthly-breakdown">
                 <?php echo sa_icon('download'); ?> CSV
             </button>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse"><?php echo sa_icon('chevron-up'); ?></button>
         </div>
     </div>
     <div class="sa-table-wrap">
         <table class="sa-table" id="monthlyTable" data-sa-sortable-table>
-            <thead scope="col">
+            <thead>
                 <tr>
                     <th data-sa-sort="0" data-type="date" scope="col" aria-sort="none">Month</th>
                     <th data-sa-sort="1" data-type="num" scope="col" aria-sort="none">New tenants</th>
@@ -519,13 +553,13 @@ include __DIR__ . '/_shell.php';
 <?php else: ?>
 <?php foreach (array_reverse($table_rows) as $row): ?>
                 <tr>
-                    <td><?php echo sa_e($row['label']); ?></td>
-                    <td class="num"><?php echo sa_e(sa_num($row['new_tenants'])); ?></td>
-                    <td class="num"><?php echo sa_e(sa_num($row['tenants'])); ?></td>
-                    <td class="num" data-export-value="<?php echo sa_e(number_format($row['new_mrr'], 2, '.', '')); ?>"><?php echo sa_e(sa_money($row['new_mrr'])); ?></td>
-                    <td class="num" data-export-value="<?php echo sa_e(number_format($row['mrr'], 2, '.', '')); ?>"><?php echo sa_e(sa_money($row['mrr'])); ?></td>
-                    <td class="num"><?php echo sa_e(sa_num($row['ratings'])); ?></td>
-                    <td class="num"><?php echo $row['avg'] > 0 ? sa_e(number_format($row['avg'], 2)) . ' ★' : '<span class="sa-faint">—</span>'; ?></td>
+                    <td data-sort-value="<?php echo sa_e($row['ym']); ?>"><strong><?php echo sa_e($row['label']); ?></strong></td>
+                    <td class="num" data-sort-value="<?php echo (int) $row['new_tenants']; ?>"><?php echo sa_e(sa_num($row['new_tenants'])); ?></td>
+                    <td class="num" data-sort-value="<?php echo (int) $row['tenants']; ?>"><?php echo sa_e(sa_num($row['tenants'])); ?></td>
+                    <td class="num" data-sort-value="<?php echo sa_e($row['new_mrr']); ?>" data-export-value="<?php echo sa_e(number_format($row['new_mrr'], 2, '.', '')); ?>"><?php echo sa_e(sa_money($row['new_mrr'])); ?></td>
+                    <td class="num" data-sort-value="<?php echo sa_e($row['mrr']); ?>" data-export-value="<?php echo sa_e(number_format($row['mrr'], 2, '.', '')); ?>"><?php echo sa_e(sa_money($row['mrr'])); ?></td>
+                    <td class="num" data-sort-value="<?php echo (int) $row['ratings']; ?>"><?php echo sa_e(sa_num($row['ratings'])); ?></td>
+                    <td class="num" data-sort-value="<?php echo sa_e($row['avg']); ?>"><?php echo $row['avg'] > 0 ? sa_e(number_format($row['avg'], 2)) . ' ★' : '<span class="sa-faint">—</span>'; ?></td>
                 </tr>
 <?php endforeach; ?>
 <?php endif; ?>

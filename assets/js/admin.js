@@ -268,12 +268,52 @@
         });
     }
 
-    /* ---------- Search shortcut ---------- */
+    /* ---------- Search (live page filtering) ---------- */
     function initSearch() {
         var searchInput = document.querySelector('.admin-search input');
         if (!searchInput) {
             return;
         }
+
+        // Bind the topnav search to the first table on the page that has
+        // filterable rows; fall back to the first table with a body.
+        function resolveTarget() {
+            var tables = document.querySelectorAll('table');
+            var i;
+            for (i = 0; i < tables.length; i++) {
+                if (tables[i].querySelector('tbody tr[data-filterable], tbody tr[data-search]')) {
+                    return tables[i];
+                }
+            }
+            for (i = 0; i < tables.length; i++) {
+                if (tables[i].querySelector('tbody tr:not([data-static])')) {
+                    return tables[i];
+                }
+            }
+            return null;
+        }
+
+        var target = resolveTarget();
+        var rows = [];
+        if (target) {
+            rows = target.querySelectorAll('tbody tr[data-filterable], tbody tr[data-search]');
+            if (!rows.length) {
+                rows = target.querySelectorAll('tbody tr:not([data-static])');
+            }
+        }
+
+        // Live filter as the admin types
+        searchInput.addEventListener('input', function () {
+            if (!rows.length) {
+                return;
+            }
+            var q = searchInput.value.trim().toLowerCase();
+            for (var r = 0; r < rows.length; r++) {
+                var text = (rows[r].getAttribute('data-search') || rows[r].textContent).toLowerCase();
+                var match = !q || text.indexOf(q) !== -1;
+                rows[r].style.display = match ? '' : 'none';
+            }
+        });
 
         document.addEventListener('keydown', function (e) {
             // Don't trigger if user is already typing in an input
@@ -286,11 +326,14 @@
             }
         });
 
-        // Clear search on Escape
+        // Clear search on Escape (and restore hidden rows)
         searchInput.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
                 searchInput.blur();
                 searchInput.value = '';
+                for (var r = 0; r < rows.length; r++) {
+                    rows[r].style.display = '';
+                }
             }
         });
     }
@@ -353,16 +396,119 @@
         }
     }
 
-    /* ---------- Confirm destructive actions (sign out) ---------- */
+    /* ---------- Modal confirm (sign out) ---------- */
+    function openAdminDialog(dialog) {
+        if (!dialog) return;
+        if (typeof dialog.showModal === 'function') {
+            dialog.showModal();
+        } else {
+            dialog.setAttribute('open', '');
+            dialog.classList.add('is-open-fallback');
+        }
+    }
+
+    function closeAdminDialog(dialog) {
+        if (!dialog) return;
+        if (typeof dialog.close === 'function') {
+            dialog.close();
+        } else {
+            dialog.removeAttribute('open');
+            dialog.classList.remove('is-open-fallback');
+        }
+    }
+
     function initConfirms() {
+        var dlg = document.getElementById('admin-confirm-dialog');
+        if (!dlg) {
+            dlg = document.createElement('dialog');
+            dlg.id = 'admin-confirm-dialog';
+            dlg.innerHTML = '' +
+                '<form method="dialog" class="admin-confirm-form" style="padding:20px;border-radius:8px;max-width:460px;">' +
+                '<p id="admin-confirm-msg" style="margin:0 0 16px;font-size:15px;color:var(--ink, #111);"></p>' +
+                '<menu style="display:flex;gap:8px;justify-content:flex-end;">' +
+                '<button type="button" class="admin-confirm-cancel">Cancel</button>' +
+                '<button type="submit" class="admin-confirm-ok">Continue</button>' +
+                '</menu>' +
+                '</form>';
+            document.body.appendChild(dlg);
+            dlg.querySelector('.admin-confirm-cancel').addEventListener('click', function () {
+                closeAdminDialog(dlg);
+            });
+        }
+
         document.addEventListener('click', function (e) {
             var el = e.target.closest ? e.target.closest('[data-admin-confirm]') : null;
             if (!el) {
                 return;
             }
-            if (!window.confirm(el.getAttribute('data-admin-confirm'))) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            var msg = el.getAttribute('data-admin-confirm') || 'Are you sure?';
+            var msgNode = dlg.querySelector('#admin-confirm-msg');
+            if (msgNode) {
+                msgNode.textContent = msg;
+            }
+
+            var href = el.getAttribute('href');
+            var okBtn = dlg.querySelector('.admin-confirm-ok');
+
+            okBtn.onclick = function (ev) {
+                ev.preventDefault();
+                closeAdminDialog(dlg);
+                if (href) {
+                    window.location.href = href;
+                }
+                return false;
+            };
+
+            openAdminDialog(dlg);
+        });
+    }
+
+    /* ---------- Dedicated Logout Confirmation Modal ---------- */
+    function initLogoutModal() {
+        var modal = document.getElementById('adminLogoutModal');
+        if (!modal) return;
+
+        // Open modal on click of any logout trigger
+        document.addEventListener('click', function (e) {
+            var trigger = e.target.closest ? e.target.closest('[data-admin-logout-trigger]') : null;
+            if (!trigger) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Also copy the href if trigger has custom logout URL
+            var href = trigger.getAttribute('href');
+            var confirmBtn = modal.querySelector('.btn-logout-confirm');
+            if (href && confirmBtn) {
+                confirmBtn.setAttribute('href', href);
+            }
+
+            openAdminDialog(modal);
+        });
+
+        // Close modal buttons
+        var closers = modal.querySelectorAll('[data-admin-logout-close]');
+        for (var i = 0; i < closers.length; i++) {
+            closers[i].addEventListener('click', function (e) {
                 e.preventDefault();
-                e.stopPropagation();
+                closeAdminDialog(modal);
+            });
+        }
+
+        // Backdrop click
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) {
+                closeAdminDialog(modal);
+            }
+        });
+
+        // Escape key
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && (modal.hasAttribute('open') || modal.open)) {
+                closeAdminDialog(modal);
             }
         });
     }
@@ -376,5 +522,6 @@
         initSearch();
         initComposer();
         initConfirms();
+        initLogoutModal();
     });
 })();

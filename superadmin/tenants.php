@@ -465,7 +465,7 @@ include __DIR__ . '/_shell.php';
                     <th data-sa-sort="6" data-type="num" scope="col">Quota usage</th>
                     <th data-sa-sort="7" data-type="date" scope="col">Renews</th>
                     <th data-sa-sort="8" data-type="date" scope="col">Joined</th>
-                    <th data-no-export scope="col"><span class="sa-sr-only">Actions</span></th>
+                    <th data-no-export scope="col" style="width:1%;white-space:nowrap;"><span class="sa-sr-only">Actions</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -560,8 +560,8 @@ include __DIR__ . '/_shell.php';
                     </td>
                     <td data-sort-value="<?php echo sa_e($t['subscription_end_date'] ?: ''); ?>"><?php echo $renew_badge; ?></td>
                     <td data-sort-value="<?php echo sa_e($t['created_at']); ?>"><?php echo sa_e(sa_date($t['created_at'])); ?></td>
-                    <td data-no-export>
-                        <div class="sa-row-actions" style="display:flex;flex-wrap:wrap;gap:4px;">
+                    <td data-no-export style="white-space:nowrap;width:1%;">
+                        <div class="sa-row-actions" style="display:flex;align-items:center;flex-wrap:nowrap;gap:4px;white-space:nowrap;">
                             <a class="sa-btn sa-btn-sm sa-btn-ghost" href="tenant_details.php?id=<?php echo (int) $t['id']; ?>" title="Open <?php echo sa_e($t['company_name']); ?> — <?php echo sa_e($realId); ?>">
                                 <?php echo sa_icon('eye'); ?>
                             </a>

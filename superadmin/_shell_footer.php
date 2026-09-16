@@ -33,6 +33,29 @@
     </div>
 </div>
 
+<!-- ============ SUPERADMIN LOGOUT CONFIRMATION MODAL ============ -->
+<dialog class="sa-dialog sa-logout-dialog" id="saLogoutModal" aria-labelledby="saLogoutModalTitle" aria-describedby="saLogoutModalDesc">
+    <div class="sa-logout-card">
+        <button type="button" class="sa-dialog-close sa-logout-close" data-sa-close-dialog aria-label="Close dialog">
+            <?php echo sa_icon('x'); ?>
+        </button>
+        <div class="sa-logout-icon-wrap">
+            <div class="sa-logout-icon">
+                <?php echo sa_icon('logout'); ?>
+            </div>
+        </div>
+        <h3 id="saLogoutModalTitle" class="sa-logout-title">Sign Out of Control Center</h3>
+        <p id="saLogoutModalDesc" class="sa-logout-desc">Are you sure you want to sign out? Your administrative session will be terminated and you will need to sign in again to access Optibiz Control Center.</p>
+        <div class="sa-logout-actions">
+            <button type="button" class="sa-btn sa-btn-ghost" data-sa-close-dialog>Stay Signed In</button>
+            <a href="<?php echo sa_e(auth_logout_url()); ?>" class="sa-btn sa-btn-danger sa-logout-btn-confirm">
+                <?php echo sa_icon('logout'); ?>
+                <span>Yes, Sign Out</span>
+            </a>
+        </div>
+    </div>
+</dialog>
+
 <script src="<?php echo $BASE; ?>assets/js/superadmin.js"></script>
 </body>
 </html>

@@ -306,7 +306,7 @@ include __DIR__ . '/_shell.php';
     $has_secret = trim((string) $gw['secret_key']) !== '';
     $blockers   = pay_gateway_blockers($gw);
 ?>
-<section class="sa-card sa-mt" id="gw-<?php echo sa_e($key); ?>">
+<section class="sa-card sa-mt sa-card-collapsed" id="gw-<?php echo sa_e($key); ?>" data-card-id="gw-<?php echo sa_e($key); ?>">
     <div class="sa-card-head">
         <div>
             <div style="display:flex;align-items:center;gap:10px">
@@ -334,6 +334,7 @@ include __DIR__ . '/_shell.php';
                 <?php echo $gw['connection_status'] === 'ok' ? 'Tested OK' : 'Test failed'; ?>
             </span>
 <?php endif; ?>
+            <button type="button" class="sa-card-toggle" aria-label="Expand card" title="Expand" aria-expanded="false"><?php echo sa_icon('chevron-up'); ?></button>
         </div>
     </div>
 
@@ -551,7 +552,7 @@ include __DIR__ . '/_shell.php';
 <?php endforeach; ?>
 
 <!-- ============ RECENT INTEGRATION ACTIVITY ============ -->
-<section class="sa-card sa-mt">
+<section class="sa-card sa-mt sa-card-collapsed" data-card-id="integration_activity">
     <div class="sa-card-head">
         <div>
             <h3>Integration activity</h3>
@@ -561,6 +562,7 @@ include __DIR__ . '/_shell.php';
             <a class="sa-btn sa-btn-sm sa-btn-ghost" href="finance.php#activity">
                 <?php echo sa_icon('activity'); ?> Full activity log
             </a>
+            <button type="button" class="sa-card-toggle" aria-label="Expand card" title="Expand" aria-expanded="false"><?php echo sa_icon('chevron-up'); ?></button>
         </div>
     </div>
     <div class="sa-table-wrap">

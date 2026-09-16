@@ -120,7 +120,7 @@ if (function_exists('sa_ensure_payments_schema') && isset($conn)) {
 $sa_badges = [
     'tenants' => (int) sa_scalar($conn, "SELECT COUNT(*) FROM tenants", 0, 'tenants'),
     'quotes'  => (int) sa_scalar($conn, "SELECT COUNT(*) FROM quote_requests WHERE status = 'pending'", 0, 'quote_requests'),
-    'reviews' => (int) sa_scalar($conn, "SELECT COUNT(*) FROM ratings WHERE reported = 1", 0, 'ratings'),
+    'support' => (int) sa_scalar($conn, "SELECT (SELECT COUNT(*) FROM platform_feedback WHERE status = 'open') + (SELECT COUNT(*) FROM ratings WHERE reported = 1)", 0, 'platform_feedback'),
     'subs'    => (int) sa_scalar(
         $conn,
         "SELECT COUNT(*) FROM tenants
@@ -152,8 +152,8 @@ $sa_nav = [
     ['key' => 'plans',         'label' => 'Plans',          'href' => 'plans.php',            'icon' => 'layers'],
     ['key' => 'quotes',        'label' => 'Quote Requests', 'href' => 'quote_requests.php',   'icon' => 'inbox',    'badge' => 'quotes', 'alert' => true],
     ['section' => 'Directory'],
-    ['key' => 'reviews',       'label' => 'Reviews',        'href' => 'reviews.php',          'icon' => 'message',  'badge' => 'reviews', 'alert' => true],
-    ['key' => 'customers',     'label' => 'Customers',      'href' => 'customers.php',        'icon' => 'star'],
+    ['key' => 'reviews',       'label' => 'Support & Disputes', 'href' => 'reviews.php',          'icon' => 'inbox',    'badge' => 'support', 'alert' => true],
+    ['key' => 'customers',     'label' => 'Tenant Companies', 'href' => 'customers.php',        'icon' => 'building'],
     ['key' => 'categories',    'label' => 'Categories',     'href' => 'categories.php',       'icon' => 'list'],
     ['section' => 'System'],
     ['key' => 'users',         'label' => 'Users',          'href' => 'users.php',            'icon' => 'users'],
@@ -226,7 +226,7 @@ foreach ($sa_nav as $sa_item) {
                     <span><?php echo sa_is_owner($conn) ? 'Platform owner' : 'Administrator'; ?></span>
                 </span>
             </div>
-            <a class="sa-logout" href="<?php echo sa_e(auth_logout_url()); ?>" data-label="Sign out" data-sa-confirm="Sign out of the control center?">
+            <a class="sa-logout" href="<?php echo sa_e(auth_logout_url()); ?>" data-label="Sign out" data-sa-logout-trigger>
                 <?php echo sa_icon('logout'); ?>
                 <span>Sign out</span>
             </a>
@@ -251,12 +251,13 @@ foreach ($sa_nav as $sa_item) {
                 <p><?php echo sa_e($sa_subtitle); ?></p>
             </div>
 
-            <!-- Global search bar -->
+            <!-- Global search bar (binds to the page's main table via $searchTarget,
+                 falling back to the first filterable table on the page) -->
             <div class="sa-search">
                 <?php echo sa_icon('search'); ?>
-                <input type="search" placeholder="Search tenants, quotes, subscriptions..."
+                <input type="search" placeholder="<?php echo sa_e(isset($searchPlaceholder) && $searchPlaceholder !== '' ? $searchPlaceholder : 'Search tenants, quotes, subscriptions...'); ?>"
                        aria-label="Global search"
-                       data-sa-search="global" autocomplete="off">
+                       data-sa-search="<?php echo sa_e(isset($searchTarget) && $searchTarget !== '' ? $searchTarget : 'global'); ?>" autocomplete="off">
                 <kbd>/</kbd>
             </div>
 
@@ -349,7 +350,7 @@ foreach ($sa_nav as $sa_item) {
                         <a href="analytics.php" role="menuitem"><?php echo sa_icon('chart'); ?> Analytics</a>
                         <?php endif; ?>
                         <a href="<?php echo $sa_base; ?>index.php" target="_blank" rel="noopener" role="menuitem"><?php echo sa_icon('globe'); ?> View public site</a>
-                        <a class="is-danger" href="<?php echo sa_e(auth_logout_url()); ?>" role="menuitem" data-sa-confirm="Sign out of the control center?"><?php echo sa_icon('logout'); ?> Sign out</a>
+                        <a class="is-danger" href="<?php echo sa_e(auth_logout_url()); ?>" role="menuitem" data-sa-logout-trigger><?php echo sa_icon('logout'); ?> Sign out</a>
                     </div>
                 </div>
             </div>

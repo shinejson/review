@@ -320,6 +320,24 @@ function ensureBoosterColumns($conn) {
 }
 
 /**
+ * Auto-ensure subscription_plans schema is up to date (annual_discount_percent).
+ */
+function ensureSubscriptionPlansSchema($conn) {
+    static $done = false;
+    if ($done || !is_object($conn) || !method_exists($conn, 'query')) {
+        return;
+    }
+    $done = true;
+    $chk = @$conn->query("SHOW COLUMNS FROM subscription_plans LIKE 'annual_discount_percent'");
+    if ($chk && (int)$chk->num_rows === 0) {
+        @$conn->query("ALTER TABLE subscription_plans ADD COLUMN annual_discount_percent TINYINT(3) DEFAULT 0 COMMENT 'Discount percentage for annual billing (0-100)' AFTER features");
+    }
+    if ($chk && method_exists($chk, 'free')) {
+        $chk->free();
+    }
+}
+
+/**
  * Format and validate Google Review / Business URL.
  */
 function cleanGoogleReviewUrl($url) {

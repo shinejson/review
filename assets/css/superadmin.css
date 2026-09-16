@@ -44,9 +44,11 @@
     --sa-surface: rgba(22, 50, 74, 0.62);
     --sa-surface-solid: #12293d;
     --sa-surface-2: rgba(15, 36, 56, 0.55);
+    --sa-surface-3: rgba(25, 45, 65, 0.7);
     --sa-surface-hover: rgba(194, 245, 66, 0.06);
     --sa-line: rgba(148, 163, 184, 0.16);
     --sa-line-strong: rgba(148, 163, 184, 0.3);
+    --sa-line-focus: rgba(148, 163, 184, 0.5);
     --sa-text: #eef2f7;
     --sa-heading: #ffffff;
     --sa-muted: #94a3b8;
@@ -87,9 +89,11 @@
     --sa-surface: #ffffff;
     --sa-surface-solid: #ffffff;
     --sa-surface-2: #f7f9fc;
+    --sa-surface-3: #eff3f9;
     --sa-surface-hover: rgba(15, 36, 56, 0.045);
     --sa-line: rgba(15, 36, 56, 0.1);
     --sa-line-strong: rgba(15, 36, 56, 0.2);
+    --sa-line-focus: rgba(15, 36, 56, 0.35);
     --sa-text: #243b52;
     --sa-heading: #0f2438;
     --sa-muted: #5c7086;
@@ -145,6 +149,7 @@ body.sa-body {
 
 html:has(> body.sa-body) {
     -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
 }
 
 body.sa-body {
@@ -200,8 +205,8 @@ h4 {
 }
 
 ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -211,14 +216,13 @@ h4 {
 ::-webkit-scrollbar-thumb {
     background: var(--sa-scroll);
     border-radius: 99px;
-    border: 3px solid transparent;
-    background-clip: content-box;
+    border: 1px solid transparent;
 }
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--sa-line-strong);
-    background-clip: content-box;
 }
+
 
 :focus-visible {
     outline: 2px solid var(--sa-accent);
@@ -264,6 +268,7 @@ h4 {
     flex: 1;
     width: 100%;
     max-width: 1520px;
+    min-width: 0;
     margin: 0 auto;
     padding: 28px clamp(20px, 2.6vw, 36px) 32px;
     animation: saRise 0.42s var(--sa-ease) both;
@@ -364,6 +369,14 @@ h4 {
     flex-direction: column;
     gap: 3px;
     scrollbar-width: thin;
+}
+
+.sa-nav::-webkit-scrollbar {
+    width: 4px;
+}
+
+.sa-nav::-webkit-scrollbar-thumb {
+    border-width: 2px;
 }
 
 .sa-nav-label {
@@ -1281,6 +1294,9 @@ h4 {
 /* ---------- 8. Cards & panels ---------- */
 .sa-card {
     position: relative;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
     background: var(--sa-surface);
     border: 1px solid var(--sa-line);
     border-radius: var(--sa-radius);
@@ -1710,8 +1726,35 @@ h4 {
 
 /* ---------- 12. Tables ---------- */
 .sa-table-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: var(--sa-scroll) var(--sa-surface-2);
+}
+
+/* Dedicated horizontal scrollbar for tables with comfortable height and high contrast */
+.sa-table-wrap::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+}
+
+.sa-table-wrap::-webkit-scrollbar-track {
+    background: var(--sa-surface-2);
+    border-radius: 99px;
+}
+
+.sa-table-wrap::-webkit-scrollbar-thumb {
+    background: var(--sa-scroll);
+    border-radius: 99px;
+    border: 1.5px solid var(--sa-surface-2);
+}
+
+.sa-table-wrap::-webkit-scrollbar-thumb:hover {
+    background: var(--sa-line-strong);
 }
 
 /* Opt in to sticky headers when a wrapper scrolls vertically */
@@ -1728,11 +1771,62 @@ h4 {
 
 .sa-table {
     width: 100%;
+    min-width: 850px;
     border-collapse: separate;
     border-spacing: 0;
     font-size: 13.3px;
 }
 
+/* Specific min-widths per table to preserve layout readability and guarantee horizontal scrolling on constrained viewports */
+#tenantsTable {
+    min-width: 1100px;
+}
+
+#customersTable {
+    min-width: 1050px;
+}
+
+#invoicesTable,
+#ledgerTable {
+    min-width: 1050px;
+}
+
+#quotesTable {
+    min-width: 1080px;
+}
+
+#ticketsTable,
+#disputesTable {
+    min-width: 1050px;
+}
+
+#subsTable {
+    min-width: 1050px;
+}
+
+#paymentsTable {
+    min-width: 950px;
+}
+
+#leagueTable {
+    min-width: 920px;
+}
+
+#monthlyTable {
+    min-width: 880px;
+}
+
+#companiesTable {
+    min-width: 950px;
+}
+
+#usersTable {
+    min-width: 900px;
+}
+
+#categoriesTable {
+    min-width: 750px;
+}
 .sa-table th,
 .sa-table td {
     padding: 12px 16px;
@@ -2855,6 +2949,90 @@ a.sa-list-item:hover {
     z-index: 100;
 }
 
+/* Logout confirmation dialog */
+.sa-logout-dialog {
+    width: min(440px, calc(100vw - 32px));
+    border-radius: var(--sa-radius);
+    padding: 0;
+    overflow: visible;
+}
+
+.sa-logout-card {
+    padding: 32px 28px 24px;
+    text-align: center;
+    position: relative;
+    background: var(--sa-surface-solid);
+    border-radius: var(--sa-radius);
+}
+
+.sa-logout-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+}
+
+.sa-logout-icon-wrap {
+    margin: 0 auto 16px;
+    display: flex;
+    justify-content: center;
+}
+
+.sa-logout-icon {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: var(--sa-danger-soft);
+    border: 1.5px solid var(--sa-danger-line);
+    color: var(--sa-danger);
+    display: grid;
+    place-items: center;
+    box-shadow: 0 8px 20px rgba(239, 68, 68, 0.15);
+}
+
+.sa-logout-icon svg {
+    width: 28px;
+    height: 28px;
+}
+
+.sa-logout-title {
+    font-size: 19px;
+    font-weight: 750;
+    color: var(--sa-heading);
+    margin: 0 0 8px;
+    letter-spacing: -0.3px;
+}
+
+.sa-logout-desc {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--sa-muted);
+    margin: 0 0 24px;
+}
+
+.sa-logout-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+}
+
+.sa-logout-actions .sa-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 11px 16px;
+    font-size: 13.5px;
+}
+
+.sa-logout-btn-confirm {
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+    transition: all 0.18s ease;
+}
+
+.sa-logout-btn-confirm:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(239, 68, 68, 0.35);
+}
+
 /* ---------- 16. Alerts / flash ---------- */
 .sa-alert {
     display: flex;
@@ -3291,9 +3469,9 @@ a.sa-list-item:hover {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
+    gap: 24px;
     flex-wrap: wrap;
-    padding: 16px clamp(16px, 2.6vw, 34px);
+    padding: 20px clamp(16px, 2.6vw, 34px);
     border-top: 1px solid var(--sa-line);
     background: var(--sa-surface-1, rgba(0, 0, 0, 0.08));
     color: var(--sa-faint);
@@ -3303,22 +3481,25 @@ a.sa-list-item:hover {
 .sa-foot-brand {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
+    gap: 14px;
+    flex-wrap: nowrap;
+    min-width: 0;
 }
 
 .sa-foot-status {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    padding: 3px 9px;
-    border-radius: 999px;
-    background: rgba(34, 197, 94, 0.08);
-    border: 1px solid rgba(34, 197, 94, 0.25);
+    gap: 8px;
+    padding: 5px 11px;
+    border-radius: 6px;
+    background: rgba(34, 197, 94, 0.12);
+    border: 1px solid rgba(34, 197, 94, 0.3);
     color: #22c55e;
     font-size: 11.5px;
     font-weight: 600;
-    letter-spacing: 0.2px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .sa-pulse-dot {
@@ -3346,99 +3527,114 @@ a.sa-list-item:hover {
 }
 
 .sa-foot-sep {
+    display: inline-block;
     color: var(--sa-line);
     font-size: 10px;
+    opacity: 0.5;
+    margin: 0 2px;
 }
 
 .sa-foot-copy {
     color: var(--sa-muted);
     font-weight: 500;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 .sa-foot-badge {
     display: inline-flex;
     align-items: center;
-    padding: 2px 7px;
-    border-radius: 5px;
-    font-size: 11px;
-    font-weight: 600;
-    background: var(--sa-surface-2, rgba(255, 255, 255, 0.06));
-    border: 1px solid var(--sa-line);
-    color: var(--sa-muted);
+    padding: 4px 9px;
+    border-radius: 4px;
+    font-size: 10.5px;
+    font-weight: 700;
+    background: var(--sa-lime);
+    color: var(--sa-navy);
+    border: none;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .sa-foot-actions {
     display: inline-flex;
     align-items: center;
-    gap: 18px;
-    flex-wrap: wrap;
+    gap: 22px;
+    flex-wrap: nowrap;
 }
 
 .sa-foot-nav {
     display: inline-flex;
     align-items: center;
-    gap: 14px;
-    flex-wrap: wrap;
+    gap: 16px;
+    flex-wrap: nowrap;
+    padding-right: 20px;
+    border-right: 1px solid var(--sa-line);
 }
 
 .sa-foot-nav a {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     color: var(--sa-muted);
     text-decoration: none;
-    font-size: 12.2px;
+    font-size: 12px;
     font-weight: 500;
-    transition: color 0.16s ease;
+    transition: all 0.18s ease;
+    white-space: nowrap;
 }
 
 .sa-foot-nav a svg {
-    width: 14px;
-    height: 14px;
-    opacity: 0.7;
-    transition: opacity 0.16s ease;
+    width: 15px;
+    height: 15px;
+    opacity: 0.6;
+    transition: all 0.18s ease;
 }
 
 .sa-foot-nav a:hover {
     color: var(--sa-accent);
+    transform: translateY(-2px);
 }
 
 .sa-foot-nav a:hover svg {
     opacity: 1;
+    filter: brightness(1.1);
 }
 
 .sa-totop-btn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 5px 11px;
-    border-radius: 999px;
-    background: var(--sa-surface-2, rgba(255, 255, 255, 0.06));
-    border: 1px solid var(--sa-line);
-    color: var(--sa-text);
+    gap: 6px;
+    padding: 6px 13px;
+    border-radius: 6px;
+    background: var(--sa-accent-soft);
+    border: 1px solid var(--sa-accent-line);
+    color: var(--sa-accent);
     font-size: 11.8px;
     font-weight: 600;
     text-decoration: none;
     cursor: pointer;
     transition: all 0.18s ease;
-}
-
-.sa-totop-btn svg {
-    width: 13px;
-    height: 13px;
-    transition: transform 0.18s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .sa-totop-btn:hover {
-    background: var(--sa-surface-hover);
-    border-color: var(--sa-accent);
-    color: var(--sa-accent);
+    background: var(--sa-accent-line);
+    color: var(--sa-accent-contrast);
     transform: translateY(-2px);
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 8px rgba(194, 245, 66, 0.15);
+}
+
+.sa-totop-btn svg {
+    width: 15px;
+    height: 15px;
+    transition: transform 0.18s ease;
 }
 
 .sa-totop-btn:hover svg {
-    transform: translateY(-1px);
+    transform: translateY(-2px);
 }
 
 @media (max-width: 768px) {
@@ -3447,12 +3643,26 @@ a.sa-list-item:hover {
         align-items: center;
         justify-content: center;
         text-align: center;
-        gap: 12px;
+        gap: 14px;
+        padding: 18px clamp(16px, 2.6vw, 34px);
     }
     .sa-foot-brand,
     .sa-foot-actions,
     .sa-foot-nav {
         justify-content: center;
+        width: 100%;
+    }
+    
+    .sa-foot-nav {
+        border-right: none;
+        border-top: 1px solid var(--sa-line);
+        padding-right: 0;
+        padding-top: 14px;
+        gap: 12px;
+    }
+    
+    .sa-foot-sep {
+        display: none;
     }
 }
 

@@ -30,12 +30,12 @@ $categories = sa_query(
 
 $tenants = sa_query(
     $conn,
-    "SELECT id, company_name FROM tenants ORDER BY company_name ASC",
+    "SELECT id, company_name, public_id FROM tenants ORDER BY company_name ASC",
     ['tenants']
 );
 
 /* ---------- POST handlers ---------- */
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!sa_csrf_ok()) {
         sa_flash('error', 'Your session expired. Please try again.');
         redirect('customers.php');
@@ -138,27 +138,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /* ---------- filters ---------- */
 $category_filter = (int) ($_GET['category'] ?? 0);
+$tenant_filter   = (int) ($_GET['tenant_id'] ?? 0);
 $q = isset($_GET['q']) ? trim($_GET['q']) : '';
 
-$where = '';
-if ($category_filter) {
-    $where = " WHERE c.category_id = " . $category_filter;
+$where_clauses = [];
+if ($category_filter > 0) {
+    $where_clauses[] = "c.category_id = " . $category_filter;
+}
+if ($tenant_filter > 0) {
+    $where_clauses[] = "c.tenant_id = " . $tenant_filter;
 }
 if ($q !== '') {
-    $like = '%' . $q . '%';
-    $escaped = $conn->real_escape_string($like);
-    $where .= ($where === '' ? ' WHERE ' : ' AND ')
-        . " (c.company_name LIKE '" . $escaped . "' OR t.company_name LIKE '" . $escaped . "')";
+    $like = '%' . $conn->real_escape_string($q) . '%';
+    $where_clauses[] = "(c.company_name LIKE '{$like}' OR t.company_name LIKE '{$like}' OR t.public_id LIKE '{$like}')";
 }
+$where = !empty($where_clauses) ? ' WHERE ' . implode(' AND ', $where_clauses) : '';
 
 /* ---------- data ---------- */
 $customers = sa_query(
     $conn,
-    "SELECT c.*, cat.name AS category_name, t.company_name AS tenant_company
+    "SELECT c.*, cat.name AS category_name, t.company_name AS tenant_company, t.public_id AS tenant_public_id
        FROM customers c
        LEFT JOIN categories cat ON c.category_id = cat.id
        LEFT JOIN tenants t ON c.tenant_id = t.id"
-    . $where . " ORDER BY c.company_name ASC",
+    . $where . " ORDER BY t.company_name ASC, c.id ASC",
     ['customers', 'categories', 'tenants']
 );
 
@@ -175,13 +178,14 @@ foreach ($categories as $c) {
 
 /* ---------- page meta ---------- */
 $robots    = 'noindex, nofollow';
-$pageTitle = 'Customers';
-$pageHeading = 'Customers';
-$pageSubtitle = 'The tenant companies on the platform, each filed under the category chosen at registration.';
+$pageTitle = 'Tenant Companies';
+$pageHeading = 'Tenant Companies';
+$pageSubtitle = 'Business profiles and branches created under tenant accounts.';
 $activePage = 'customers';
 $BASE = '../';
 $extraCss = ['assets/css/superadmin.css'];
 $bodyClass = 'sa-body';
+
 
 include dirname(__DIR__) . '/includes/header.php';
 include __DIR__ . '/_shell.php';
@@ -192,16 +196,16 @@ include __DIR__ . '/_shell.php';
         <div class="sa-crumbs">
             <a href="index.php">Super admin</a>
             <?php echo sa_icon('chevron-right'); ?>
-            <span>Customers</span>
+            <span>Tenant Companies</span>
         </div>
-        <h2>Customers</h2>
-        <p><?php echo sa_e(sa_num($total_customers)); ?> customers &middot;
+        <h2>Tenant Companies</h2>
+        <p><?php echo sa_e(sa_num($total_customers)); ?> companies &middot;
            <?php echo sa_e(sa_num($categories_in_use)); ?> categories in use &middot;
            average rating <?php echo sa_e(number_format($platform_avg, 1)); ?>/5</p>
     </div>
     <div class="sa-head-actions">
         <button type="button" class="sa-btn sa-btn-primary" data-sa-open-dialog="#customerDialog">
-            <?php echo sa_icon('plus'); ?> New customer
+            <?php echo sa_icon('plus'); ?> Add company under tenant
         </button>
     </div>
 </div>
@@ -211,11 +215,11 @@ include __DIR__ . '/_shell.php';
 <div class="sa-grid sa-kpis sa-anim">
     <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-info);--kpi-soft:var(--sa-info-soft);--kpi-line:var(--sa-info-line)">
         <div class="sa-kpi-top">
-            <span class="sa-kpi-label">Customers</span>
+            <span class="sa-kpi-label">Companies Managed</span>
             <span class="sa-kpi-icon"><?php echo sa_icon('building'); ?></span>
         </div>
         <div class="sa-kpi-value"><?php echo sa_e(sa_num($total_customers)); ?></div>
-        <div class="sa-kpi-note">Companies registered across every tenant</div>
+        <div class="sa-kpi-note">Business profiles created across all tenant accounts</div>
     </article>
 
     <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-success);--kpi-soft:var(--sa-success-soft);--kpi-line:var(--sa-success-line)">
@@ -224,7 +228,7 @@ include __DIR__ . '/_shell.php';
             <span class="sa-kpi-icon"><?php echo sa_icon('check-circle'); ?></span>
         </div>
         <div class="sa-kpi-value"><?php echo sa_e($categorised_pct); ?>%</div>
-        <div class="sa-kpi-note">Customers filed under a registration category</div>
+        <div class="sa-kpi-note">Companies filed under an industry category</div>
     </article>
 
     <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-warning);--kpi-soft:var(--sa-warning-soft);--kpi-line:var(--sa-warning-line)">
@@ -240,37 +244,45 @@ include __DIR__ . '/_shell.php';
 <section class="sa-card">
     <div class="sa-card-head">
         <div>
-            <h3>Customer directory</h3>
-            <p>Each customer belongs to a tenant account and keeps the category that tenant chose when registering.</p>
+            <h3>Companies Directory — Created by Tenants</h3>
+            <p>Every business profile or branch is created and owned by its respective tenant account.</p>
         </div>
     </div>
 
-    <div class="sa-filters">
-        <div class="sa-chips">
+    <div class="sa-filters" style="flex-wrap:wrap;gap:12px">
+        <div class="sa-chips" style="flex-wrap:wrap">
             <a class="sa-chip<?php echo $category_filter === 0 ? ' active' : ''; ?>"
-               href="customers.php<?php echo $q !== '' ? '?q=' . urlencode($q) : ''; ?>"
+               href="customers.php<?php echo ($tenant_filter ? '?tenant_id=' . $tenant_filter : '') . ($q !== '' ? ($tenant_filter ? '&' : '?') . 'q=' . urlencode($q) : ''); ?>"
                aria-pressed="<?php echo $category_filter === 0 ? 'true' : 'false'; ?>">
                 All categories<span class="count"><?php echo (int) $total_customers; ?></span>
             </a>
 <?php foreach ($categories as $c): ?>
             <a class="sa-chip<?php echo $category_filter === (int) $c['id'] ? ' active' : ''; ?>"
-               href="customers.php?category=<?php echo (int) $c['id']; ?><?php echo $q !== '' ? '&q=' . urlencode($q) : ''; ?>"
+               href="customers.php?category=<?php echo (int) $c['id']; ?><?php echo $tenant_filter ? '&tenant_id=' . $tenant_filter : ''; ?><?php echo $q !== '' ? '&q=' . urlencode($q) : ''; ?>"
                aria-pressed="<?php echo $category_filter === (int) $c['id'] ? 'true' : 'false'; ?>">
                 <?php echo sa_e($c['name']); ?><span class="count"><?php echo (int) $c['company_count']; ?></span>
             </a>
 <?php endforeach; ?>
         </div>
 
-        <form method="GET" action="customers.php" style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <form method="GET" action="customers.php" style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <?php if ($category_filter): ?>
             <input type="hidden" name="category" value="<?php echo (int) $category_filter; ?>">
             <?php endif; ?>
-            <div class="sa-search" style="display:block;width:min(280px,52vw)">
+            <select name="tenant_id" class="sa-inline-select" onchange="this.form.submit()" aria-label="Filter by tenant" style="max-width:200px">
+                <option value="0">All Tenants</option>
+                <?php foreach ($tenants as $t): ?>
+                    <option value="<?php echo (int) $t['id']; ?>"<?php echo $tenant_filter === (int) $t['id'] ? ' selected' : ''; ?>>
+                        <?php echo sa_e($t['company_name']); ?><?php echo !empty($t['public_id']) ? ' (' . sa_e($t['public_id']) . ')' : ''; ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <div class="sa-search" style="display:block;width:min(240px,50vw)">
                 <?php echo sa_icon('search'); ?>
-                <input type="search" name="q" value="<?php echo sa_e($q); ?>" placeholder="Search customer or tenant…" aria-label="Search customers">
+                <input type="search" name="q" value="<?php echo sa_e($q); ?>" placeholder="Search company, tenant…" aria-label="Search companies">
             </div>
             <button type="submit" class="sa-btn sa-btn-sm sa-btn-ghost">Search</button>
-<?php if ($q !== '' || $category_filter): ?>
+<?php if ($q !== '' || $category_filter || $tenant_filter): ?>
             <a class="sa-btn sa-btn-sm sa-btn-ghost" href="customers.php" title="Clear filters"><?php echo sa_icon('x'); ?></a>
 <?php endif; ?>
         </form>
@@ -283,13 +295,13 @@ include __DIR__ . '/_shell.php';
         <table class="sa-table" id="customersTable" data-sa-sortable-table>
             <thead>
                 <tr>
-                    <th data-sa-sort="0" data-type="num" scope="col" aria-sort="none">ID</th>
-                    <th data-sa-sort="1" scope="col" aria-sort="none">Customer</th>
-                    <th data-sa-sort="2" scope="col" aria-sort="none">Tenant account</th>
-                    <th data-sa-sort="3" scope="col" aria-sort="none">Category chosen</th>
-                    <th data-sa-sort="4" data-type="num" scope="col" aria-sort="none">Rating</th>
-                    <th data-sa-sort="5" data-type="date" scope="col" aria-sort="none">Added</th>
-                    <th data-no-export scope="col"><span class="sa-sr-only">Actions</span></th>
+                    <th data-sa-sort="0" data-type="num" scope="col" aria-sort="none" style="width:65px">ID</th>
+                    <th data-sa-sort="1" scope="col" aria-sort="none" style="min-width:200px">Tenant (Owner)</th>
+                    <th data-sa-sort="2" scope="col" aria-sort="none" style="min-width:240px">Company Created Under Tenant</th>
+                    <th data-sa-sort="3" scope="col" aria-sort="none" style="width:140px">Category</th>
+                    <th data-sa-sort="4" data-type="num" scope="col" aria-sort="none" style="width:130px">Rating</th>
+                    <th data-sa-sort="5" data-type="date" scope="col" aria-sort="none" style="width:110px">Created</th>
+                    <th data-no-export scope="col" style="width:110px;text-align:right"><span class="sa-sr-only">Actions</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -298,10 +310,10 @@ include __DIR__ . '/_shell.php';
                     <td colspan="7">
                         <div class="sa-empty">
                             <?php echo sa_icon('building'); ?>
-                            <strong>No customers found</strong>
-                            <p><?php echo $q !== '' || $category_filter
-                                ? 'Try clearing the search box or switching the category filter.'
-                                : 'Convert a quote request into a tenant, then add its first customer here.'; ?></p>
+                            <strong>No companies found</strong>
+                            <p><?php echo $q !== '' || $category_filter || $tenant_filter
+                                ? 'Try clearing the search box or switching the filter.'
+                                : 'Companies created under tenant accounts will appear here.'; ?></p>
                         </div>
                     </td>
                 </tr>
@@ -312,21 +324,40 @@ include __DIR__ . '/_shell.php';
     $rate_url = getCompanyPublicRatingUrl($row['id'], $row['company_name']);
 ?>
                 <tr>
-                    <td><?php echo (int) $row['id']; ?></td>
+                    <td class="num sa-faint" data-sort-value="<?php echo (int) $row['id']; ?>">#<?php echo (int) $row['id']; ?></td>
                     <td>
                         <div class="sa-cell-main">
-                            <strong><?php echo sa_e($row['company_name']); ?></strong>
-                            <?php if (!empty($row['email']) || !empty($row['phone'])): ?>
-                            <span><?php echo sa_e(trim(($row['email'] ?? '') . ' ' . ($row['phone'] ?? ''))); ?></span>
-                            <?php endif; ?>
+                            <span class="sa-cell-avatar"><?php echo sa_e(sa_initials($row['tenant_company'] ?: 'Tenant')); ?></span>
+                            <div class="sa-cell-text">
+<?php if (!empty($row['tenant_company'])): ?>
+                                <a href="tenant_details.php?id=<?php echo (int) $row['tenant_id']; ?>" style="font-weight:700;color:inherit;text-decoration:none;">
+                                    <?php echo sa_e($row['tenant_company']); ?>
+                                </a>
+                                <?php if (!empty($row['tenant_public_id'])): ?>
+                                    <span class="sa-badge" style="font-family:monospace;font-size:10px;padding:1px 6px;background:rgba(99,102,241,0.08);color:#4338ca;border:1px solid rgba(99,102,241,0.2);margin-left:4px;border-radius:4px;font-weight:700;"><?php echo sa_e($row['tenant_public_id']); ?></span>
+                                <?php endif; ?>
+<?php else: ?>
+                                <span class="sa-faint">Independent</span>
+<?php endif; ?>
+                            </div>
                         </div>
                     </td>
                     <td>
-<?php if (!empty($row['tenant_company'])): ?>
-                        <a href="tenant_details.php?id=<?php echo (int) $row['tenant_id']; ?>"><?php echo sa_e($row['tenant_company']); ?></a>
-<?php else: ?>
-                        <span class="sa-faint">Unknown tenant</span>
-<?php endif; ?>
+                        <div style="display:flex;flex-direction:column;gap:3px;">
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <span style="font-size:13px;">🏢</span>
+                                <strong style="color:var(--sa-heading,#0f172a);"><?php echo sa_e($row['company_name']); ?></strong>
+                                <span class="sa-badge" style="font-size:10px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:1px 5px;">
+                                    Branch #<?php echo (int)$row['id']; ?>
+                                </span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--sa-muted);">
+                                <span>↳ Company under <strong><?php echo sa_e($row['tenant_company'] ?: 'Tenant'); ?></strong></span>
+                                <?php if (!empty($row['email']) || !empty($row['phone'])): ?>
+                                    <span>&middot; <?php echo sa_e(trim(($row['email'] ?? '') . ' ' . ($row['phone'] ?? ''))); ?></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
                     </td>
                     <td>
 <?php if (!empty($row['category_name'])): ?>
@@ -335,14 +366,14 @@ include __DIR__ . '/_shell.php';
                         <span class="sa-badge sa-badge-inactive">Uncategorised</span>
 <?php endif; ?>
                     </td>
-                    <td>
+                    <td data-sort-value="<?php echo sa_e($avg); ?>">
                         <?php echo sa_stars($avg); ?>
                         <span class="sa-faint">(<?php echo sa_e(sa_num($cnt)); ?>)</span>
                     </td>
-                    <td><?php echo sa_date(isset($row['created_at']) ? $row['created_at'] : null); ?></td>
-                    <td>
-                        <div class="sa-flex" style="gap:6px;justify-content:flex-end">
-                            <a class="sa-btn sa-btn-sm sa-btn-ghost" href="<?php echo sa_e($rate_url); ?>" target="_blank" rel="noopener" title="Open the public rating form">
+                    <td data-sort-value="<?php echo sa_e($row['created_at']); ?>"><?php echo sa_date(isset($row['created_at']) ? $row['created_at'] : null); ?></td>
+                    <td data-no-export style="text-align:right">
+                        <div class="sa-row-actions" style="justify-content:flex-end">
+                            <a class="sa-btn sa-btn-sm sa-btn-ghost" href="<?php echo sa_e($rate_url); ?>" target="_blank" rel="noopener" title="Open public review page">
                                 <?php echo sa_icon('external'); ?> Rate
                             </a>
                             <form method="POST" action="customers.php" style="display:inline"
@@ -350,7 +381,7 @@ include __DIR__ . '/_shell.php';
                                 <?php echo sa_csrf_field(); ?>
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="customer_id" value="<?php echo (int) $row['id']; ?>">
-                                <button type="submit" class="sa-btn sa-btn-sm sa-btn-danger" title="Delete customer"><?php echo sa_icon('trash'); ?></button>
+                                <button type="submit" class="sa-btn sa-btn-sm sa-btn-danger" title="Delete company"><?php echo sa_icon('trash'); ?></button>
                             </form>
                         </div>
                     </td>
@@ -361,20 +392,20 @@ include __DIR__ . '/_shell.php';
         </table>
     </div>
     <div class="sa-card-foot">
-        <span><?php echo sa_e(sa_num(count($customers))); ?> customer<?php echo count($customers) === 1 ? '' : 's'; ?> listed</span>
+        <span><?php echo sa_e(sa_num(count($customers))); ?> compan<?php echo count($customers) === 1 ? 'y' : 'ies'; ?> listed</span>
         <a class="sa-faint" href="categories.php">Manage the category list &rarr;</a>
     </div>
 </section>
 
-<!-- ============ NEW CUSTOMER DIALOG ============ -->
+<!-- ============ NEW COMPANY DIALOG ============ -->
 <dialog class="sa-dialog" id="customerDialog" aria-labelledby="cust_title">
     <form method="POST" action="customers.php" class="sa-form">
         <?php echo sa_csrf_field(); ?>
         <input type="hidden" name="action" value="create">
         <div class="sa-dialog-head">
             <div>
-                <h3 id="cust_title">New customer</h3>
-                <p>A company or branch registered under a tenant account, filed with its industry category.</p>
+                <h3 id="cust_title">New Company under Tenant</h3>
+                <p>Register a new company profile or branch under an existing tenant account.</p>
             </div>
             <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>
         </div>
@@ -386,10 +417,10 @@ include __DIR__ . '/_shell.php';
                     <select id="cust_tenant" name="tenant_id" required>
                         <option value="">-- Select tenant --</option>
 <?php foreach ($tenants as $t): ?>
-                        <option value="<?php echo (int) $t['id']; ?>"><?php echo sa_e($t['company_name']); ?></option>
+                        <option value="<?php echo (int) $t['id']; ?>"><?php echo sa_e($t['company_name']); ?><?php echo !empty($t['public_id']) ? ' (' . sa_e($t['public_id']) . ')' : ''; ?></option>
 <?php endforeach; ?>
                     </select>
-                    <span class="sa-hint">The tenant that chose this category when registering.</span>
+                    <span class="sa-hint">The tenant account that will own and manage this company.</span>
                 </div>
 
                 <div class="sa-field">
@@ -426,7 +457,7 @@ include __DIR__ . '/_shell.php';
 
         <div class="sa-dialog-foot">
             <button type="button" class="sa-btn sa-btn-ghost" data-sa-close-dialog>Cancel</button>
-            <button type="submit" class="sa-btn sa-btn-primary"><?php echo sa_icon('check'); ?> Save customer</button>
+            <button type="submit" class="sa-btn sa-btn-primary"><?php echo sa_icon('check'); ?> Save company</button>
         </div>
     </form>
 </dialog>

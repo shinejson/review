@@ -180,6 +180,9 @@ $activeNav = $activeNav ?? 'dashboard';
       <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span><span class="nav-label">Subscription</span>
     </a>
     <?php endif; ?>
+    <a <?php echo $activeNav === 'support' ? 'class="active"' : ''; ?> href="support.php" title="Platform Support & Feedback">
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><span class="nav-label">Platform Support</span>
+    </a>
     <?php if (teamHasAccess('backups')): ?>
     <a <?php echo $activeNav === 'backups' ? 'class="active"' : ''; ?> href="backups.php" title="Workspace Backups">
       <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span><span class="nav-label">Backups</span>
@@ -213,7 +216,9 @@ $activeNav = $activeNav ?? 'dashboard';
           else { echo 'Global administrator'; }
       ?></small>
     </div>
-    <a href="<?php echo htmlspecialchars(auth_logout_url()); ?>" title="Log out" data-admin-confirm="Sign out of the workspace?">↪</a>
+    <a href="<?php echo htmlspecialchars(auth_logout_url()); ?>" title="Log out" aria-label="Sign out of the workspace" class="sidebar-logout-link" data-admin-logout-trigger>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </a>
   </div>
 </aside>
 <div class="admin-sidebar-backdrop" data-admin-backdrop></div>
@@ -248,7 +253,7 @@ $activeNav = $activeNav ?? 'dashboard';
     <!-- Search Bar -->
     <div class="admin-search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" placeholder="Search..." aria-label="Search" data-admin-search>
+      <input type="text" placeholder="Search this page..." aria-label="Search this page" data-admin-search>
       <kbd>/</kbd>
     </div>
 
@@ -395,7 +400,7 @@ $activeNav = $activeNav ?? 'dashboard';
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             View public site
           </a>
-          <a class="is-danger" href="<?php echo htmlspecialchars(auth_logout_url()); ?>" role="menuitem" data-admin-confirm="Sign out of the workspace?">
+          <a class="is-danger" href="<?php echo htmlspecialchars(auth_logout_url()); ?>" role="menuitem" data-admin-logout-trigger>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             Sign out
           </a>
