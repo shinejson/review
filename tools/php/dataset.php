@@ -478,5 +478,103 @@ return [
          'payload' => 'Confirmed by superadmin', 'created_at' => '2026-06-03 09:18:00'],
     ],
 
+    /* ============================================================
+       Notification inbox (includes/notifications.php)
+       ------------------------------------------------------------
+       `audience` decides which panel reads a row: 'platform' is the
+       control center queue, 'tenant' belongs to one workspace and is
+       only ever listed with a matching tenant_id — which is what the
+       panel-isolation checks in tools/check-other-pages.js rely on.
+
+       Times are relative to "now" so the age labels read naturally, and
+       the mix is deliberate: unread and read rows, every tone, and at
+       least one row per notice kind the two pages know about.
+       ============================================================ */
+    'notifications' => [
+        /* --- control center (audience = platform) --- */
+        ['id' => 12, 'audience' => 'platform', 'tenant_id' => 17, 'type' => 'quote_new',
+         'title' => 'New quote request QTE-4M7X2P1B', 'message' => 'Cocoa Coast Exports — asked by Ama Boateng',
+         'link' => 'quote_requests.php?id=9', 'icon' => 'inbox', 'tone' => 'warning',
+         'entity_type' => 'quote_request', 'entity_id' => 9, 'dedupe_key' => 'p:quote_new:9',
+         'is_read' => 0, 'read_at' => null, 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-2 hour'))],
+        ['id' => 11, 'audience' => 'platform', 'tenant_id' => 18, 'type' => 'payment_pending',
+         'title' => 'Payment waiting to be confirmed', 'message' => 'Receipt RCP-2026-0912 for GH₵1,480.00 from Volta Logistics',
+         'link' => 'finance.php#approvals', 'icon' => 'dollar', 'tone' => 'warning',
+         'entity_type' => 'subscription_payment', 'entity_id' => 1, 'dedupe_key' => 'p:payment_pending:1',
+         'is_read' => 0, 'read_at' => null, 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-5 hour'))],
+        ['id' => 10, 'audience' => 'platform', 'tenant_id' => 14, 'type' => 'subscription_expiring',
+         'title' => 'Accra Dental Group renews soon', 'message' => 'Ends in 2 days — Starter plan, auto-renew off',
+         'link' => 'subscriptions.php?view=due', 'icon' => 'calendar', 'tone' => 'warning',
+         'entity_type' => 'tenant', 'entity_id' => 14, 'dedupe_key' => 'p:subscription_expiring:14',
+         'is_read' => 0, 'read_at' => null, 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-1 day'))],
+        ['id' => 9, 'audience' => 'platform', 'tenant_id' => 9, 'type' => 'subscription_expired',
+         'title' => 'Tema Steel Works has lapsed', 'message' => 'Subscription ended 32 days ago — the public rating page is paused',
+         'link' => 'subscriptions.php?view=due', 'icon' => 'alert', 'tone' => 'danger',
+         'entity_type' => 'tenant', 'entity_id' => 9, 'dedupe_key' => 'p:subscription_expired:9',
+         'is_read' => 0, 'read_at' => null, 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-2 day'))],
+        ['id' => 8, 'audience' => 'platform', 'tenant_id' => 16, 'type' => 'review_reported',
+         'title' => 'Review reported for moderation', 'message' => 'Yaw Mensah flagged a 2-star review on Kotoka Ground Services',
+         'link' => 'reviews.php?filter=reported', 'icon' => 'flag', 'tone' => 'danger',
+         'entity_type' => 'rating', 'entity_id' => 214, 'dedupe_key' => 'p:review_reported:214',
+         'is_read' => 1, 'read_at' => date('Y-m-d H:i:s', strtotime('-1 day')), 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-3 day'))],
+        ['id' => 7, 'audience' => 'platform', 'tenant_id' => 18, 'type' => 'tenant_new',
+         'title' => 'New workspace: Volta Logistics', 'message' => 'Signed up 3 weeks ago as billing@voltalogistics.com',
+         'link' => 'tenant_details.php?id=18', 'icon' => 'building', 'tone' => 'info',
+         'entity_type' => 'tenant', 'entity_id' => 18, 'dedupe_key' => 'p:tenant_new:18',
+         'is_read' => 1, 'read_at' => date('Y-m-d H:i:s', strtotime('-18 day')), 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-21 day'))],
+        ['id' => 6, 'audience' => 'platform', 'tenant_id' => 12, 'type' => 'invoice_overdue',
+         'title' => 'Invoice INV-2026-0041 is overdue', 'message' => 'GH₵359.88 was due 6 days ago',
+         'link' => 'finance.php?invoice=8', 'icon' => 'alert', 'tone' => 'danger',
+         'entity_type' => 'payment_invoice', 'entity_id' => 8, 'dedupe_key' => 'p:invoice_overdue:8',
+         'is_read' => 0, 'read_at' => null, 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-6 day'))],
+
+        /* --- workspace 18 (Volta Logistics) --- */
+        ['id' => 5, 'audience' => 'tenant', 'tenant_id' => 18, 'type' => 'review_new',
+         'title' => '5-star review from Efua Mensimah', 'message' => '“The van arrived in an hour and the driver fixed the manifest too”',
+         'link' => 'ratings.php', 'icon' => 'star', 'tone' => 'success',
+         'entity_type' => 'rating', 'entity_id' => 441, 'dedupe_key' => 't:18:review:441',
+         'is_read' => 0, 'read_at' => null, 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-40 minute'))],
+        ['id' => 4, 'audience' => 'tenant', 'tenant_id' => 18, 'type' => 'review_critical',
+         'title' => '2-star review from Kwabena Osei', 'message' => '“Two delayed shipments in one week — I need a call back”',
+         'link' => 'ratings.php?star=2', 'icon' => 'alert', 'tone' => 'danger',
+         'entity_type' => 'rating', 'entity_id' => 438, 'dedupe_key' => 't:18:review:438',
+         'is_read' => 0, 'read_at' => null, 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-3 hour'))],
+        ['id' => 3, 'audience' => 'tenant', 'tenant_id' => 18, 'type' => 'review_reply',
+         'title' => 'A 3-star review is still unanswered', 'message' => 'Adjoa wrote to Tema Warehouse a day ago — a public reply is expected',
+         'link' => 'ratings.php?star=3', 'icon' => 'message', 'tone' => 'warning',
+         'entity_type' => 'rating', 'entity_id' => 431, 'dedupe_key' => 't:18:review_reply:431',
+         'is_read' => 1, 'read_at' => date('Y-m-d H:i:s', strtotime('-2 hour')), 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-26 hour'))],
+        ['id' => 2, 'audience' => 'tenant', 'tenant_id' => 18, 'type' => 'invoice_open',
+         'title' => 'Invoice INV-2026-0044 is unpaid', 'message' => 'GH₵1,480.00 — due in 6 days',
+         'link' => 'invoice_view.php?id=8', 'icon' => 'file-text', 'tone' => 'info',
+         'entity_type' => 'payment_invoice', 'entity_id' => 8, 'dedupe_key' => 't:18:invoice:8',
+         'is_read' => 0, 'read_at' => null, 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-4 day'))],
+        ['id' => 1, 'audience' => 'tenant', 'tenant_id' => 18, 'type' => 'subscription_expiring',
+         'title' => 'Renew in 120 days', 'message' => 'Enterprise plan renews on schedule',
+         'link' => 'subscription.php', 'icon' => 'calendar', 'tone' => 'warning',
+         'entity_type' => 'tenant', 'entity_id' => 18, 'dedupe_key' => 't:18:subscription:soft',
+         'is_read' => 1, 'read_at' => date('Y-m-d H:i:s', strtotime('-8 day')), 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-9 day'))],
+
+        /* --- a second workspace, so isolation is visible --- */
+        ['id' => 13, 'audience' => 'tenant', 'tenant_id' => 15, 'type' => 'review_new',
+         'title' => '4-star review from Kojo Asante', 'message' => '“Cocoa grading was explained clearly — good team”',
+         'link' => 'ratings.php', 'icon' => 'star', 'tone' => 'success',
+         'entity_type' => 'rating', 'entity_id' => 512, 'dedupe_key' => 't:15:review:512',
+         'is_read' => 0, 'read_at' => null, 'deleted_at' => null,
+         'created_at' => date('Y-m-d H:i:s', strtotime('-6 hour'))],
+    ],
+
     'star_distribution' => [5 => 412, 4 => 168, 3 => 54, 2 => 17, 1 => 9],
 ];
