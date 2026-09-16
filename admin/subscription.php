@@ -83,7 +83,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tid = (int) $tenant_id;
         $stmt->bind_param('iiiss', $tid, $current_plan_id, $plan_id, $direction, $note);
         $ok = $stmt->execute();
+        $request_id = (int) $conn->insert_id;
         $stmt->close();
+
+        if ($ok) {
+            admin_log_activity(
+                $conn,
+                'plan_request',
+                ucfirst($direction) . ' to ' . $plan['plan_name'] . ' requested',
+                'subscription_request',
+                $request_id
+            );
+        }
 
         sa_flash($ok ? 'success' : 'error', $ok
             ? ucfirst($direction) . ' to ' . $plan['plan_name'] . ' requested — our team will confirm shortly.'
@@ -100,7 +111,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tid = (int) $tenant_id;
         $stmt->bind_param('ii', $request_id, $tid);
         $stmt->execute();
+        $affected = (int) $stmt->affected_rows;
         $stmt->close();
+        if ($affected > 0) {
+            admin_log_activity($conn, 'plan_request_cancel', 'Withdrew a plan change request', 'subscription_request', $request_id);
+        }
         sa_flash('success', 'Plan change request withdrawn.');
         redirect('subscription.php');
     }
@@ -112,6 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param('ii', $on, $tid);
         $stmt->execute();
         $stmt->close();
+        admin_log_activity($conn, 'auto_renew', $on ? 'Switched auto-renew on' : 'Switched auto-renew off', 'tenant', $tid);
         sa_flash('success', $on ? 'Auto-renew switched on.' : 'Auto-renew switched off.');
         redirect('subscription.php');
     }

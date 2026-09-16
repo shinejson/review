@@ -10,6 +10,7 @@
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/logging_helpers.php';
 requireLogin();
 requireTeamAccess('company');
 
@@ -160,6 +161,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
             $saved_id = $edit_company_id;
             setActiveCompanyId($conn, $tenant_id, $saved_id);
             $_SESSION['success'] = 'Company profile saved successfully!';
+            admin_log_activity($conn, 'company_update', 'Updated the company profile "' . $company_name . '"', 'customer', $saved_id);
 
             // Keep the tenant brand name in sync when the primary profile is updated.
             if ($edit_company_id === $primary_company_id) {
@@ -190,6 +192,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') ==
                 $ins->close();
                 setActiveCompanyId($conn, $tenant_id, $saved_id);
                 $_SESSION['success'] = 'New company profile created successfully!';
+                admin_log_activity($conn, 'company_create', 'Created the company profile "' . $company_name . '"', 'customer', $saved_id);
 
                 // Sync the tenant brand name only when this is the very first profile.
                 if (!$primary_company_id) {

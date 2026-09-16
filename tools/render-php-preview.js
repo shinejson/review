@@ -68,6 +68,8 @@ const PAGES = [
     ['superadmin/users.php', 'users.html', ''],
     ['superadmin/finance.php', 'finance.html', ''],
     ['superadmin/payment_gateways.php', 'payment_gateways.html', ''],
+    ['superadmin/logs.php', 'logs.html', ''],
+    ['superadmin/backups.php', 'backups.html', ''],
     ['superadmin/login.php', 'login.html', '', { anonymous: true }],
 
     /* Edge cases — checked but not written into the preview */
@@ -79,6 +81,13 @@ const PAGES = [
     ['superadmin/tenants.php', null, '?status=cancelled', { probe: 'tenants filtered to cancelled' }],
     ['superadmin/customers.php', null, '?category=4', { probe: 'customers filtered to a category' }],
     ['superadmin/customers.php', null, '?q=volta', { probe: 'customer search by name' }],
+
+    /* Activity log — the platform view, then narrowed to one workspace
+       (the same rows that workspace reads in admin/logs.php). */
+    ['superadmin/logs.php', null, '?tenant=18', { probe: 'activity log filtered to one workspace' }],
+    ['superadmin/logs.php', null, '?portal=admin&action=backup_create', { probe: 'activity log filtered by action' }],
+    ['superadmin/logs.php', null, '?start=2020-01-01&end=2020-01-31', { probe: 'activity log over an empty date range' }],
+    ['superadmin/logs.php', null, '?export=1', { probe: 'CSV export of the activity log', csv: true, minBytes: 120 }],
 
     /* Billing — the financial centre, the printable invoices and the
        tenant-facing checkout. The documents are standalone pages, so
@@ -164,9 +173,14 @@ const POSTS = [
     ['gateways · toggle off', 'superadmin/payment_gateways.php', 'action=toggle_gateway&gateway_key=paystack&enable=0', /^UPDATE payment_gateways/i],
     ['gateways · needs credentials blocked', 'superadmin/payment_gateways.php', 'action=toggle_gateway&gateway_key=flutterwave&enable=1', null],
     ['gateways · default', 'superadmin/payment_gateways.php', 'action=make_default&gateway_key=paystack', /^(UPDATE settings|INSERT INTO settings)/i],
+    /* Platform backups: creating one writes a dump and records it in the
+       activity log; deleting removes it from disk and logs that too. */
+    ['backups · create', 'superadmin/backups.php', 'action=create_backup', /^INSERT INTO system_logs/i, { html: /Backup created: backup_/ }],
+    ['backups · delete (unknown file refused)', 'superadmin/backups.php', 'action=delete_backup&filename=backup_1999-01-01_00-00-00.sql.gz', null, { html: /could not be deleted/ }],
+    ['backups · bad CSRF refused', 'superadmin/backups.php', 'action=create_backup', null, { badCsrf: true }],
     ['gateways · forged token rejected', 'superadmin/payment_gateways.php', 'action=toggle_gateway&gateway_key=paystack&enable=0', null, { badCsrf: true }],
 
-    ['csrf · forged token rejected', 'superadmin/tenants.php', 'action=delete&tenant_id=5', null, { badCsrf: true }],
+    ['csrf · forged token rejected', 'superadmin/tenants.php', 'action=delete&tenant_id=5', null, { badCsrf: true, ignoreBackfill: true }],
     ['login · valid credentials', 'superadmin/login.php', 'username=superadmin&password=superadmin123', /^INSERT INTO user_sessions/i, { anonymous: true, blank: true }],
     ['login · wrong password', 'superadmin/login.php', 'username=superadmin&password=nope', null, { anonymous: true, html: /Invalid username or password/ }],
     ['login · by email address', 'superadmin/login.php', 'username=superadmin%40optibiz.com&password=superadmin123', /^INSERT INTO user_sessions/i, { anonymous: true, blank: true }],
@@ -333,9 +347,15 @@ function main() {
             badCsrf: !!o.badCsrf,
             anonymous: !!o.anonymous,
         });
-        const writes = readSqlLog()
+        let writes = readSqlLog()
             .filter((l) => l.startsWith('write\t'))
             .map((l) => l.slice(6));
+        /* ensureRealIdSchema() backfills public_id on every page load; the mock
+           fixtures have no public_id column, so those UPDATEs fire everywhere.
+           Cases that assert "nothing was written" mean nothing from the handler. */
+        if (o.ignoreBackfill) {
+            writes = writes.filter((w) => !/^UPDATE (tenants|quote_requests) SET public_id = '/.test(w));
+        }
         const notes = [];
         const fatal = /Fatal error|Parse error|Uncaught/.test(html + stderr);
         if (fatal) notes.push('fatal error');

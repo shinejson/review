@@ -10,6 +10,7 @@
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/logging_helpers.php';
 requireLogin();
 ensureTeamSchema($conn);
 
@@ -92,6 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $is_tenant) {
                 $_SESSION['error'] = 'Could not add the team member: ' . $ins->error;
             } else {
                 $_SESSION['success'] = 'Team member "' . htmlspecialchars($full_name) . '" created. They can sign in with their username or email.';
+                admin_log_activity($conn, 'team_create', 'Added the team member "' . $full_name . '" (' . teamRoleLabel($role) . ')', 'team_member', (int) $conn->insert_id);
             }
             $ins->close();
         }
@@ -124,6 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $is_tenant) {
                 $_SESSION['error'] = 'Could not update the team member: ' . $up->error;
             } else {
                 $_SESSION['success'] = 'Team member updated successfully.';
+                admin_log_activity($conn, 'team_update', 'Updated the team member "' . $full_name . '" (' . teamRoleLabel($role) . ')', 'team_member', $member_id);
             }
             $up->close();
         }
@@ -137,6 +140,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $is_tenant) {
             $up->execute();
             $up->close();
             $_SESSION['success'] = $new_state ? 'Team member enabled.' : 'Team member disabled — they can no longer sign in.';
+            admin_log_activity(
+                $conn,
+                'team_toggle',
+                ($new_state ? 'Enabled' : 'Disabled') . ' the team member "' . (string) ($member['full_name'] ?? ('#' . $member_id)) . '"',
+                'team_member',
+                $member_id
+            );
         }
     } elseif ($action === 'delete' && $member) {
         if ($member_id === $own_member_id) {
@@ -147,6 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $is_tenant) {
             $del->execute();
             $del->close();
             $_SESSION['success'] = 'Team member removed.';
+            admin_log_activity($conn, 'team_delete', 'Removed the team member "' . (string) ($member['full_name'] ?? ('#' . $member_id)) . '"', 'team_member', $member_id);
         }
     }
 
