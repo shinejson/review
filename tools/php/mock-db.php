@@ -872,9 +872,34 @@ class MockMysqli
             preg_match("/table_name = '([a-z_]+)'/i", $s, $m);
             $known = ['super_admins', 'subscription_plans', 'tenants', 'admins', 'categories', 'customers', 'ratings', 'settings', 'quote_requests',
                       'subscription_requests', 'social_accounts', 'social_posts', 'user_sessions', 'system_logs', 'tenant_backups',
-                      'payment_gateways', 'payment_invoices', 'subscription_payments', 'payment_refunds', 'payment_events'];
+                      'payment_gateways', 'payment_invoices', 'subscription_payments', 'payment_refunds', 'payment_events',
+                      'notifications'];
             $c = (isset($m[1]) && in_array($m[1], $known, true)) ? 1 : 0;
             return [['c' => $c]];
+        }
+
+        /* ---- column probe (notifications_has_column) ---- */
+        if (preg_match('/^SHOW COLUMNS FROM `?([a-z_]+)`?\s+LIKE \'([a-z_]+)\'/i', $s, $cp)) {
+            // The fixture database is fully migrated: a column exists when
+            // the rows we serve carry it.
+            $rows = isset($this->data[$cp[1]]) ? $this->data[$cp[1]] : [];
+            $found = 0;
+            foreach ($rows as $row) {
+                if (is_array($row) && array_key_exists($cp[2], $row)) {
+                    $found = 1;
+                    break;
+                }
+            }
+            // columns every real install has, fixtures or not
+            $always = [
+                'ratings' => ['reported', 'is_escalated', 'escalation_status', 'admin_reply', 'created_at', 'id'],
+            ];
+            if (!$found && isset($always[$cp[1]]) && in_array($cp[2], $always[$cp[1]], true)) {
+                $found = 1;
+            }
+            return $found
+                ? [['Field' => $cp[2], 'Type' => 'text', 'Null' => 'YES', 'Key' => '', 'Default' => null, 'Extra' => '']]
+                : [];
         }
 
         /* ---- billing schema probe (pay_add_columns on the ledger) ---- */
@@ -2018,10 +2043,118 @@ class MockMysqli
         }
 
         /* ============================================================
-           Payments & billing (includes/payments.php and the screens
-           that read it: superadmin/finance.php, payment_gateways.php,
-           admin/subscription.php, admin/payment_checkout.php)
+           Notification inbox (includes/notifications.php, read by the
+           topbar bells and by superadmin/notifications.php +
+           admin/notifications.php).
+
+           Filters the real reader supports: audience, tenant_id, read
+           state, one type or a list of them, LIKE search, a date range,
+           ORDER BY is_read/created_at and LIMIT … OFFSET.
            ============================================================ */
+        if ($tbl === 'notifications') {
+            if (preg_match('/^\s*(INSERT|UPDATE|DELETE)/i', $s)) {
+                return [];   // registered by logWrite()
+            }
+
+            $rows = isset($D['notifications']) ? $D['notifications'] : [];
+
+            if (preg_match("/audience = '([a-z]+)'/", $s, $m)) {
+                $rows = array_values(array_filter($rows, function ($r) use ($m) {
+                    return $r['audience'] === $m[1];
+                }));
+            }
+            if (preg_match('/tenant_id = (\d+)/', $s, $m)) {
+                $tid = (int) $m[1];
+                $rows = array_values(array_filter($rows, function ($r) use ($tid) {
+                    return (int) $r['tenant_id'] === $tid;
+                }));
+            }
+            if (preg_match('/is_read = (\d+)/', $s, $m)) {
+                $want = (int) $m[1];
+                $rows = array_values(array_filter($rows, function ($r) use ($want) {
+                    return (int) $r['is_read'] === $want;
+                }));
+            }
+            if (preg_match("/type = '([a-z0-9_]+)'/", $s, $m)) {
+                $rows = array_values(array_filter($rows, function ($r) use ($m) {
+                    return $r['type'] === $m[1];
+                }));
+            }
+            if (preg_match('/type IN \(([^)]*)\)/i', $s, $m)) {
+                $list = array_map(function ($v) { return trim($v, " '"); }, explode(',', $m[1]));
+                $rows = array_values(array_filter($rows, function ($r) use ($list) {
+                    return in_array($r['type'], $list, true);
+                }));
+            }
+            if (preg_match_all("/LIKE '%([^']*)%'/i", $s, $likes) && !empty($likes[1])) {
+                $needle = strtolower($likes[1][0]);
+                $rows = array_values(array_filter($rows, function ($r) use ($needle) {
+                    return strpos(strtolower($r['title'] . ' ' . (string) $r['message']), $needle) !== false;
+                }));
+            }
+            if (preg_match("/DATE\(created_at\) >= '([0-9-]+)'/", $s, $m)) {
+                $rows = array_values(array_filter($rows, function ($r) use ($m) {
+                    return substr((string) $r['created_at'], 0, 10) >= $m[1];
+                }));
+            }
+            if (preg_match("/DATE\(created_at\) <= '([0-9-]+)'/", $s, $m)) {
+                $rows = array_values(array_filter($rows, function ($r) use ($m) {
+                    return substr((string) $r['created_at'], 0, 10) <= $m[1];
+                }));
+            }
+            if ($this->has($s, '1 = 0')) {
+                $rows = [];
+            }
+
+            /* per-kind counts for the filter dropdown */
+            if ($this->has($s, 'GROUP BY type')) {
+                $by = [];
+                foreach ($rows as $r) {
+                    $t = $r['type'];
+                    if (!isset($by[$t])) {
+                        $by[$t] = ['total' => 0, 'unread' => 0];
+                    }
+                    $by[$t]['total']++;
+                    if (!(int) $r['is_read']) {
+                        $by[$t]['unread']++;
+                    }
+                }
+                $out = [];
+                foreach ($by as $t => $n) {
+                    $out[] = ['type' => $t, 'total' => $n['total'], 'unread' => $n['unread'],
+                              'COUNT(*)' => $n['total']];
+                }
+                usort($out, function ($a, $b) {
+                    return $b['total'] <=> $a['total'];
+                });
+                return $out;
+            }
+
+            if ($this->has($s, 'COUNT(*)')) {
+                $n = count($rows);
+                return [['COUNT(*)' => $n, 'c' => $n, 'cnt' => $n, 'count' => $n]];
+            }
+
+            $asc = $this->has($s, 'created_at ASC');
+            usort($rows, function ($a, $b) use ($asc) {
+                $cmp = strcmp((string) $a['created_at'], (string) $b['created_at']);
+                if ($cmp === 0) {
+                    $cmp = (int) $a['id'] <=> (int) $b['id'];
+                }
+                return $asc ? $cmp : -$cmp;
+            });
+            if ($this->has($s, 'ORDER BY is_read ASC')) {
+                usort($rows, function ($a, $b) {
+                    return (int) $a['is_read'] <=> (int) $b['is_read'];
+                });
+            }
+            if (preg_match('/LIMIT (\d+)(?:\s+OFFSET (\d+))?/i', $s, $m)) {
+                $rows = array_slice($rows, isset($m[2]) ? (int) $m[2] : 0, (int) $m[1]);
+            }
+            return array_map(function ($r) use ($s) { return $this->project($r, $s); }, $rows);
+        }
+
+
         if (in_array($tbl, ['payment_gateways', 'payment_invoices', 'subscription_payments', 'payment_refunds', 'payment_events'], true)) {
             return $this->payQuery($tbl, $s, $o);
         }

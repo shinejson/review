@@ -66,6 +66,11 @@ const SIGNED_IN = [
        api/submit_rating.php both point at this screen, so it stays in the
        tenant panel; only the categories screen moved to the platform. */
     ['admin/customers.php', 'workspace customers', '', { tenantId: 18 }],
+    /* The workspace inbox (admin/notifications.php) — the same table the
+       topbar bell reads, scoped to the signed-in tenant. */
+    ['admin/notifications.php', 'workspace inbox', '', { tenantId: 18 }],
+    ['admin/notifications.php', 'workspace inbox, unread only', '?status=unread', { tenantId: 18 }],
+    ['admin/notifications.php', 'workspace inbox, re-scan', '?refresh=1&type=review_new', { tenantId: 18 }],
 ];
 
 /* Categories moved to the super admin panel: the tenant admin portal must
@@ -185,6 +190,38 @@ function main() {
         const ok = !fatal && html.length === 0 && !/sa-app|<!DOCTYPE/i.test(html);
         console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${script.padEnd(28)} ${ok ? 'redirected to the super admin login' : 'GRANTED ACCESS'}`);
         if (!ok) fail(script + ' rendered for a tenant admin');
+    }
+
+    console.log('\nInbox isolation (one workspace must not read another\'s notices):');
+    {
+        const mine = runPhp('admin/notifications.php', '', { noSuper: true, tenantId: 18 });
+        const theirs = runPhp('admin/notifications.php', '', { noSuper: true, tenantId: 15 });
+        const Volta = 'Efua Mensimah';    // a notice filed for tenant 18
+        const Cocoa = 'Kojo Asante';      // a notice filed for tenant 15
+        const checks = [
+            ['tenant 18 sees its own notice', mine.html.includes(Volta)],
+            ['tenant 18 does not see tenant 15 notice', !mine.html.includes(Cocoa)],
+            ['tenant 15 sees its own notice', theirs.html.includes(Cocoa)],
+            ['tenant 15 does not see tenant 18 notice', !theirs.html.includes(Volta)],
+        ];
+        const bad = checks.filter((c) => !c[1]).map((c) => c[0]);
+        console.log(`  [${bad.length ? 'FAIL' : ' ok '}] admin/notifications.php      ${bad.length ? 'LEAKED: ' + bad.join(', ') : 'each workspace reads only its own inbox'}`);
+        if (bad.length) fail('the workspace inbox crossed tenants: ' + bad.join(', '));
+
+        /* A notice id belonging to tenant 15 must not be openable by 18:
+           the click-through validates the row against the session. */
+        const hijack = runPhp('admin/notifications.php', 'open=13', { noSuper: true, tenantId: 18 });
+        const refused = hijack.html.length === 0;
+        console.log(`  [${refused ? ' ok ' : 'FAIL'}] admin/notifications.php?open=13  ${refused ? 'refused — redirected without rendering' : 'GRANTED ACCESS'}`);
+        if (!refused) fail('admin/notifications.php?open=13 opened another workspace\'s notice');
+
+        /* The control center reads the platform queue, never a workspace row. */
+        const sa = runPhp('superadmin/notifications.php', '');
+        const saOwn = sa.html.includes('New quote request QTE-4M7X2P1B');   // a platform row
+        const saLeak = sa.html.includes(Cocoa);                              // a workspace row
+        const saBad = !saOwn || saLeak;
+        console.log(`  [${saBad ? 'FAIL' : ' ok '}] superadmin/notifications.php  ${saBad ? (saOwn ? 'SHOWS A WORKSPACE NOTICE' : 'missing the platform queue') : 'platform queue only, no workspace rows'}`);
+        if (saBad) fail('superadmin/notifications.php did not render exactly the platform queue');
     }
 
     console.log('\nMoved admin pages (categories is super-admin only now):');

@@ -230,6 +230,11 @@ CREATE TABLE IF NOT EXISTS ratings (
     customer_email VARCHAR(100) NOT NULL,
     comment TEXT,
     admin_reply TEXT NULL,
+    -- reported / photos / helpful_count are added to older installs by
+    -- migrate_google_reviews.php; declaring them here too means a fresh
+    -- import matches what the app queries (includes/functions.php,
+    -- superadmin/reviews.php) instead of erroring until the migration runs.
+    reported TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = a customer flagged it for moderation',
     responded_at TIMESTAMP NULL,
     is_verified TINYINT(1) NOT NULL DEFAULT 0,
     verification_type VARCHAR(30) NULL,
@@ -598,3 +603,34 @@ CREATE TABLE IF NOT EXISTS analytics_events (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
+
+-- In-app notification inbox, shared by both panels.
+-- `audience` decides who reads a row: 'platform' is the control center
+-- queue (superadmin/notifications.php) and 'tenant' is one workspace's
+-- inbox (admin/notifications.php), where `tenant_id` is the boundary.
+-- Rows are filed by includes/notifications.php — either from a writer or
+-- from the throttled scan of the live tables — and `dedupe_key` is what
+-- keeps a repeated event from piling up. Dismissed rows are kept as
+-- tombstones (deleted_at) so the scan cannot resurrect them.
+CREATE TABLE IF NOT EXISTS notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    audience VARCHAR(20) NOT NULL DEFAULT 'tenant' COMMENT 'platform (control center) | tenant (workspace)',
+    tenant_id INT NOT NULL DEFAULT 0 COMMENT '0 for platform-wide rows',
+    type VARCHAR(40) NOT NULL,
+    title VARCHAR(190) NOT NULL,
+    message VARCHAR(500) NULL,
+    link VARCHAR(255) NULL COMMENT 'relative to the panel that owns the row',
+    icon VARCHAR(30) NULL,
+    tone VARCHAR(20) NOT NULL DEFAULT 'info' COMMENT 'info | success | warning | danger',
+    entity_type VARCHAR(40) NULL,
+    entity_id INT NULL,
+    dedupe_key VARCHAR(190) NULL,
+    is_read TINYINT(1) NOT NULL DEFAULT 0,
+    read_at DATETIME NULL,
+    deleted_at DATETIME NULL COMMENT 'dismissed rows are kept so the sync cannot resurrect them',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_notif_dedupe (dedupe_key),
+    INDEX idx_notif_scope (audience, tenant_id, is_read, created_at),
+    INDEX idx_notif_type (type),
+    INDEX idx_notif_entity (entity_type, entity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -18,6 +18,9 @@
  *      include __DIR__ . '/_shell_footer.php';
  */
 
+/* Inbox helpers for the bell (the inbox page itself loads them too). */
+require_once dirname(__DIR__) . '/includes/notifications.php';
+
 if (!function_exists('sa_icon')) {
     /** Small inline SVG icon helper (feather-style stroke icons). */
     function sa_icon($name, $attrs = '')
@@ -79,6 +82,7 @@ if (!function_exists('sa_icon')) {
             'pie'         => '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>',
             'list'        => '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
             'send'        => '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+            'flag'        => '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
             'server'      => '<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>',
             'users'       => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
         ];
@@ -140,9 +144,19 @@ $sa_badges = [
     ),
 ];
 
+/* The bell reads the same inbox as superadmin/notifications.php, so the
+   badge and that page can never disagree. One query, no scanning — the
+   live re-check happens on the inbox page itself. */
+$sa_inbox = ['items' => [], 'unread' => 0];
+if (isset($conn)) {
+    $sa_inbox = notifications_bell($conn, 'platform', 0, 5, true);
+}
+$sa_badges['unread'] = (int) $sa_inbox['unread'];
+
 $sa_nav = [
     ['section' => 'Overview'],
     ['key' => 'dashboard',     'label' => 'Dashboard',      'href' => 'index.php',            'icon' => 'grid'],
+    ['key' => 'notifications', 'label' => 'Notifications',  'href' => 'notifications.php',    'icon' => 'bell', 'badge' => 'unread', 'alert' => true, 'always' => true],
     ['key' => 'analytics',     'label' => 'Analytics',      'href' => 'analytics.php',        'icon' => 'chart'],
     ['section' => 'Billing'],
     ['key' => 'tenants',       'label' => 'Tenants',        'href' => 'tenants.php',          'icon' => 'building', 'badge' => 'tenants'],
@@ -163,12 +177,14 @@ $sa_nav = [
 ];
 
 /* Only keep the nav items the signed-in super admin may open.
-   A section label is dropped when every item under it is hidden. */
+   'always' items (the inbox, the profile) belong to every account and
+   skip the permission test. A section label is dropped when every item
+   under it is hidden. */
 $sa_nav_visible = [];
 $sa_pending_section = null;
 foreach ($sa_nav as $sa_item) {
     if (isset($sa_item['section'])) { $sa_pending_section = $sa_item; continue; }
-    if (!sa_can($sa_item['key'], $conn)) continue;
+    if (empty($sa_item['always']) && !sa_can($sa_item['key'], $conn)) continue;
     if ($sa_pending_section !== null) { $sa_nav_visible[] = $sa_pending_section; $sa_pending_section = null; }
     $sa_nav_visible[] = $sa_item;
 }
@@ -262,62 +278,66 @@ foreach ($sa_nav as $sa_item) {
             </div>
 
             <div class="sa-topbar-actions">
-                <!-- Notifications bell -->
+                <!-- Notifications bell — the platform inbox -->
                 <div class="sa-notification-wrap">
-                    <button type="button" class="sa-icon-btn sa-notification-btn" aria-label="Notifications" title="Notifications">
+                    <button type="button" class="sa-icon-btn sa-notification-btn" aria-label="Notifications" title="Notifications"
+                            aria-expanded="false">
                         <?php echo sa_icon('bell'); ?>
-<?php if ($sa_badges['quotes'] > 0): ?>
-                        <span class="sa-notification-badge"><?php echo $sa_badges['quotes']; ?></span>
+<?php if ($sa_badges['unread'] > 0): ?>
+                        <span class="sa-notification-badge"><?php echo $sa_badges['unread'] > 99 ? '99+' : (int) $sa_badges['unread']; ?></span>
 <?php endif; ?>
                     </button>
                     <div class="sa-notification-panel">
                         <div class="sa-notification-head">
                             <strong>Notifications</strong>
-                            <span><?php echo $sa_badges['quotes']; ?> new</span>
+<?php if ($sa_badges['unread'] > 0): ?>
+                            <span><?php echo (int) $sa_badges['unread']; ?> unread</span>
+<?php else: ?>
+                            <span class="sa-notification-quiet">Clear</span>
+<?php endif; ?>
                         </div>
                         <div class="sa-notification-list">
-<?php if ($sa_badges['quotes'] > 0): ?>
-                            <a href="quote_requests.php" class="sa-notification-item">
-                                <div class="sa-list-icon is-warning">
-                                    <?php echo sa_icon('inbox'); ?>
+<?php if (!empty($sa_inbox['items'])): ?>
+<?php foreach ($sa_inbox['items'] as $sa_note): ?>
+<?php
+    $sa_note_meta = notifications_type_meta($sa_note['type']);
+    $sa_note_tone = notifications_tone_class($sa_note['tone'] !== '' ? $sa_note['tone'] : $sa_note_meta['tone']);
+?>
+                            <a href="notifications.php?open=<?php echo (int) $sa_note['id']; ?>" class="sa-notification-item">
+                                <div class="sa-list-icon is-<?php echo $sa_note_tone; ?>">
+                                    <?php echo sa_icon($sa_note['icon'] !== '' ? $sa_note['icon'] : $sa_note_meta['icon']); ?>
                                 </div>
                                 <div class="sa-list-body">
-                                    <strong>New quote requests</strong>
-                                    <span><?php echo $sa_badges['quotes']; ?> pending request<?php echo $sa_badges['quotes'] > 1 ? 's' : ''; ?></span>
+                                    <strong><?php echo sa_e($sa_note['title']); ?></strong>
+                                    <span>
+                                        <?php echo sa_e(sa_time_ago($sa_note['created_at'])); ?>
+                                        <?php if (!empty($sa_note['message'])): ?>
+                                        · <?php echo sa_e(notifications_trim($sa_note['message'], 62)); ?>
+                                        <?php endif; ?>
+                                    </span>
                                 </div>
                             </a>
-<?php endif; ?>
-<?php if ($sa_badges['subs'] > 0): ?>
-                            <a href="subscriptions.php" class="sa-notification-item">
-                                <div class="sa-list-icon is-danger">
-                                    <?php echo sa_icon('card'); ?>
-                                </div>
-                                <div class="sa-list-body">
-                                    <strong>Expiring subscriptions</strong>
-                                    <span><?php echo $sa_badges['subs']; ?> expiring within 30 days</span>
-                                </div>
-                            </a>
-<?php endif; ?>
-<?php if (!empty($sa_badges['payments'])): ?>
-                            <a href="finance.php#approvals" class="sa-notification-item">
-                                <div class="sa-list-icon is-warning">
-                                    <?php echo sa_icon('dollar'); ?>
-                                </div>
-                                <div class="sa-list-body">
-                                    <strong>Payments to confirm</strong>
-                                    <span><?php echo (int) $sa_badges['payments']; ?> payment<?php echo (int) $sa_badges['payments'] === 1 ? '' : 's'; ?> captured and waiting</span>
-                                </div>
-                            </a>
-<?php endif; ?>
-<?php if ($sa_badges['quotes'] == 0 && $sa_badges['subs'] == 0 && empty($sa_badges['payments'])): ?>
+<?php endforeach; ?>
+<?php else: ?>
                             <div class="sa-notification-empty">
                                 <?php echo sa_icon('check-circle'); ?>
-                                <p>No new notifications</p>
+                                <p>No unread notices</p>
+<?php if ($sa_badges['quotes'] > 0 || $sa_badges['subs'] > 0 || !empty($sa_badges['payments'])): ?>
+                                <span>
+                                    The queues still have work:
+                                    <?php $sa_q = [];
+                                    if ($sa_badges['quotes'] > 0) $sa_q[] = $sa_badges['quotes'] . ' quote' . ($sa_badges['quotes'] === 1 ? '' : 's');
+                                    if ($sa_badges['subs'] > 0) $sa_q[] = $sa_badges['subs'] . ' renewal' . ($sa_badges['subs'] === 1 ? '' : 's');
+                                    if (!empty($sa_badges['payments'])) $sa_q[] = $sa_badges['payments'] . ' payment' . ((int) $sa_badges['payments'] === 1 ? '' : 's');
+                                    echo sa_e(implode(', ', $sa_q)); ?>.
+                                </span>
+<?php endif; ?>
                             </div>
 <?php endif; ?>
                         </div>
                         <div class="sa-notification-foot">
-                            <a href="quote_requests.php">View all notifications</a>
+                            <a href="notifications.php">Open the inbox</a>
+                            <a href="notifications.php?refresh=1" title="Scan the platform for anything new">Re-scan</a>
                         </div>
                     </div>
                 </div>

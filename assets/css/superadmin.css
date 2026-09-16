@@ -1325,9 +1325,11 @@ h4 {
     border-bottom: 1px solid var(--sa-line);
 }
 
+.sa-card-head h2,
 .sa-card-head h3 {
     font-size: 15px;
     font-weight: 700;
+    margin: 0;
 }
 
 .sa-card-head p {
@@ -4469,4 +4471,227 @@ a.sa-list-item:hover {
 
 .sa-checklist strong {
     color: var(--sa-heading);
+}
+
+/* ============================================================
+   17. Notifications — the platform inbox (superadmin/notifications.php)
+   ------------------------------------------------------------
+   Reuses the bell's chips (.sa-list-icon.is-*) and .sa-pill, so a
+   notice looks the same in the dropdown and in the full list.
+   ============================================================ */
+
+/* bell extras */
+.sa-notification-quiet {
+    background: var(--sa-surface-2) !important;
+    color: var(--sa-faint) !important;
+}
+
+.sa-notification-empty span {
+    display: block;
+    margin-top: 6px;
+    font-size: 11.8px;
+    line-height: 1.5;
+    color: var(--sa-faint);
+}
+
+.sa-notification-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.sa-notification-foot a + a {
+    color: var(--sa-muted);
+}
+
+/* the inbox itself */
+.sa-inbox-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--sa-line);
+}
+
+.sa-inbox-tabs .sa-pill {
+    text-decoration: none;
+    transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+
+.sa-inbox-tabs .sa-pill:hover {
+    color: var(--sa-heading);
+    border-color: var(--sa-line-strong);
+}
+
+.sa-inbox-tabs .sa-pill.is-on {
+    background: var(--sa-accent-soft);
+    border-color: var(--sa-accent-line);
+    color: var(--sa-accent);
+    font-weight: 700;
+}
+
+.sa-inbox {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.sa-inbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--sa-line);
+    position: relative;
+    transition: background .16s var(--sa-ease);
+}
+
+.sa-inbox-row:first-child {
+    border-top: none;
+}
+
+.sa-inbox-row:hover {
+    background: var(--sa-surface-hover);
+}
+
+.sa-inbox-row.is-read {
+    opacity: .72;
+}
+
+.sa-inbox-row.is-read:hover {
+    opacity: 1;
+}
+
+.sa-inbox-row:not(.is-read)::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--sa-accent);
+}
+
+.sa-inbox-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.sa-inbox-main h3 {
+    margin: 0 0 3px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--sa-text);
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+}
+
+.sa-inbox-main h3 a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.sa-inbox-main h3 a:hover {
+    color: var(--sa-accent);
+    text-decoration: underline;
+}
+
+.sa-inbox-main p {
+    margin: 0 0 8px;
+    font-size: 12.6px;
+    line-height: 1.55;
+    color: var(--sa-muted);
+    overflow-wrap: anywhere;
+}
+
+.sa-inbox-flag {
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: var(--sa-accent);
+    color: var(--sa-accent-contrast);
+    font-size: 9.5px;
+    font-weight: 800;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+}
+
+.sa-inbox-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 11.6px;
+    color: var(--sa-faint);
+}
+
+.sa-inbox-meta .sa-pill {
+    font-size: 10.6px;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+}
+
+.sa-inbox-ws {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--sa-muted);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.sa-inbox-ws:hover {
+    color: var(--sa-accent);
+}
+
+.sa-inbox-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: none;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.sa-inbox-actions form {
+    display: inline-flex;
+    margin: 0;
+}
+
+.sa-inbox-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin: 16px 2px 0;
+    padding: 12px 14px;
+    border: 1px dashed var(--sa-line);
+    border-radius: var(--sa-radius-sm);
+    background: var(--sa-surface-2);
+    color: var(--sa-faint);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.sa-inbox-note svg {
+    flex: none;
+    margin-top: 1px;
+}
+
+:root[data-theme='light'] .sa-inbox-note {
+    background: rgba(15, 36, 56, .03);
+}
+
+@media (max-width: 760px) {
+    .sa-inbox-row {
+        flex-wrap: wrap;
+    }
+
+    .sa-inbox-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
 }
