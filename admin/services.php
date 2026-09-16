@@ -104,6 +104,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param('isssis', $workspace_id, $title, $description, $icon, $sort_order, $status);
             $stmt->execute();
             sa_flash($stmt->error ? 'error' : 'success', $stmt->error ? 'Could not create the service: ' . $stmt->error : '"' . $title . '" was added.');
+            if (!$stmt->error) {
+                admin_log_activity($conn, 'service_create', 'Added the service "' . $title . '"', 'service', (int) $conn->insert_id);
+            }
             $stmt->close();
         } elseif ($id > 0) {
             $stmt = $conn->prepare(
@@ -113,6 +116,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param('sssisii', $title, $description, $icon, $sort_order, $status, $id, $workspace_id);
             $stmt->execute();
             sa_flash($stmt->error ? 'error' : 'success', $stmt->error ? 'Could not save the service: ' . $stmt->error : '"' . $title . '" was updated.');
+            if (!$stmt->error) {
+                admin_log_activity($conn, 'service_update', 'Updated the service "' . $title . '"', 'service', $id);
+            }
             $stmt->close();
         }
         redirect('services.php');
@@ -125,6 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param('ii', $id, $workspace_id);
             $stmt->execute();
             $stmt->close();
+            admin_log_activity($conn, 'service_toggle', 'Changed the visibility of a service', 'service', $id);
             sa_flash('success', 'Service visibility updated.');
         }
         redirect('services.php');
@@ -133,10 +140,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'delete') {
         $id = (int) ($_POST['service_id'] ?? 0);
         if ($id) {
+            $service = sa_one($conn, 'SELECT title FROM services WHERE id = ' . (int) $id . ' AND tenant_id = ' . (int) $workspace_id);
             $stmt = $conn->prepare("DELETE FROM services WHERE id = ? AND tenant_id = ?");
             $stmt->bind_param('ii', $id, $workspace_id);
             $stmt->execute();
             $stmt->close();
+            admin_log_activity($conn, 'service_delete', 'Deleted the service "' . (string) ($service['title'] ?? ('#' . $id)) . '"', 'service', $id);
             sa_flash('success', 'Service deleted.');
         }
         redirect('services.php');

@@ -180,6 +180,16 @@ $activeNav = $activeNav ?? 'dashboard';
       <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span><span class="nav-label">Subscription</span>
     </a>
     <?php endif; ?>
+    <?php if (teamHasAccess('backups')): ?>
+    <a <?php echo $activeNav === 'backups' ? 'class="active"' : ''; ?> href="backups.php" title="Workspace Backups">
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span><span class="nav-label">Backups</span>
+    </a>
+    <?php endif; ?>
+    <?php if (teamHasAccess('logs')): ?>
+    <a <?php echo $activeNav === 'logs' ? 'class="active"' : ''; ?> href="logs.php" title="Activity Log">
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg></span><span class="nav-label">Activity Log</span>
+    </a>
+    <?php endif; ?>
     <?php if (teamHasAccess('settings')): ?>
     <a <?php echo ($activeNav === 'settings' && (($_GET['tab'] ?? '') === 'customization')) ? 'class="active"' : ''; ?> href="settings.php?tab=customization#tab=customization" title="Public Page Customisation">
       <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/><path d="M12 22.5A8.5 8.5 0 0 0 20.5 14c0-2.3-1.07-4.4-2.84-5.84L12 2.69 6.34 8.16A8.5 8.5 0 0 0 3.5 14a8.5 8.5 0 0 0 8.5 8.5z"/></svg></span><span class="nav-label">Page Customiser</span>

@@ -20,6 +20,7 @@
  */
 
 require_once __DIR__ . '/sa_helpers.php';
+require_once __DIR__ . '/logging_helpers.php';
 
 /* ============================================================
    Schema
@@ -140,6 +141,22 @@ if (!function_exists('admin_ensure_schema')) {
                 updated_at DATETIME NULL,
                 UNIQUE KEY uniq_tenant_comp (tenant_id, company_id),
                 INDEX idx_tenant (tenant_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+
+        @$conn->query(
+            "CREATE TABLE IF NOT EXISTS tenant_backups (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                tenant_id INT NOT NULL,
+                filename VARCHAR(190) NOT NULL,
+                format ENUM('json.gz','json') NOT NULL DEFAULT 'json.gz',
+                size_bytes BIGINT NOT NULL DEFAULT 0,
+                table_count INT NOT NULL DEFAULT 0,
+                record_count INT NOT NULL DEFAULT 0,
+                created_by_label VARCHAR(120) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_tb_tenant (tenant_id, created_at),
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         );
 
