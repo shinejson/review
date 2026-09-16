@@ -676,6 +676,52 @@
         });
     }
 
+    /* ---------- Card Collapse / Expand ---------- */
+    function initCardCollapse() {
+        // Restore saved collapsed states
+        var cards = document.querySelectorAll('.sa-card[data-card-id]');
+        cards.forEach(function (card) {
+            var cardId = card.getAttribute('data-card-id');
+            var saved = null;
+            if (cardId && typeof localStorage !== 'undefined') {
+                try {
+                    saved = localStorage.getItem('sa_card_' + cardId);
+                } catch (err) {}
+            }
+            if (saved === 'collapsed') {
+                card.classList.add('sa-card-collapsed');
+                var btn = card.querySelector('.sa-card-toggle:not([data-action="refresh"]):not([onclick])');
+                if (btn) {
+                    btn.setAttribute('aria-expanded', 'false');
+                    btn.setAttribute('title', 'Expand card');
+                }
+            }
+        });
+
+        // Click delegation
+        document.addEventListener('click', function (e) {
+            var toggleBtn = e.target.closest ? e.target.closest('.sa-card-toggle') : null;
+            if (!toggleBtn) return;
+            if (toggleBtn.getAttribute('onclick') || toggleBtn.getAttribute('data-action') === 'refresh') return;
+
+            var card = toggleBtn.closest('.sa-card');
+            if (card) {
+                e.preventDefault();
+                e.stopPropagation();
+                var isCollapsed = card.classList.toggle('sa-card-collapsed');
+                toggleBtn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+                toggleBtn.setAttribute('title', isCollapsed ? 'Expand card' : 'Collapse card');
+
+                var cardId = card.getAttribute('data-card-id');
+                if (cardId && typeof localStorage !== 'undefined') {
+                    try {
+                        localStorage.setItem('sa_card_' + cardId, isCollapsed ? 'collapsed' : 'expanded');
+                    } catch (err) {}
+                }
+            }
+        });
+    }
+
     onReady(function () {
         initTheme();
         initSidebar();
@@ -690,5 +736,6 @@
         initShortcuts();
         initConfirms();
         initBackToTop();
+        initCardCollapse();
     });
 })();

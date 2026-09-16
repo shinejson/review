@@ -1,9 +1,5 @@
 <?php
 /**
-<<<<<<< HEAD
- * Super Admin — Activity Logs
- * View and export system activity logs.
-=======
  * ============================================================
  *  Super Admin — Activity Logs
  * ============================================================
@@ -15,7 +11,6 @@
  *  Rows carry a tenant_id, so the list can be narrowed to one
  *  workspace — the same rows that workspace sees in
  *  admin/logs.php, next to everything else.
->>>>>>> 96a2caf8ff34731b0474c93ff850dddf4ce8d8c0
  */
 
 require_once dirname(__DIR__) . '/includes/auth.php';
@@ -27,107 +22,14 @@ require_once dirname(__DIR__) . '/includes/logging_helpers.php';
 requireSuperAdminLogin();
 require_sa_permission('logs');
 
-<<<<<<< HEAD
-$robots       = 'noindex, nofollow';
-=======
 sa_logs_ensure_schema($conn);
 
->>>>>>> 96a2caf8ff34731b0474c93ff850dddf4ce8d8c0
 $pageTitle    = 'Activity Logs';
 $pageHeading  = 'Activity Logs';
 $pageSubtitle = 'Every workspace and platform action, in one list.';
 $activePage   = 'logs';
 $BASE         = '../';
-$extraCss     = ['assets/css/superadmin.css'];
-$bodyClass    = 'sa-body';
 
-<<<<<<< HEAD
-$filter_portal = $_GET['portal'] ?? 'all';
-$filter_action = $_GET['action'] ?? '';
-$filter_user   = $_GET['user'] ?? '';
-$filter_start  = $_GET['start'] ?? '';
-$filter_end    = $_GET['end'] ?? '';
-$filter_search = $_GET['search'] ?? '';
-$filter_page   = max(1, (int) ($_GET['page'] ?? 1));
-$per_page      = 50;
-
-$filters = [];
-if ($filter_portal && $filter_portal !== 'all') $filters['portal'] = $filter_portal;
-if ($filter_action) $filters['action'] = $filter_action;
-if ($filter_user) $filters['user_id'] = (int) $filter_user;
-if ($filter_start) $filters['start_date'] = $filter_start;
-if ($filter_end) $filters['end_date'] = $filter_end;
-if ($filter_search) $filters['search'] = $filter_search;
-
-$logs = sa_get_logs($conn, $filter_portal, array_merge($filters, ['limit' => $per_page, 'offset' => ($filter_page - 1) * $per_page]));
-$total_logs = sa_get_logs_count($conn, $filter_portal, $filters);
-$total_pages = ceil($total_logs / $per_page);
-$actions = sa_get_log_actions($conn, null);
-$users_superadmin = sa_query($conn, "SELECT id, username FROM super_admins ORDER BY username", 'super_admins');
-$users_admin = sa_query($conn, "SELECT id, username FROM admins ORDER BY username", 'admins');
-
-if (isset($_GET['export'])) {
-    if (function_exists('sa_export_logs_csv')) {
-        $filename = 'activity_logs_' . date('Y-m-d_His') . '.csv';
-        sa_export_logs_csv($conn, $filter_portal, $filters, $filename);
-        exit;
-    }
-}
-
-include dirname(__DIR__) . '/includes/header.php';
-include __DIR__ . '/_shell.php';
-?>
-
-<div class="sa-card">
-    <div class="sa-card-head">
-        <div><h3>Activity Logs</h3><p>Track all actions across the platform</p></div>
-        <div class="sa-topbar-actions">
-            <form method="GET" style="display:inline">
-                <input type="hidden" name="export" value="1">
-                <input type="hidden" name="portal" value="<?php echo sa_e($filter_portal); ?>">
-                <input type="hidden" name="action" value="<?php echo sa_e($filter_action); ?>">
-                <input type="hidden" name="user" value="<?php echo sa_e($filter_user); ?>">
-                <input type="hidden" name="start" value="<?php echo sa_e($filter_start); ?>">
-                <input type="hidden" name="end" value="<?php echo sa_e($filter_end); ?>">
-                <button type="submit" class="sa-btn sa-btn-sm sa-btn-ghost">
-                    <?php echo sa_icon('download'); ?> Export CSV
-                </button>
-            </form>
-        </div>
-    </div>
-    
-    <div class="sa-card-pad">
-        <form method="GET" class="sa-form sa-mb">
-            <div class="sa-grid sa-grid-4 sa-mb">
-                <div>
-                    <label class="sa-field-label">Portal</label>
-                    <select name="portal" class="sa-input" onchange="this.form.submit()">
-                        <option value="all" <?php echo $filter_portal === 'all' ? 'selected' : ''; ?>>All Panels</option>
-                        <option value="superadmin" <?php echo $filter_portal === 'superadmin' ? 'selected' : ''; ?>>Super Admin</option>
-                        <option value="admin" <?php echo $filter_portal === 'admin' ? 'selected' : ''; ?>>Admin</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="sa-field-label">Action Type</label>
-                    <select name="action" class="sa-input" onchange="this.form.submit()">
-                        <option value="">All Actions</option>
-                        <?php foreach ($actions as $act): ?>
-                        <option value="<?php echo sa_e($act['action']); ?>" <?php echo $filter_action === $act['action'] ? 'selected' : ''; ?>>
-                            <?php echo sa_e($act['action']); ?> (<?php echo $act['count']; ?>)
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div>
-                    <label class="sa-field-label">Start Date</label>
-                    <input type="date" name="start" class="sa-input" value="<?php echo sa_e($filter_start); ?>" onchange="this.form.submit()">
-                </div>
-                <div>
-                    <label class="sa-field-label">End Date</label>
-                    <input type="date" name="end" class="sa-input" value="<?php echo sa_e($filter_end); ?>" onchange="this.form.submit()">
-                </div>
-            </div>
-=======
 /* ============================================================
    Filters
    ============================================================ */
@@ -163,7 +65,6 @@ if ($filter_end !== '') {
 if ($filter_search !== '') {
     $filters['search'] = $filter_search;
 }
->>>>>>> 96a2caf8ff34731b0474c93ff850dddf4ce8d8c0
 
 /* Reference data for the filter bar. */
 $tenants = sa_query($conn, 'SELECT id, company_name FROM tenants ORDER BY company_name ASC', 'tenants');
@@ -424,15 +325,10 @@ include __DIR__ . '/_shell.php';
             <?php else: ?><span></span><?php endif; ?>
             <span class="sa-muted">Page <?php echo $filter_page; ?> of <?php echo $total_pages; ?></span>
             <?php if ($filter_page < $total_pages): ?>
-<<<<<<< HEAD
-                <a href="?page=<?php echo $filter_page + 1; ?>&portal=<?php echo urlencode($filter_portal); ?>&action=<?php echo urlencode($filter_action); ?>&user=<?php echo urlencode($filter_user); ?>&start=<?php echo urlencode($filter_start); ?>&end=<?php echo urlencode($filter_end); ?>" class="sa-btn sa-btn-sm sa-btn-ghost">Next <?php echo sa_icon('chevron-right'); ?></a>
-            <?php endif; ?>
-=======
             <a href="<?php echo sa_e(sa_logs_url(['page' => $filter_page + 1])); ?>" class="sa-btn sa-btn-sm sa-btn-ghost">
                 Older <?php echo sa_icon('arrow-left'); ?>
             </a>
             <?php else: ?><span></span><?php endif; ?>
->>>>>>> 96a2caf8ff34731b0474c93ff850dddf4ce8d8c0
         </div>
     </div>
     <?php endif; ?>

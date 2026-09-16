@@ -41,18 +41,6 @@ if (!function_exists('sa_backup_dir')) {
     }
 }
 
-<<<<<<< HEAD
-function get_backup_list($backup_dir) {
-    $backups = [];
-    if (!is_dir($backup_dir)) return $backups;
-    
-    $files = glob($backup_dir . '/*.sql.gz');
-    if (empty($files)) $files = glob($backup_dir . '/*.sql');
-    
-    foreach ($files as $file) {
-        if (is_file($file)) {
-            $backups[] = [
-=======
 if (!function_exists('sa_backup_list')) {
     /** Every *.sql / *.sql.gz dump in the platform backup folder. */
     function sa_backup_list($dir)
@@ -67,7 +55,6 @@ if (!function_exists('sa_backup_list')) {
                 continue;
             }
             $out[] = [
->>>>>>> 96a2caf8ff34731b0474c93ff850dddf4ce8d8c0
                 'filename' => basename($file),
                 'path'     => $file,
                 'size'     => (int) filesize($file),
@@ -82,23 +69,6 @@ if (!function_exists('sa_backup_list')) {
     }
 }
 
-<<<<<<< HEAD
-function format_bytes($bytes) {
-    if ($bytes >= 1073741824) return number_format($bytes / 1073741824, 2) . ' GB';
-    if ($bytes >= 1048576) return number_format($bytes / 1048576, 2) . ' MB';
-    if ($bytes >= 1024) return number_format($bytes / 1024, 2) . ' KB';
-    return $bytes . ' B';
-}
-
-function get_database_config() {
-    if (defined('DB_HOST') && defined('DB_NAME')) {
-        return [
-            'host'     => DB_HOST,
-            'dbname'   => DB_NAME,
-            'username' => defined('DB_USER') ? DB_USER : 'root',
-            'password' => defined('DB_PASS') ? DB_PASS : '',
-        ];
-=======
 if (!function_exists('sa_backup_bytes')) {
     /** 1.42 GB / 812.0 MB / 96 B — also used by the workspace screen. */
     function sa_backup_bytes($bytes)
@@ -114,134 +84,9 @@ if (!function_exists('sa_backup_bytes')) {
             return number_format($bytes / 1024, 1) . ' KB';
         }
         return (int) $bytes . ' B';
->>>>>>> 96a2caf8ff34731b0474c93ff850dddf4ce8d8c0
     }
 }
 
-<<<<<<< HEAD
-function delete_backup($filepath) {
-    if (file_exists($filepath) && unlink($filepath)) {
-        if (function_exists('sa_log_activity')) {
-            sa_log_activity($GLOBALS['conn'], 'superadmin', $_SESSION['super_admin_id'] ?? null, 'backup_delete', "Deleted: " . basename($filepath));
-        }
-        return true;
-    }
-    return false;
-}
-
-function create_backup_php($config, $filepath) {
-    $conn = $GLOBALS['conn'];
-    if (!$conn) return ['success' => false, 'message' => 'Database connection not available.'];
-    
-    $tables = $conn->query("SHOW TABLES");
-    if (!$tables) return ['success' => false, 'message' => 'Failed to get table list.'];
-    
-    $sql = "-- Backup: " . date('Y-m-d H:i:s') . "\n-- DB: " . $config['dbname'] . "\n\n";
-    
-    while ($row = $tables->fetch_row()) {
-        $table = $row[0];
-        $create = $conn->query("SHOW CREATE TABLE `{$table}`");
-        if ($create && $create->num_rows > 0) $sql .= $create->fetch_row()[1] . ";\n\n";
-        
-        $data = $conn->query("SELECT * FROM `{$table}`");
-        if ($data) {
-            while ($r = $data->fetch_assoc()) {
-                $vals = [];
-                foreach ($r as $v) $vals[] = "'" . addslashes((string)$v) . "'";
-                $sql .= "INSERT INTO `{$table}` VALUES (" . implode(',', $vals) . ");\n";
-            }
-        }
-        $sql .= "\n";
-    }
-    
-    $sql = gzencode($sql, 9);
-    if (file_put_contents($filepath, $sql) !== false) return ['success' => true, 'message' => "Backup created: " . basename($filepath)];
-    return ['success' => false, 'message' => 'Failed to write backup file.'];
-}
-
-function create_backup($backup_dir) {
-    $config = get_database_config();
-    if (empty($config['dbname'])) return ['success' => false, 'message' => 'Database configuration not found.'];
-    
-    $timestamp = date('Y-m-d_H-i-s');
-    $filename = "backup_{$timestamp}.sql.gz";
-    $filepath = $backup_dir . '/' . $filename;
-    
-    if (function_exists('exec')) {
-        $host = escapeshellarg($config['host']);
-        $user = escapeshellarg($config['username']);
-        $pass = escapeshellarg($config['password']);
-        $db = escapeshellarg($config['dbname']);
-        $file = escapeshellarg($filepath);
-        
-        $command = "mysqldump --host={$host} --user={$user} --password={$pass} {$db} 2>&1 | gzip > {$file}";
-        exec($command, $output, $return_var);
-        
-        if ($return_var === 0 && file_exists($filepath) && filesize($filepath) > 0) {
-            if (function_exists('sa_log_activity')) {
-                sa_log_activity($GLOBALS['conn'], 'superadmin', $_SESSION['super_admin_id'] ?? null, 'backup_create', "Created: {$filename}");
-            }
-            return ['success' => true, 'message' => "Backup created: {$filename}"];
-        }
-    }
-    
-    return create_backup_php($config, $filepath);
-}
-
-// Download handler
-if (isset($_GET['download'])) {
-    $filename = sanitize($_GET['download']);
-    $filepath = $backup_dir . '/' . $filename;
-    
-    if (file_exists($filepath)) {
-        if (function_exists('sa_log_activity')) {
-            sa_log_activity($GLOBALS['conn'], 'superadmin', $_SESSION['super_admin_id'] ?? null, 'backup_download', "Downloaded: {$filename}");
-        }
-        header('Content-Description: File Transfer');
-        header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="' . basename($filepath) . '"');
-        header('Expires: 0');
-        header('Cache-Control: must-revalidate');
-        header('Pragma: public');
-        header('Content-Length: ' . filesize($filepath));
-        readfile($filepath);
-        exit;
-    }
-}
-
-// POST actions handler
-$message = '';
-$message_type = 'success';
-if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-    if (!sa_csrf_ok()) {
-        $message = 'Session expired. Please try again.';
-        $message_type = 'error';
-    } else {
-        $action = $_POST['action'] ?? '';
-        
-        if ($action === 'create_backup') {
-            $result = create_backup($backup_dir);
-            $message = $result['message'];
-            if (!$result['success']) {
-                $message_type = 'error';
-            }
-        } elseif ($action === 'delete_backup') {
-            $filename = sanitize($_POST['filename'] ?? '');
-            $filepath = $backup_dir . '/' . $filename;
-            if (delete_backup($filepath)) {
-                $message = "Deleted: {$filename}";
-            } else {
-                $message = "Failed to delete: {$filename}";
-                $message_type = 'error';
-            }
-        }
-    }
-}
-
-$backups = get_backup_list($backup_dir);
-$config = get_database_config();
-$has_mysqldump = function_exists('exec');
-=======
 if (!function_exists('sa_backup_safe_name')) {
     /** A filename may only ever be a plain dump name inside the folder. */
     function sa_backup_safe_name($name)
@@ -329,6 +174,24 @@ if (!function_exists('sa_backup_config')) {
             $pass = $pass ?? ($password ?? '');
         }
         return ['host' => (string) $host, 'name' => (string) $name, 'user' => (string) $user, 'pass' => (string) $pass];
+    }
+}
+
+
+// Backwards-compatibility aliases for legacy helper names
+if (!function_exists('format_bytes')) {
+    function format_bytes($bytes) {
+        return sa_backup_bytes($bytes);
+    }
+}
+if (!function_exists('get_backup_list')) {
+    function get_backup_list($backup_dir) {
+        return sa_backup_list($backup_dir);
+    }
+}
+if (!function_exists('create_backup')) {
+    function create_backup($backup_dir) {
+        return sa_backup_php_dump();
     }
 }
 
@@ -484,17 +347,6 @@ foreach ($backups as $b) {
 }
 $can_dump    = $config['name'] !== '';
 $workspace_count = sa_scalar($conn, 'SELECT COUNT(*) AS c FROM tenants', 0, 'tenants');
->>>>>>> 96a2caf8ff34731b0474c93ff850dddf4ce8d8c0
-
-/* ---------- page meta ---------- */
-$robots        = 'noindex, nofollow';
-$pageTitle     = 'Backups';
-$pageHeading   = 'Database Backups';
-$pageSubtitle  = 'Manage database snapshots and disaster recovery archives';
-$activePage    = 'backups';
-$BASE          = '../';
-$extraCss      = ['assets/css/superadmin.css'];
-$bodyClass     = 'sa-body';
 
 include dirname(__DIR__) . '/includes/header.php';
 include __DIR__ . '/_shell.php';
@@ -512,20 +364,12 @@ include __DIR__ . '/_shell.php';
             <button type="submit" class="sa-btn sa-btn-primary"><?php echo sa_icon('plus'); ?> Create backup</button>
         </form>
     </div>
-<<<<<<< HEAD
-    
-    <?php if ($message): ?>
-    <div class="sa-alert sa-alert-<?php echo $message_type === 'error' ? 'danger' : 'success'; ?>">
-        <?php echo sa_icon($message_type === 'error' ? 'alert' : 'check-circle'); ?>
-        <?php echo sa_e($message); ?>
-=======
 
     <?php if ($message !== ''): ?>
     <div class="sa-card-pad" style="padding-bottom:0;">
         <div class="sa-alert sa-alert-<?php echo $message_tone === 'error' ? 'danger' : 'success'; ?>">
             <?php echo sa_icon($message_tone === 'error' ? 'alert' : 'check-circle'); ?> <?php echo sa_e($message); ?>
         </div>
->>>>>>> 96a2caf8ff34731b0474c93ff850dddf4ce8d8c0
     </div>
     <?php endif; ?>
 
@@ -557,13 +401,8 @@ include __DIR__ . '/_shell.php';
                 <div class="sa-stat-label">Covered by each dump</div>
             </div>
         </div>
-<<<<<<< HEAD
-        
-        <div class="sa-alert sa-alert-info" style="margin-bottom:0;">
-=======
 
         <div class="sa-info">
->>>>>>> 96a2caf8ff34731b0474c93ff850dddf4ce8d8c0
             <?php echo sa_icon('info'); ?>
             <div>
                 <strong>Location:</strong> <?php echo sa_e($backup_dir); ?><br>
@@ -650,9 +489,6 @@ include __DIR__ . '/_shell.php';
     <?php endif; ?>
 </div>
 
-<<<<<<< HEAD
-<?php include __DIR__ . '/_shell_footer.php'; ?>
-=======
 <div class="sa-card sa-mt">
     <div class="sa-card-head">
         <div><h3>How this is used</h3><p>Restore path and tenant-facing equivalent.</p></div>
@@ -671,4 +507,3 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <?php include __DIR__ . '/_shell_footer.php'; ?>
->>>>>>> 96a2caf8ff34731b0474c93ff850dddf4ce8d8c0

@@ -3680,10 +3680,55 @@ a.sa-list-item:hover {
     border-radius: var(--sa-radius-sm);
     background: var(--sa-surface-2);
     border: 1px solid var(--sa-line);
-    margin-bottom: 16px;
-    text-align: center;
-    gap: 12px;
 }
+
+/* ---------- Card collapse/expand toggle ---------- */
+.sa-card-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid var(--sa-line);
+    border-radius: var(--sa-radius-sm);
+    background: var(--sa-surface-2);
+    color: var(--sa-muted);
+    cursor: pointer;
+    transition: all 0.18s ease;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.sa-card-toggle:hover {
+    color: var(--sa-heading);
+    background: var(--sa-surface-3);
+    border-color: var(--sa-line-focus);
+    transform: translateY(-1px);
+}
+
+.sa-card-toggle svg {
+    width: 14px;
+    height: 14px;
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sa-card.sa-card-collapsed {
+    align-self: start;
+}
+
+.sa-card.sa-card-collapsed .sa-card-toggle svg {
+    transform: rotate(180deg);
+}
+
+.sa-card.sa-card-collapsed > :not(.sa-card-head) {
+    display: none !important;
+}
+
+.sa-card.sa-card-collapsed .sa-card-head {
+    border-bottom-color: transparent;
+}
+
 .sa-breakdown-item .sa-bd-label {
     font-size: 11px;
     text-transform: uppercase;

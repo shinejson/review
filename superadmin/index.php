@@ -437,7 +437,7 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <!-- ============ ENGAGEMENT ============ -->
-<div class="sa-grid sa-cols-3 sa-mt">
+<div class="sa-grid sa-cols-2 sa-mt">
 
     <section class="sa-card" data-card-id="top_rated">
         <div class="sa-card-head">
@@ -474,8 +474,10 @@ include __DIR__ . '/_shell.php';
         <div class="sa-card-foot">
             <span><?php echo sa_e(number_format(sa_pct($m['five_star'], $m['ratings_total'], 0))); ?>% are 5-star</span>
             <span><?php echo sa_e(sa_num($m['new_ratings_30d'])); ?> in the last 30 days</span>
-                </div>
+        </div>
     </section>
+
+</div>
 
 <!-- ============ QUOTE REQUESTS + ACTIVITY ============ -->
 <div class="sa-grid sa-split-2-1 sa-mt">
@@ -530,7 +532,7 @@ include __DIR__ . '/_shell.php';
                 <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse" style="margin-right:4px">
                     <?php echo sa_icon('chevron-up'); ?>
                 </button>
-                <button type="button" class="sa-icon-btn" onclick="window.location.reload()" title="Refresh" aria-label="Refresh">
+                <button type="button" class="sa-card-toggle" onclick="window.location.reload()" title="Refresh" aria-label="Refresh">
                     <?php echo sa_icon('refresh'); ?>
                 </button>
             </div>
@@ -561,6 +563,6 @@ include __DIR__ . '/_shell.php';
 
 </div>
 
-<?php include __DIR__ . '/_shell_footer.php'; ?>
+<script src="dashboard_sections.js"></script>
 
-<script src="../superadmin/dashboard_sections.js"></script>
+<?php include __DIR__ . '/_shell_footer.php'; ?>
