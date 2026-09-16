@@ -992,7 +992,7 @@ echo $method_bars
             </span>
 <?php if ($invoice_status !== ''): ?>
             <span class="sa-filter-chip">
-                Status: <?php echo sa_e(pay_invoice_status_label($invoice_status)); ?>
+                Status: <?php echo sa_e(pay_status_label($invoice_status)); ?>
                 <a href="<?php echo sa_e($qs(['invoice_status' => '', 'page' => 1])); ?>#invoices" title="Clear invoice status filter">&times;</a>
             </span>
 <?php endif; ?>

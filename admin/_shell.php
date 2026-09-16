@@ -17,6 +17,10 @@ if (!isset($BASE)) {
     $BASE = '../';
 }
 
+/* The workspace inbox helpers, needed both by the bell here and by
+   admin/notifications.php. */
+require_once dirname(__DIR__) . '/includes/notifications.php';
+
 // Multi-company / multi-branch resolution for workspace tenants
 $tenant_id = $tenant_id ?? (function_exists('getTenantId') ? getTenantId() : 0);
 $is_tenant = $is_tenant ?? (function_exists('isTenant') ? isTenant() : false);
@@ -39,41 +43,24 @@ if (isset($conn) && $is_tenant && $tenant_id) {
     }
 }
 
-// Fetch dynamic notifications for admin
+/* The bell reads the workspace inbox — the same rows admin/notifications.php
+   lists, scoped to this tenant, so the badge and the page can never disagree.
+   Scanning the live data is the inbox page's job (it is throttled there);
+   the dropdown only reads what is already filed. */
 $admin_notifications = [];
 $notification_count = 0;
+$admin_inbox = ['items' => [], 'unread' => 0];
 
 if (isset($conn)) {
-    // Get recent ratings (last 24 hours) - scoped to active company if tenant
-    if ($is_tenant && $active_company_id > 0) {
-        $notif_stmt = $conn->prepare("SELECT r.id, r.rating, r.customer_name, r.created_at, c.company_name 
-                                       FROM ratings r 
-                                       JOIN customers c ON r.company_id = c.id 
-                                       WHERE r.company_id = ? AND r.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-                                       ORDER BY r.created_at DESC LIMIT 5");
-        $notif_stmt->bind_param('i', $active_company_id);
-    } elseif ($is_tenant && $tenant_id) {
-        $notif_stmt = $conn->prepare("SELECT r.id, r.rating, r.customer_name, r.created_at, c.company_name 
-                                       FROM ratings r 
-                                       JOIN customers c ON r.company_id = c.id 
-                                       WHERE c.tenant_id = ? AND r.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-                                       ORDER BY r.created_at DESC LIMIT 5");
-        $notif_stmt->bind_param('i', $tenant_id);
-    } else {
-        $notif_stmt = $conn->prepare("SELECT r.id, r.rating, r.customer_name, r.created_at, c.company_name 
-                                       FROM ratings r 
-                                       JOIN customers c ON r.company_id = c.id 
-                                       WHERE r.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-                                       ORDER BY r.created_at DESC LIMIT 5");
-    }
-    
-    if ($notif_stmt && $notif_stmt->execute()) {
-        $notif_result = $notif_stmt->get_result();
-        while ($notif = $notif_result->fetch_assoc()) {
-            $admin_notifications[] = $notif;
-        }
-        $notification_count = count($admin_notifications);
-    }
+    $admin_inbox = notifications_bell(
+        $conn,
+        'tenant',
+        $is_tenant ? (int) $tenant_id : 0,
+        5,
+        !$is_tenant /* a legacy platform admin session reads the queue across workspaces */
+    );
+    $admin_notifications = $admin_inbox['items'];
+    $notification_count = (int) $admin_inbox['unread'];
 }
 
 $robots = 'noindex, nofollow';
@@ -110,6 +97,9 @@ $activeNav = $activeNav ?? 'dashboard';
   <nav>
     <a <?php echo $activeNav === 'dashboard' ? 'class="active"' : ''; ?> href="index.php" title="Dashboard">
       <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span><span class="nav-label">Dashboard</span>
+    </a>
+    <a <?php echo $activeNav === 'notifications' ? 'class="active"' : ''; ?> href="notifications.php" title="Notifications">
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span><span class="nav-label">Notifications</span><?php if ($notification_count > 0): ?><span class="admin-nav-count"><?php echo $notification_count > 99 ? '99+' : (int) $notification_count; ?></span><?php endif; ?>
     </a>
     <?php if ($is_tenant && teamHasAccess('company')): ?>
     <a <?php echo $activeNav === 'company' ? 'class="active"' : ''; ?> href="company.php" title="Company Profile">
@@ -333,40 +323,55 @@ $activeNav = $activeNav ?? 'dashboard';
         <button type="button" class="admin-icon-btn admin-notification-btn" aria-label="Notifications" aria-expanded="false" data-admin-notification-trigger>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           <?php if ($notification_count > 0): ?>
-          <span class="admin-notification-badge"><?php echo $notification_count; ?></span>
+          <span class="admin-notification-badge"><?php echo $notification_count > 99 ? '99+' : (int) $notification_count; ?></span>
           <?php endif; ?>
         </button>
         <div class="admin-notification-panel">
           <div class="admin-notification-head">
             <strong>Notifications</strong>
             <?php if ($notification_count > 0): ?>
-            <span><?php echo $notification_count; ?> new</span>
+            <span><?php echo $notification_count; ?> unread</span>
+            <?php else: ?>
+            <span class="admin-notification-quiet">All read</span>
             <?php endif; ?>
           </div>
           <div class="admin-notification-list">
             <?php if (!empty($admin_notifications)): ?>
               <?php foreach ($admin_notifications as $notif): ?>
-            <a href="ratings.php" class="admin-notification-item">
-              <div class="admin-list-icon <?php echo $notif['rating'] >= 4 ? 'is-success' : 'is-info'; ?>">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              <?php
+                $notif_meta = notifications_type_meta($notif['type']);
+                $notif_tone = notifications_tone_class(!empty($notif['tone']) ? $notif['tone'] : $notif_meta['tone']);
+              ?>
+            <a href="notifications.php?open=<?php echo (int) $notif['id']; ?>" class="admin-notification-item">
+              <div class="admin-list-icon is-<?php echo $notif_tone; ?>">
+                <?php echo notifications_icon(!empty($notif['icon']) ? $notif['icon'] : $notif_meta['icon'], 16); ?>
               </div>
               <div class="admin-list-body">
-                <strong>New <?php echo $notif['rating']; ?>-star review</strong>
-                <span><?php echo htmlspecialchars($notif['customer_name']); ?> reviewed <?php echo htmlspecialchars($notif['company_name']); ?></span>
+                <strong><?php echo htmlspecialchars($notif['title']); ?></strong>
+                <span>
+                  <?php echo htmlspecialchars(sa_time_ago($notif['created_at'])); ?>
+                  <?php if (!empty($notif['message'])): ?>
+                  · <?php echo htmlspecialchars(notifications_trim($notif['message'], 58)); ?>
+                  <?php endif; ?>
+                </span>
               </div>
             </a>
               <?php endforeach; ?>
             <?php else: ?>
             <div class="admin-notification-item" style="pointer-events:none;">
+              <div class="admin-list-icon is-success">
+                <?php echo notifications_icon('check', 16); ?>
+              </div>
               <div class="admin-list-body">
                 <strong>No new notifications</strong>
-                <span>You're all caught up!</span>
+                <span>You're all caught up — new reviews, questions and invoices land in the inbox.</span>
               </div>
             </div>
             <?php endif; ?>
           </div>
           <div class="admin-notification-foot">
-            <a href="ratings.php">View all notifications</a>
+            <a href="notifications.php">Open the inbox</a>
+            <a href="notifications.php?refresh=1" title="Look at the workspace again right now">Re-scan</a>
           </div>
         </div>
       </div>

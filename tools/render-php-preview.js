@@ -70,6 +70,7 @@ const PAGES = [
     ['superadmin/payment_gateways.php', 'payment_gateways.html', ''],
     ['superadmin/logs.php', 'logs.html', ''],
     ['superadmin/backups.php', 'backups.html', ''],
+    ['superadmin/notifications.php', 'notifications.html', ''],
     ['superadmin/login.php', 'login.html', '', { anonymous: true }],
 
     /* Edge cases — checked but not written into the preview */
@@ -88,6 +89,17 @@ const PAGES = [
     ['superadmin/logs.php', null, '?portal=admin&action=backup_create', { probe: 'activity log filtered by action' }],
     ['superadmin/logs.php', null, '?start=2020-01-01&end=2020-01-31', { probe: 'activity log over an empty date range' }],
     ['superadmin/logs.php', null, '?export=1', { probe: 'CSV export of the activity log', csv: true, minBytes: 120 }],
+
+    /* Inbox — the platform queue behind the topbar bell: read states,
+       one kind at a time, a search, a forced re-scan of the live
+       platform, and the click-through that marks a notice read. */
+    ['superadmin/notifications.php', null, '?status=unread', { probe: 'inbox narrowed to unread notices' }],
+    ['superadmin/notifications.php', null, '?type=quote_new', { probe: 'inbox filtered to one kind' }],
+    ['superadmin/notifications.php', null, '?q=volta&sort=oldest', { probe: 'inbox search, oldest first' }],
+    ['superadmin/notifications.php', null, '?refresh=1', { probe: 'forced re-scan of the live platform' }],
+    ['superadmin/notifications.php', null, '?page=99', { probe: 'inbox beyond the last page clamps back' }],
+    ['superadmin/notifications.php', null, '?open=12', { allowRedirect: true, probe: 'click-through marks a notice read and hops to the module' }],
+    ['superadmin/notifications.php', null, '?open=5', { allowRedirect: true, probe: 'a workspace notice cannot be opened from the control center' }],
 
     /* Billing — the financial centre, the printable invoices and the
        tenant-facing checkout. The documents are standalone pages, so
@@ -148,6 +160,12 @@ const POSTS = [
     ['tenant details · extend', 'superadmin/tenant_details.php', 'id=18&action=extend&tenant_id=18&extend_months=2', /^UPDATE tenants/i],
     ['tenant details · auto renew', 'superadmin/tenant_details.php', 'id=18&action=auto_renew&tenant_id=18&auto_renew=1', /^UPDATE tenants/i],
     ['quotes · status', 'superadmin/quote_requests.php', 'action=update_status&quote_id=8&status=contacted', /^UPDATE quote_requests/i],
+    ['notifications · mark all read', 'superadmin/notifications.php', 'action=read_all', /^UPDATE notifications SET is_read = 1, read_at = NOW\(\)/],
+    ['notifications · dismiss one', 'superadmin/notifications.php', 'action=dismiss&ids[]=12', /^UPDATE notifications SET deleted_at = NOW\(\), is_read = 1/],
+    ['notifications · mark unread', 'superadmin/notifications.php', 'action=unread&ids[]=12', /^UPDATE notifications SET is_read = 0, read_at = NULL/],
+    ['notifications · clean up read', 'superadmin/notifications.php', 'action=purge&days=30', /^DELETE FROM notifications WHERE audience = 'platform'/],
+    ['notifications · forged CSRF writes nothing', 'superadmin/notifications.php', 'action=read_all', null, { badCsrf: true }],
+    ['notifications · unknown action writes nothing', 'superadmin/notifications.php', 'action=explode', null],
     ['quotes · convert', 'superadmin/quote_requests.php', 'action=convert&quote_id=9&company_name=Bolgatanga Grain Traders&email=amina@bolgagrains.gh&phone=123&plan_id=2&months=12&password=Welcome123&subscription_status=trial', /^INSERT INTO tenants/i],
     ['quotes · delete', 'superadmin/quote_requests.php', 'action=delete&quote_id=4', /^DELETE FROM quote_requests/i],
     ['categories · create', 'superadmin/categories.php', 'action=create&name=Agriculture', /^INSERT INTO categories/i],

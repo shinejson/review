@@ -154,6 +154,46 @@ window. The PHP `curl` extension must be enabled for live publishing.
 `database.sql`. An existing installation does not need a manual migration: the
 pages create the tables on first load if they are missing.
 
+## Notifications
+
+Both panels have a real inbox, and both read one table (`notifications`) through
+`includes/notifications.php`:
+
+| Page | Who reads it | What lands there |
+| --- | --- | --- |
+| `superadmin/notifications.php` | the control center (audience `platform`) | pending quote requests, gateway payments awaiting confirmation, overdue invoices, subscriptions expiring within 30 days, reviews reported by a customer, new workspaces and signups that never set a password |
+| `admin/notifications.php` | one workspace (audience `tenant`) | new reviews, 1-3 star reviews with no public reply, escalated complaints, unanswered Q&A questions, plan-change requests, invoices open or overdue, payments awaiting confirmation, the workspace's own renewal date |
+
+The topbar bell on each panel shows the five newest unread notices of the same
+inbox, so the badge and the page cannot disagree. Clicking a notice goes through
+`notifications.php?open=<id>`, which marks it read and then hands the browser to
+the screen that handles it (the quote card, the approvals queue, the review with
+its filters already applied …).
+
+Notes:
+
+- **Nothing has to remember to send.** The inbox page re-scans the live tables —
+  at most once every 90 seconds per panel, immediately on the first visit of a
+  session and on demand from **Refresh**. Every row carries a `dedupe_key`, so a
+  repeated scan never files the same notice twice. Writers can also call
+  `notifications_add()` directly.
+- **Handled work retires its own notice.** A review that gets a reply, a question
+  that gets answered, a payment that is confirmed or a subscription that is
+  renewed has its notice deleted on the next scan.
+- **Dismissing is sticky.** Dismiss writes a tombstone (`deleted_at`) rather than
+  deleting, so the scan cannot resurrect the notice. **Clean up** deletes read
+  notices older than 30 days for real.
+- **Tenants are isolated.** A workspace row is only ever listed, opened or marked
+  for the matching `tenant_id`; a control center session never sees the
+  `tenant` rows, and one workspace cannot open another's notice by id.
+- **Read state follows the role.** A control center account only sees the kinds of
+  notice its permissions cover, and a workspace team member only sees the modules
+  they can open (e.g. no billing notices without *Subscription* access).
+- `notifications` is in `database.sql`. An existing installation does not need a
+  manual migration — the table is created on first use; run
+  `php migrate_notifications.php` when you would rather create it up front and
+  backfill the history in one go.
+
 ## Sessions and sign-out
 
 Both panels share one session layer (`includes/session.php`), so signing in,
