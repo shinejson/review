@@ -25,6 +25,7 @@ $backup_dir = __DIR__ . '/../backups';
 if (!is_dir($backup_dir)) {
     @mkdir($backup_dir, 0755, true);
 }
+
 function get_backup_list($backup_dir) {
     $backups = [];
     if (!is_dir($backup_dir)) return $backups;
@@ -59,22 +60,57 @@ function format_bytes($bytes) {
 }
 
 function get_database_config() {
-    $config_file = dirname(__DIR__) . '/config/database.php';
-    if (file_exists($config_file)) {
-        ob_start();
-        include $config_file;
-        ob_end_clean();
-        if (isset($host, $dbname, $username)) {
-            return ['host' => $host ?? 'localhost', 'dbname' => $dbname ?? '', 'username' => $username ?? '', 'password' => $password ?? ''];
-        }
+    if (defined('DB_HOST') && defined('DB_NAME')) {
+        return [
+            'host'     => DB_HOST,
+            'dbname'   => DB_NAME,
+            'username' => defined('DB_USER') ? DB_USER : 'root',
+            'password' => defined('DB_PASS') ? DB_PASS : '',
+        ];
     }
     return ['host' => 'localhost', 'dbname' => '', 'username' => '', 'password' => ''];
+}
+
+function delete_backup($filepath) {
+    if (file_exists($filepath) && unlink($filepath)) {
+        if (function_exists('sa_log_activity')) {
+            sa_log_activity($GLOBALS['conn'], 'superadmin', $_SESSION['super_admin_id'] ?? null, 'backup_delete', "Deleted: " . basename($filepath));
+        }
+        return true;
+    }
+    return false;
 }
 
 function create_backup_php($config, $filepath) {
     $conn = $GLOBALS['conn'];
     if (!$conn) return ['success' => false, 'message' => 'Database connection not available.'];
     
+    $tables = $conn->query("SHOW TABLES");
+    if (!$tables) return ['success' => false, 'message' => 'Failed to get table list.'];
+    
+    $sql = "-- Backup: " . date('Y-m-d H:i:s') . "\n-- DB: " . $config['dbname'] . "\n\n";
+    
+    while ($row = $tables->fetch_row()) {
+        $table = $row[0];
+        $create = $conn->query("SHOW CREATE TABLE `{$table}`");
+        if ($create && $create->num_rows > 0) $sql .= $create->fetch_row()[1] . ";\n\n";
+        
+        $data = $conn->query("SELECT * FROM `{$table}`");
+        if ($data) {
+            while ($r = $data->fetch_assoc()) {
+                $vals = [];
+                foreach ($r as $v) $vals[] = "'" . addslashes((string)$v) . "'";
+                $sql .= "INSERT INTO `{$table}` VALUES (" . implode(',', $vals) . ");\n";
+            }
+        }
+        $sql .= "\n";
+    }
+    
+    $sql = gzencode($sql, 9);
+    if (file_put_contents($filepath, $sql) !== false) return ['success' => true, 'message' => "Backup created: " . basename($filepath)];
+    return ['success' => false, 'message' => 'Failed to write backup file.'];
+}
+
 function create_backup($backup_dir) {
     $config = get_database_config();
     if (empty($config['dbname'])) return ['success' => false, 'message' => 'Database configuration not found.'];
@@ -94,30 +130,25 @@ function create_backup($backup_dir) {
         exec($command, $output, $return_var);
         
         if ($return_var === 0 && file_exists($filepath) && filesize($filepath) > 0) {
-            sa_log_activity($GLOBALS['conn'], 'superadmin', $_SESSION['super_admin_id'] ?? null, 'backup_create', "Created: {$filename}");
+            if (function_exists('sa_log_activity')) {
+                sa_log_activity($GLOBALS['conn'], 'superadmin', $_SESSION['super_admin_id'] ?? null, 'backup_create', "Created: {$filename}");
+            }
             return ['success' => true, 'message' => "Backup created: {$filename}"];
         }
-$message = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!sa_csrf_ok()) {
-        $message = 'Session expired. Please try again.';
-    } else {
-        $action = $_POST['action'] ?? '';
-        
-        if ($action === 'create_backup') {
-            $result = create_backup($backup_dir);
-            $message = $result['message'];
-        } elseif ($action === 'delete_backup') {
-            $filename = sanitize($_POST['filename'] ?? '');
-            $filepath = $backup_dir . '/' . $filename;
-            if (delete_backup($filepath)) {
-                $message = "Deleted: {$filename}";
+    }
+    
+    return create_backup_php($config, $filepath);
+}
+
+// Download handler
 if (isset($_GET['download'])) {
     $filename = sanitize($_GET['download']);
     $filepath = $backup_dir . '/' . $filename;
     
     if (file_exists($filepath)) {
-        sa_log_activity($GLOBALS['conn'], 'superadmin', $_SESSION['super_admin_id'] ?? null, 'backup_download', "Downloaded: {$filename}");
+        if (function_exists('sa_log_activity')) {
+            sa_log_activity($GLOBALS['conn'], 'superadmin', $_SESSION['super_admin_id'] ?? null, 'backup_download', "Downloaded: {$filename}");
+        }
         header('Content-Description: File Transfer');
         header('Content-Type: application/octet-stream');
         header('Content-Disposition: attachment; filename="' . basename($filepath) . '"');
@@ -127,9 +158,51 @@ if (isset($_GET['download'])) {
         header('Content-Length: ' . filesize($filepath));
         readfile($filepath);
         exit;
+    }
+}
+
+// POST actions handler
+$message = '';
+$message_type = 'success';
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+    if (!sa_csrf_ok()) {
+        $message = 'Session expired. Please try again.';
+        $message_type = 'error';
+    } else {
+        $action = $_POST['action'] ?? '';
+        
+        if ($action === 'create_backup') {
+            $result = create_backup($backup_dir);
+            $message = $result['message'];
+            if (!$result['success']) {
+                $message_type = 'error';
+            }
+        } elseif ($action === 'delete_backup') {
+            $filename = sanitize($_POST['filename'] ?? '');
+            $filepath = $backup_dir . '/' . $filename;
+            if (delete_backup($filepath)) {
+                $message = "Deleted: {$filename}";
+            } else {
+                $message = "Failed to delete: {$filename}";
+                $message_type = 'error';
+            }
+        }
+    }
+}
+
 $backups = get_backup_list($backup_dir);
 $config = get_database_config();
 $has_mysqldump = function_exists('exec');
+
+/* ---------- page meta ---------- */
+$robots        = 'noindex, nofollow';
+$pageTitle     = 'Backups';
+$pageHeading   = 'Database Backups';
+$pageSubtitle  = 'Manage database snapshots and disaster recovery archives';
+$activePage    = 'backups';
+$BASE          = '../';
+$extraCss      = ['assets/css/superadmin.css'];
+$bodyClass     = 'sa-body';
 
 include dirname(__DIR__) . '/includes/header.php';
 include __DIR__ . '/_shell.php';
@@ -149,7 +222,10 @@ include __DIR__ . '/_shell.php';
     </div>
     
     <?php if ($message): ?>
-    <div class="sa-alert sa-alert-success"><?php echo sa_icon('check-circle'); ?><?php echo sa_e($message); ?></div>
+    <div class="sa-alert sa-alert-<?php echo $message_type === 'error' ? 'danger' : 'success'; ?>">
+        <?php echo sa_icon($message_type === 'error' ? 'alert' : 'check-circle'); ?>
+        <?php echo sa_e($message); ?>
+    </div>
     <?php endif; ?>
     
     <div class="sa-card-pad">
@@ -168,8 +244,8 @@ include __DIR__ . '/_shell.php';
             </div>
         </div>
         
-        <div class="sa-info">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <div class="sa-alert sa-alert-info" style="margin-bottom:0;">
+            <?php echo sa_icon('info'); ?>
             <div>
                 <strong>Location:</strong> <?php echo sa_e($backup_dir); ?><br>
                 <strong>Database:</strong> <?php echo sa_e($config['dbname'] ?? 'Unknown'); ?>
@@ -232,48 +308,3 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <?php include __DIR__ . '/_shell_footer.php'; ?>
-    }
-}
-            } else {
-                $message = "Failed to delete: {$filename}";
-            }
-        }
-    }
-}
-    }
-    
-    return create_backup_php($config, $filepath);
-}
-
-function delete_backup($filepath) {
-    if (file_exists($filepath) && unlink($filepath)) {
-        sa_log_activity($GLOBALS['conn'], 'superadmin', $_SESSION['super_admin_id'] ?? null, 'backup_delete', "Deleted: " . basename($filepath));
-        return true;
-    }
-    return false;
-}
-    $tables = $conn->query("SHOW TABLES");
-    if (!$tables) return ['success' => false, 'message' => 'Failed to get table list.'];
-    
-    $sql = "-- Backup: " . date('Y-m-d H:i:s') . "\n-- DB: " . $config['dbname'] . "\n\n";
-    
-    while ($row = $tables->fetch_row()) {
-        $table = $row[0];
-        $create = $conn->query("SHOW CREATE TABLE `{$table}`");
-        if ($create && $create->num_rows > 0) $sql .= $create->fetch_row()[1] . ";\n\n";
-        
-        $data = $conn->query("SELECT * FROM `{$table}`");
-        if ($data) {
-            while ($r = $data->fetch_assoc()) {
-                $vals = [];
-                foreach ($r as $v) $vals[] = "'" . addslashes($v) . "'";
-                $sql .= "INSERT INTO `{$table}` VALUES (" . implode(',', $vals) . ");\n";
-            }
-        }
-        $sql .= "\n";
-    }
-    
-    $sql = gzencode($sql, 9);
-    if (file_put_contents($filepath, $sql) !== false) return ['success' => true, 'message' => basename($filepath)];
-    return ['success' => false, 'message' => 'Failed to write backup file.'];
-}

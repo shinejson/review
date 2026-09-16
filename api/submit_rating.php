@@ -194,7 +194,7 @@ if (isset($_POST['rating']) && is_array($_POST['rating'])) {
                 <?php endif; ?>
 
                 <div class="btn-group">
-                    <a href="../rate/index.php?company=<?php echo $company_id; ?>#responses" class="btn btn-primary">← See your review responses</a>
+                    <a href="<?php echo htmlspecialchars(getCompanyPublicRatingUrl($company_id, '')); ?>#responses" class="btn btn-primary">← See your review responses</a>
                 </div>
             </div>
         </body>
@@ -777,8 +777,8 @@ if ($stmt->execute()) {
             <?php endif; ?>
 
             <div class="btn-group">
-                <a href="../rate/index.php?company=<?php echo $company_id; ?>#feedbacks" class="btn btn-primary">← See your review</a>
-                <a href="../companies.php" class="btn btn-secondary">Browse All Companies</a>
+                <a href="<?php echo htmlspecialchars(getCompanyPublicRatingUrl($company_id, '')); ?>#feedbacks" class="btn btn-primary">← See your review</a>
+                <a href="<?php echo htmlspecialchars(getAppWebRoot() . '/companies.php'); ?>" class="btn btn-secondary">Browse All Companies</a>
             </div>
         </div>
     </body>

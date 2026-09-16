@@ -6,22 +6,57 @@ if (session_status() === PHP_SESSION_NONE) {
     @session_start();
 }
 
+$app_web_root = function_exists('getAppWebRoot') ? getAppWebRoot() : '';
+
 // Resolve company identifier:
 // Supports:
-// 1. ?company=4&tenant=airport-west-hotel
-// 2. ?company=4-airport-west-hotel (composite ID + slug)
-// 3. ?company=4 (legacy numeric)
-// 4. ?company=airport-west-hotel (slug lookup)
-// 5. ?company_id=4 or ?branch_id=4
-// 6. Session fallback for logged in tenants/admins previewing
-// 7. ?tenant=3 or ?tenant=airport-west-hotel (tenant lookup & canonical redirect)
+// 1. ?uuid=01a0a9c6-96cb-7349-ba09-cac1b5d02ad3 (Clean UUID URL)
+// 2. ?company=4&tenant=airport-west-hotel
+// 3. ?company=4-airport-west-hotel (composite ID + slug)
+// 4. ?company=4 (legacy numeric)
+// 5. ?company=airport-west-hotel (slug lookup)
+// 6. ?company_id=4 or ?branch_id=4
+// 7. Session fallback for logged in tenants/admins previewing
+// 8. ?tenant=3 or ?tenant=airport-west-hotel (tenant lookup & canonical redirect)
 $company_id   = 0;
 $company_slug = '';
 
-// 1. Direct company parameter (?company=4, ?company=4-slug, ?company=slug)
-if (isset($_GET['company'])) {
+// 0. Clean UUID routing parameter (?uuid=...)
+if (isset($_GET['uuid'])) {
+    $raw_uuid = trim((string)$_GET['uuid']);
+    if (preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/', $raw_uuid)) {
+        if (function_exists('ensureCompanyUuidSchema')) {
+            ensureCompanyUuidSchema($conn);
+        }
+        $u_stmt = $conn->prepare("SELECT id FROM customers WHERE uuid = ? LIMIT 1");
+        if ($u_stmt) {
+            $u_stmt->bind_param("s", $raw_uuid);
+            $u_stmt->execute();
+            if ($u_row = $u_stmt->get_result()->fetch_assoc()) {
+                $company_id = (int)$u_row['id'];
+            }
+            $u_stmt->close();
+        }
+    }
+}
+
+// 1. Direct company parameter (?company=UUID, ?company=4, ?company=4-slug, ?company=slug)
+if ($company_id <= 0 && isset($_GET['company'])) {
     $raw_comp = trim((string)$_GET['company']);
-    if (ctype_digit($raw_comp) && (int)$raw_comp > 0) {
+    if (preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/', $raw_comp)) {
+        if (function_exists('ensureCompanyUuidSchema')) {
+            ensureCompanyUuidSchema($conn);
+        }
+        $u_stmt = $conn->prepare("SELECT id FROM customers WHERE uuid = ? LIMIT 1");
+        if ($u_stmt) {
+            $u_stmt->bind_param("s", $raw_comp);
+            $u_stmt->execute();
+            if ($u_row = $u_stmt->get_result()->fetch_assoc()) {
+                $company_id = (int)$u_row['id'];
+            }
+            $u_stmt->close();
+        }
+    } elseif (ctype_digit($raw_comp) && (int)$raw_comp > 0) {
         $company_id = (int)$raw_comp;
     } elseif (preg_match('/^(\d+)[-_](.*)$/', $raw_comp, $m)) {
         $company_id   = (int)$m[1];
@@ -146,7 +181,7 @@ if ($company_id <= 0 && isset($_GET['tenant']) && trim((string)$_GET['tenant']) 
 }
 
 if ($company_id <= 0) {
-    header('Location: ../companies.php', true, 302);
+    header('Location: ' . ($app_web_root !== '' ? $app_web_root : '') . '/companies.php', true, 302);
     exit;
 }
 
@@ -190,8 +225,8 @@ if (!$company) {
   <h1>Company Profile Not Found</h1>
   <p>The business profile you are looking for does not exist or may have been moved. You can browse all verified businesses in our directory.</p>
   <div style="display:flex;flex-direction:column;gap:10px;align-items:center;">
-    <a href="../companies.php" class="btn btn-lime"><i class="fa-solid fa-compass"></i> Browse Business Directory</a>
-    <a href="../index.php" class="btn btn-ghost"><i class="fa-solid fa-house"></i> Return to Homepage</a>
+    <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/companies.php'); ?>" class="btn btn-lime"><i class="fa-solid fa-compass"></i> Browse Business Directory</a>
+    <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/index.php'); ?>" class="btn btn-ghost"><i class="fa-solid fa-house"></i> Return to Homepage</a>
   </div>
 </div>
 </body>
@@ -301,6 +336,15 @@ if ($v_stmt) {
     $v_stmt->close();
 }
 
+// Fetch company engagement statistics (verified followers, likes, verified customer community)
+$engage_stats             = function_exists('getCompanyEngagementStats') ? getCompanyEngagementStats($conn, $company_id, $user_ip) : [];
+$followers_count          = (int)($engage_stats['followers_count'] ?? 0);
+$likes_count              = (int)($engage_stats['likes_count'] ?? 0);
+$verified_customers_count = (int)($engage_stats['verified_count'] ?? 0);
+$user_has_followed        = !empty($engage_stats['user_has_followed']);
+$user_has_liked           = !empty($engage_stats['user_has_liked']);
+$verified_avatars         = $engage_stats['verified_avatars'] ?? [];
+
 // Fetch tenant (workspace owner) branding - logo, banner & name shown to customers
 $tenant_info = null;
 if ($tenant_id > 0) {
@@ -379,21 +423,17 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
 // ============================================================
 $__scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $__host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
-$app_web_root = '';
-if (!empty($_SERVER['DOCUMENT_ROOT'])) {
-    $doc_root = str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT']) ?: $_SERVER['DOCUMENT_ROOT']);
-    $app_dir  = str_replace('\\', '/', dirname(__DIR__));
-    if (strpos($app_dir, $doc_root) === 0) {
-        $app_web_root = substr($app_dir, strlen($doc_root));
-    }
-} elseif (!empty($_SERVER['SCRIPT_NAME'])) {
-    $app_web_root = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME']))), '/');
+if (empty($app_web_root)) {
+    $app_web_root = function_exists('getAppWebRoot') ? getAppWebRoot() : '';
 }
-$app_web_root = '/' . trim($app_web_root, '/');
-if ($app_web_root === '/') $app_web_root = '';
 
-$tenant_slug_part = !empty($brand_name) ? '&tenant=' . urlencode(slugify($brand_name)) : '';
-$canonical_url    = $__scheme . '://' . $__host . $app_web_root . '/rate/index.php?company=' . $company_id . $tenant_slug_part;
+$company_uuid = !empty($company['uuid']) ? $company['uuid'] : (function_exists('getCompanyUuid') ? getCompanyUuid($conn, $company_id) : '');
+if (!empty($company_uuid)) {
+    $canonical_url = $__scheme . '://' . $__host . $app_web_root . '/' . $company_uuid;
+} else {
+    $tenant_slug_part = !empty($brand_name) ? '&tenant=' . urlencode(slugify($brand_name)) : '';
+    $canonical_url    = $__scheme . '://' . $__host . $app_web_root . '/rate/index.php?company=' . $company_id . $tenant_slug_part;
+}
 $brand_logo_full = !empty($brand_logo) ? ($__scheme . '://' . $__host . $app_web_root . '/' . ltrim($brand_logo, '/')) : '';
 $meta_desc       = "Read verified customer reviews and ratings for " . $brand_name . ". Overall score of " . number_format($avg_rating, 1) . "/5.0 based on " . number_format($total_ratings) . " customer review(s).";
 
@@ -1766,6 +1806,261 @@ if ($total_ratings > 0) {
             text-align: right;
             font-size: 13px;
         }
+
+        /* Verified Customers Community: Followers & Likes Engagement Card */
+        .rt-engage-card {
+            margin-top: 24px;
+            padding: 20px;
+            background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
+            transition: all 0.2s ease;
+        }
+        .rt-engage-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+        .rt-engage-pill {
+            font-size: 11.5px;
+            font-weight: 800;
+            color: #0f172a;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .rt-engage-pill i {
+            color: var(--rt-primary, #10b981);
+        }
+        .rt-engage-verified-badge {
+            font-size: 11px;
+            font-weight: 700;
+            color: #15803d;
+            background: #dcfce7;
+            border: 1px solid #bbf7d0;
+            padding: 3px 9px;
+            border-radius: 99px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .rt-engage-stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .rt-engage-box {
+            background: #ffffff;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 12px;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+        }
+        .rt-engage-box:hover {
+            border-color: #cbd5e1;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+        }
+        .rt-engage-box.is-following {
+            border-color: #93c5fd;
+            background: #eff6ff;
+        }
+        .rt-engage-box.is-liked {
+            border-color: #fbcfe8;
+            background: #fdf2f8;
+        }
+        .rt-engage-box-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .rt-engage-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            flex-shrink: 0;
+            transition: transform 0.2s ease;
+        }
+        .rt-engage-icon.is-follow {
+            background: rgba(37, 99, 235, 0.1);
+            color: #2563eb;
+        }
+        .rt-engage-icon.is-like {
+            background: rgba(225, 29, 72, 0.1);
+            color: #e11d48;
+        }
+        .rt-engage-box:hover .rt-engage-icon {
+            transform: scale(1.08);
+        }
+        .rt-engage-val-wrap {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .rt-engage-val {
+            font-size: 20px;
+            font-weight: 800;
+            color: #0f172a;
+            line-height: 1.1;
+        }
+        .rt-engage-sub {
+            font-size: 11px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin-top: 2px;
+        }
+        .rt-engage-btn {
+            width: 100%;
+            padding: 7px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-family: inherit;
+            outline: none;
+            border: 1.5px solid transparent;
+            user-select: none;
+        }
+        .rt-engage-btn.is-follow {
+            background: #ffffff;
+            color: #2563eb;
+            border-color: #bfdbfe;
+        }
+        .rt-engage-btn.is-follow:hover {
+            background: #2563eb;
+            color: #ffffff;
+            border-color: #2563eb;
+        }
+        .rt-engage-btn.is-follow.is-active {
+            background: #2563eb;
+            color: #ffffff;
+            border-color: #2563eb;
+            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+        }
+        .rt-engage-btn.is-like {
+            background: #ffffff;
+            color: #e11d48;
+            border-color: #fecdd3;
+        }
+        .rt-engage-btn.is-like:hover {
+            background: #e11d48;
+            color: #ffffff;
+            border-color: #e11d48;
+        }
+        .rt-engage-btn.is-like.is-active {
+            background: #e11d48;
+            color: #ffffff;
+            border-color: #e11d48;
+            box-shadow: 0 2px 6px rgba(225, 29, 72, 0.25);
+        }
+        @keyframes heartBurst {
+            0% { transform: scale(1); }
+            45% { transform: scale(1.4); }
+            75% { transform: scale(0.9); }
+            100% { transform: scale(1); }
+        }
+        .rt-engage-proof-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-top: 12px;
+            border-top: 1px solid #e2e8f0;
+            font-size: 11.5px;
+            color: #475569;
+        }
+        .rt-avatar-cluster {
+            display: flex;
+            align-items: center;
+        }
+        .rt-avatar-chip {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+            color: #3730a3;
+            border: 2px solid #ffffff;
+            font-size: 9px;
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: -6px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+        }
+        .rt-avatar-chip:first-child {
+            margin-left: 0;
+        }
+        .rt-proof-label {
+            font-size: 11.5px;
+            color: #475569;
+            line-height: 1.35;
+        }
+        .rt-proof-label strong {
+            color: #0f172a;
+        }
+        .rt-social-connect-bar {
+            margin-top: 12px;
+            padding: 10px 12px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            animation: rtFadeIn .25s ease-out;
+        }
+        .rt-social-connect-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #64748b;
+            display: block;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .rt-social-connect-pills {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .rt-soc-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 9px;
+            border-radius: 99px;
+            background: #f1f5f9;
+            color: #0f172a;
+            font-size: 11px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.15s ease;
+        }
+        .rt-soc-pill:hover {
+            background: #e2e8f0;
+            color: #2563eb;
+            transform: translateY(-1px);
+        }
         .rt-review-section {
             background: #f8fafc;
             border: 1px solid #e2e8f0;
@@ -2371,12 +2666,12 @@ if ($total_ratings > 0) {
     <?php if (!empty($public_page_settings['show_breadcrumb'])): ?>
     <!-- Breadcrumb Navigation -->
     <nav class="rt-breadcrumb" aria-label="Breadcrumb">
-        <a href="../index.php"><i class="fa-solid fa-house"></i> Home</a>
+        <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/index.php'); ?>"><i class="fa-solid fa-house"></i> Home</a>
         <span class="rt-breadcrumb-sep">›</span>
-        <a href="../companies.php">Directory</a>
+        <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/companies.php'); ?>">Directory</a>
         <?php if (!empty($company['category_name'])): ?>
             <span class="rt-breadcrumb-sep">›</span>
-            <a href="../companies.php?category=<?php echo urlencode($company['category_name']); ?>"><?php echo htmlspecialchars($company['category_name']); ?></a>
+            <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/companies.php?category=' . urlencode($company['category_name'])); ?>"><?php echo htmlspecialchars($company['category_name']); ?></a>
         <?php endif; ?>
         <span class="rt-breadcrumb-sep">›</span>
         <span class="rt-breadcrumb-current"><?php echo htmlspecialchars($brand_name); ?></span>
@@ -2386,7 +2681,7 @@ if ($total_ratings > 0) {
     <?php if (!empty($brand_banner) && !empty($public_page_settings['show_banner'])): ?>
     <!-- Tenant Brand Cover Banner -->
     <div class="rt-cover-banner-wrap">
-        <img src="../<?php echo htmlspecialchars($brand_banner); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> Banner" class="rt-cover-banner">
+        <img src="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($brand_banner, '/')); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> Banner" class="rt-cover-banner">
     </div>
     <?php endif; ?>
 
@@ -2394,7 +2689,7 @@ if ($total_ratings > 0) {
     <header class="rt-company-header">
         <div class="rt-brand-wrap">
             <?php if (!empty($brand_logo)): ?>
-                <img src="../<?php echo htmlspecialchars($brand_logo); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> logo" class="rt-brand-logo">
+                <img src="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($brand_logo, '/')); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> logo" class="rt-brand-logo">
             <?php else: ?>
                 <div class="rt-brand-logo rt-brand-fallback"><?php echo htmlspecialchars($brand_initials); ?></div>
             <?php endif; ?>
@@ -2418,7 +2713,7 @@ if ($total_ratings > 0) {
                         <select onchange="if(this.value) window.location.href=this.value;" style="background:transparent;border:none;color:inherit;font-weight:700;font-size:11.5px;cursor:pointer;outline:none;" aria-label="Select location or branch">
                             <option value="" selected><?php echo htmlspecialchars($brand_name); ?> (This Branch)</option>
                             <?php foreach ($sibling_branches as $sb): ?>
-                            <option value="?company=<?php echo (int)$sb['id']; ?>&tenant=<?php echo urlencode(slugify($sb['company_name'])); ?>">
+                            <option value="<?php echo htmlspecialchars(getCompanyPublicRatingUrl($sb['id'], $sb['company_name'])); ?>">
                                 <?php echo htmlspecialchars($sb['company_name']); ?><?php if (!empty($sb['address'])): ?> — <?php echo htmlspecialchars($sb['address']); ?><?php endif; ?>
                             </option>
                             <?php endforeach; ?>
@@ -2505,6 +2800,62 @@ if ($total_ratings > 0) {
                 <?php endforeach; ?>
             </div>
             <?php endif; ?>
+
+            <!-- Verified Customers Engagement: Follow & Likes Card -->
+            <div class="rt-engage-card">
+                <div class="rt-engage-card-header">
+                    <span class="rt-engage-pill"><i class="fa-solid fa-shield-halved"></i> Community Proof</span>
+                    <span class="rt-engage-verified-badge" title="Verified Customer Feedback"><i class="fa-solid fa-circle-check"></i> <?php echo number_format($verified_customers_count); ?> Verified</span>
+                </div>
+                <div class="rt-engage-stats-grid">
+                    <div class="rt-engage-box <?php echo $user_has_followed ? 'is-following' : ''; ?>" id="boxFollow">
+                        <div class="rt-engage-box-header">
+                            <div class="rt-engage-icon is-follow"><i class="fa-solid fa-user-plus"></i></div>
+                            <div class="rt-engage-val-wrap">
+                                <span class="rt-engage-val" id="statFollowersCount"><?php echo number_format($followers_count); ?></span>
+                                <span class="rt-engage-sub">Followers</span>
+                            </div>
+                        </div>
+                        <button type="button" class="rt-engage-btn is-follow <?php echo $user_has_followed ? 'is-active' : ''; ?>" id="btnCompanyFollow" onclick="handleCompanyEngage('follow')">
+                            <i class="fa-solid <?php echo $user_has_followed ? 'fa-check' : 'fa-plus'; ?>" id="iconCompanyFollow"></i>
+                            <span id="textCompanyFollow"><?php echo $user_has_followed ? 'Following' : 'Follow'; ?></span>
+                        </button>
+                    </div>
+                    <div class="rt-engage-box <?php echo $user_has_liked ? 'is-liked' : ''; ?>" id="boxLike">
+                        <div class="rt-engage-box-header">
+                            <div class="rt-engage-icon is-like"><i class="fa-solid fa-heart"></i></div>
+                            <div class="rt-engage-val-wrap">
+                                <span class="rt-engage-val" id="statLikesCount"><?php echo number_format($likes_count); ?></span>
+                                <span class="rt-engage-sub">Likes</span>
+                            </div>
+                        </div>
+                        <button type="button" class="rt-engage-btn is-like <?php echo $user_has_liked ? 'is-active' : ''; ?>" id="btnCompanyLike" onclick="handleCompanyEngage('like')">
+                            <i class="fa-solid fa-heart" id="iconCompanyLike"></i>
+                            <span id="textCompanyLike"><?php echo $user_has_liked ? 'Liked' : 'Like'; ?></span>
+                        </button>
+                    </div>
+                </div>
+                <?php if (!empty($verified_avatars)): ?>
+                <div class="rt-engage-proof-row">
+                    <div class="rt-avatar-cluster">
+                        <?php foreach (array_slice($verified_avatars, 0, 4) as $av): ?>
+                        <span class="rt-avatar-chip" title="<?php echo htmlspecialchars($av['name']); ?> (Verified Customer)"><?php echo htmlspecialchars($av['initials']); ?></span>
+                        <?php endforeach; ?>
+                    </div>
+                    <span class="rt-proof-label"><strong><?php echo number_format($verified_customers_count); ?> verified customer<?php echo $verified_customers_count === 1 ? '' : 's'; ?></strong> follow &amp; recommend</span>
+                </div>
+                <?php endif; ?>
+                <?php if (!empty($social_links)): ?>
+                <div class="rt-social-connect-bar" id="socialConnectBar" style="<?php echo $user_has_followed ? '' : 'display:none;'; ?>">
+                    <span class="rt-social-connect-title">Official channels:</span>
+                    <div class="rt-social-connect-pills">
+                        <?php foreach ($social_links as $s): ?>
+                        <a href="<?php echo htmlspecialchars($s['url']); ?>" target="_blank" rel="noopener noreferrer" class="rt-soc-pill" title="<?php echo htmlspecialchars($s['label']); ?>"><?php echo !empty($s['svg']) ? $s['svg'] : ''; ?> <?php echo htmlspecialchars($s['label']); ?> ↗</a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
         </div>
         
         <!-- Right: Submit Your Review (Required Email & Submit at top for General Customer Rating) -->
@@ -2524,7 +2875,7 @@ if ($total_ratings > 0) {
             <h2>Submit Your Review</h2>
             <p class="rt-subtext">General customer rating for <?php echo htmlspecialchars($brand_name); ?></p>
 
-            <form id="generalRatingForm" action="../api/submit_rating.php" method="POST" enctype="multipart/form-data" onsubmit="return validateGeneralForm()">
+            <form id="generalRatingForm" action="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/api/submit_rating.php'); ?>" method="POST" enctype="multipart/form-data" onsubmit="return validateGeneralForm()">
                 <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
                 <input type="hidden" name="question_id" value="">
 
@@ -2651,7 +3002,7 @@ if ($total_ratings > 0) {
                     Write a review
                 </button>
 
-                <form class="rt-service-review-form" action="../api/submit_rating.php" method="POST" onsubmit="return validateServiceReview(<?php echo $svc_id; ?>)">
+                <form class="rt-service-review-form" action="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/api/submit_rating.php'); ?>" method="POST" onsubmit="return validateServiceReview(<?php echo $svc_id; ?>)">
                     <input type="hidden" name="service_id" value="<?php echo $svc_id; ?>">
                     <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
                     <label class="rt-review-form-label">Rate this service</label>
@@ -2709,7 +3060,7 @@ if ($total_ratings > 0) {
             </div>
 
             <?php if (!empty($questions)): ?>
-                <form action="../api/submit_rating.php" method="POST" id="specificReviewsForm" onsubmit="return validateReviewsForm(this)">
+                <form action="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/api/submit_rating.php'); ?>" method="POST" id="specificReviewsForm" onsubmit="return validateReviewsForm(this)">
                 <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
                 <div class="rt-question-list">
                     <?php foreach ($questions as $idx => $q): $q_id = (int)$q['id']; ?>
@@ -2882,7 +3233,7 @@ if ($total_ratings > 0) {
                                         </button>
 
                                         <?php if ((int)$rv['rating'] >= 4): ?>
-                                            <a href="../admin/social_card.php?rating_id=<?php echo (int)$rv['id']; ?>" target="_blank" rel="noopener noreferrer" class="rt-review-card-btn" title="Open Social Proof Card Studio for this review">
+                                            <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/admin/social_card.php?rating_id=' . (int)$rv['id']); ?>" target="_blank" rel="noopener noreferrer" class="rt-review-card-btn" title="Open Social Proof Card Studio for this review">
                                                 <span>🎨</span> Story Graphic ↗
                                             </a>
                                         <?php endif; ?>
@@ -3044,7 +3395,7 @@ if ($total_ratings > 0) {
                                         </button>
 
                                         <?php if ((int)$rv['rating'] >= 4): ?>
-                                            <a href="../admin/social_card.php?rating_id=<?php echo (int)$rv['id']; ?>" target="_blank" rel="noopener noreferrer" class="rt-review-card-btn" title="Open Social Proof Card Studio for this review">
+                                            <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/admin/social_card.php?rating_id=' . (int)$rv['id']); ?>" target="_blank" rel="noopener noreferrer" class="rt-review-card-btn" title="Open Social Proof Card Studio for this review">
                                                 <span>🎨</span> Story Graphic ↗
                                             </a>
                                         <?php endif; ?>
@@ -3256,7 +3607,7 @@ if ($total_ratings > 0) {
             <div class="rt-footer-col">
                 <div class="rt-footer-brand">
                     <?php if (!empty($brand_logo)): ?>
-                        <img src="../<?php echo htmlspecialchars($brand_logo); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> logo">
+                        <img src="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($brand_logo, '/')); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> logo">
                     <?php else: ?>
                         <div class="rt-footer-fallback"><?php echo htmlspecialchars($brand_initials); ?></div>
                     <?php endif; ?>
@@ -3400,13 +3751,73 @@ if ($total_ratings > 0) {
         </div>
         <div class="rt-footer-bottom">
             <span>&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($brand_name); ?>. All rights reserved.</span>
-            <span>Powered by <a href="../index.php" target="_blank" rel="noopener">Optibiz Ratings</a></span>
+            <span>Powered by <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/index.php'); ?>" target="_blank" rel="noopener">Optibiz Ratings</a></span>
         </div>
     </footer>
 
 </div>
 
 <script>
+var APP_WEB_ROOT = <?php echo json_encode($app_web_root !== '' ? $app_web_root : '', JSON_UNESCAPED_SLASHES); ?>;
+
+/* Interactive Follow & Like with Optimistic Updates */
+function handleCompanyEngage(action) {
+    var isFollow = action === 'follow';
+    var btn = document.getElementById(isFollow ? 'btnCompanyFollow' : 'btnCompanyLike');
+    var icon = document.getElementById(isFollow ? 'iconCompanyFollow' : 'iconCompanyLike');
+    var text = document.getElementById(isFollow ? 'textCompanyFollow' : 'textCompanyLike');
+    var countEl = document.getElementById(isFollow ? 'statFollowersCount' : 'statLikesCount');
+    var box = document.getElementById(isFollow ? 'boxFollow' : 'boxLike');
+    var connectBar = document.getElementById('socialConnectBar');
+
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+
+    if (!isFollow && icon) {
+        icon.style.animation = 'heartBurst 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+        setTimeout(function() { icon.style.animation = ''; }, 450);
+    }
+
+    var fd = new FormData();
+    fd.append('action', action);
+    fd.append('company_id', <?php echo (int)$company_id; ?>);
+
+    fetch((APP_WEB_ROOT || '') + '/api/company_engage.php', { method: 'POST', body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data && data.success) {
+                if (isFollow) {
+                    if (data.is_active) {
+                        btn.classList.add('is-active');
+                        if (box) box.classList.add('is-following');
+                        if (icon) icon.className = 'fa-solid fa-check';
+                        if (text) text.textContent = 'Following';
+                        if (connectBar) connectBar.style.display = 'block';
+                    } else {
+                        btn.classList.remove('is-active');
+                        if (box) box.classList.remove('is-following');
+                        if (icon) icon.className = 'fa-solid fa-plus';
+                        if (text) text.textContent = 'Follow';
+                    }
+                    if (countEl) countEl.textContent = Number(data.followers_count).toLocaleString();
+                } else {
+                    if (data.is_active) {
+                        btn.classList.add('is-active');
+                        if (box) box.classList.add('is-liked');
+                        if (text) text.textContent = 'Liked';
+                    } else {
+                        btn.classList.remove('is-active');
+                        if (box) box.classList.remove('is-liked');
+                        if (text) text.textContent = 'Like';
+                    }
+                    if (countEl) countEl.textContent = Number(data.likes_count).toLocaleString();
+                }
+            }
+        })
+        .catch(function(err) { console.error('Engagement error:', err); })
+        .finally(function() { btn.disabled = false; });
+}
+
 /* Switch bottom sections between Specific Reviews / Review Responses / Reviews */
 function switchPublicSection(section) {
     // Hide all panels
@@ -3481,7 +3892,7 @@ function submitCommunityQaForm(e, form) {
     if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
     
     var formData = new FormData(form);
-    fetch('../api/submit_qa.php', {
+    fetch(APP_WEB_ROOT + '/api/submit_qa.php', {
         method: 'POST',
         body: formData
     })
@@ -3526,7 +3937,7 @@ function voteQaHelpful(questionId, btn) {
     fd.append('action', 'vote_helpful');
     fd.append('question_id', questionId);
     
-    fetch('../api/submit_qa.php', {
+    fetch(APP_WEB_ROOT + '/api/submit_qa.php', {
         method: 'POST',
         body: fd
     })
@@ -3553,7 +3964,7 @@ function toggleReviewLike(ratingId, btn) {
     var fd = new FormData();
     fd.append('rating_id', ratingId);
     
-    fetch('../api/helpful.php', {
+    fetch(APP_WEB_ROOT + '/api/helpful.php', {
         method: 'POST',
         body: fd
     })
@@ -3609,7 +4020,7 @@ function submitReviewReply(e, ratingId, form) {
     }
 
     var fd = new FormData(form);
-    fetch('../api/submit_reply.php', {
+    fetch(APP_WEB_ROOT + '/api/submit_reply.php', {
         method: 'POST',
         body: fd
     })
@@ -3669,7 +4080,7 @@ function reportReviewModal(ratingId) {
     fd.append('rating_id', ratingId);
     fd.append('reason', reason.trim());
 
-    fetch('../api/report.php', {
+    fetch(APP_WEB_ROOT + '/api/report.php', {
         method: 'POST',
         body: fd
     })
@@ -3931,7 +4342,7 @@ function filterReviews(filter, btn) {
             }
         }
 
-        var endpoint = '../api/submit_event.php';
+        var endpoint = APP_WEB_ROOT + '/api/submit_event.php';
         if (navigator.sendBeacon) {
             var blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
             navigator.sendBeacon(endpoint, blob);

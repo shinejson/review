@@ -93,8 +93,7 @@ if ($actual_company_id > 0 && $show_reviews) {
 }
 
 // Target URL for clicks (tagged with &src=widget for analytics)
-$target_slug_part = !empty($target_name) ? '&tenant=' . urlencode(slugify($target_name)) : '';
-$public_url = 'rate/index.php?company=' . (int)$actual_company_id . $target_slug_part . '&src=widget';
+$public_url = getCompanyPublicRatingUrl($actual_company_id, $target_name, ['src' => 'widget']);
 
 // Log widget view event
 if ($actual_company_id > 0) {

@@ -1821,6 +1821,68 @@ h4 {
     min-width: 220px;
 }
 
+.sa-table td.truncate,
+.sa-truncate {
+    max-width: 280px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Reviews table feedback cell */
+.sa-review-comment-wrap {
+    max-width: 320px;
+    min-width: 200px;
+}
+
+.sa-review-comment-text {
+    max-width: 320px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--sa-text);
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.sa-review-comment-text:hover {
+    color: var(--sa-heading);
+}
+
+.sa-review-comment-text.is-expanded {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow: visible !important;
+}
+
+.sa-review-reply-text {
+    max-width: 320px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 11px;
+    margin-top: 4px;
+    padding: 3px 7px;
+    background: var(--sa-surface-2);
+    border-left: 2px solid var(--sa-accent, #c2f542);
+    border-radius: 3px;
+    color: var(--sa-muted);
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.sa-review-reply-text:hover {
+    color: var(--sa-text);
+}
+
+.sa-review-reply-text.is-expanded {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow: visible !important;
+}
+
 .sa-table .num {
     text-align: right;
     font-variant-numeric: tabular-nums;
@@ -2843,6 +2905,33 @@ a.sa-list-item:hover {
 .sa-alert strong {
     display: block;
     margin-bottom: 2px;
+}
+
+.sa-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    padding: 13px 16px;
+    border-radius: var(--sa-radius-sm);
+    border: 1px solid var(--sa-info-line);
+    background: var(--sa-info-soft);
+    color: var(--sa-text);
+    font-size: 13.2px;
+    line-height: 1.55;
+    margin-bottom: 18px;
+}
+
+.sa-info svg {
+    flex: none;
+    width: 17px;
+    height: 17px;
+    margin-top: 2px;
+    color: var(--sa-info);
+}
+
+.sa-card svg:not([width]) {
+    max-width: 24px;
+    max-height: 24px;
 }
 
 /* Legacy aliases */

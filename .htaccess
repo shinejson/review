@@ -1,9 +1,17 @@
 # Enable rewrite engine
 RewriteEngine On
+RewriteBase /rate/
 
-# Redirect to HTTPS (optional - uncomment if you have SSL)
-# RewriteCond %{HTTPS} off
-# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# Allow direct access to real existing files and directories
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Clean UUID rating and review page routing
+# Matches e.g. /rate/01a0a9ae-8b79-758a-872e-c36f557c1abd or /rate/r/01a0a9ae-8b79-758a-872e-c36f557c1abd
+RewriteRule ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/?$ rate/index.php?uuid=$1 [QSA,L]
+RewriteRule ^r/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/?$ rate/index.php?uuid=$1 [QSA,L]
+RewriteRule ^rate/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/?$ rate/index.php?uuid=$1 [QSA,L]
 
 # Remove .php extension from URLs
 RewriteCond %{REQUEST_FILENAME} !-d

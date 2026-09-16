@@ -967,8 +967,10 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                 <div class="form-group" style="margin-bottom:16px;">
                     <label for="companySelect">Select Company Listing</label>
                     <select id="companySelect" onchange="updateShareLink(this.value)">
-                        <?php foreach ($usage_stats['companies'] as $comp): ?>
-                            <option value="<?php echo (int)$comp['id']; ?>" data-name="<?php echo htmlspecialchars($comp['company_name']); ?>" data-slug="<?php echo htmlspecialchars(slugify($comp['company_name'])); ?>" data-url="<?php echo htmlspecialchars(getCompanyPublicRatingUrl($comp['id'], $comp['company_name'])); ?>">
+                        <?php foreach ($usage_stats['companies'] as $comp): 
+                            $c_uuid = !empty($comp['uuid']) ? $comp['uuid'] : getCompanyUuid($conn, (int)$comp['id']);
+                        ?>
+                            <option value="<?php echo (int)$comp['id']; ?>" data-name="<?php echo htmlspecialchars($comp['company_name']); ?>" data-slug="<?php echo htmlspecialchars(slugify($comp['company_name'])); ?>" data-uuid="<?php echo htmlspecialchars($c_uuid); ?>" data-url="<?php echo htmlspecialchars(getCompanyPublicRatingUrl($comp['id'], $comp['company_name'])); ?>">
                                 <?php echo htmlspecialchars($comp['company_name']); ?>
                             </option>
                         <?php endforeach; ?>
@@ -2427,9 +2429,14 @@ function updateShareLink(companyId) {
     var opt = select ? select.options[select.selectedIndex] : null;
     var url = opt && opt.getAttribute('data-url') ? opt.getAttribute('data-url') : '';
     if (!url && companyId) {
-        var slug = opt ? (opt.getAttribute('data-slug') || '') : '';
+        var uuid = opt ? (opt.getAttribute('data-uuid') || '') : '';
         var root = '<?php echo rtrim($__root, "/"); ?>';
-        url = window.location.origin + root + '/rate/index.php?company=' + encodeURIComponent(companyId) + (slug ? '&tenant=' + encodeURIComponent(slug) : '');
+        if (uuid) {
+            url = window.location.origin + root + '/' + encodeURIComponent(uuid);
+        } else {
+            var slug = opt ? (opt.getAttribute('data-slug') || '') : '';
+            url = window.location.origin + root + '/rate/index.php?company=' + encodeURIComponent(companyId) + (slug ? '&tenant=' + encodeURIComponent(slug) : '');
+        }
     }
     if (url) {
         input.value = url;

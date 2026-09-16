@@ -78,27 +78,100 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         redirect('subscriptions.php');
     }
 
-    if ($action === 'auto_renew' && $id) {
-        $on = !empty($_POST['auto_renew']) ? 1 : 0;
-        $stmt = $conn->prepare("UPDATE tenants SET auto_renew = ? WHERE id = ?");
-        $stmt->bind_param("ii", $on, $id);
+    if ($action === 'update_subscription') {
+    $tenant_id = (int) ($_POST['tenant_id'] ?? 0);
+    $plan_id = (int) ($_POST['plan_id'] ?? 0);
+    $status = sanitize($_POST['subscription_status'] ?? 'active');
+    $price = round((float) ($_POST['subscription_price'] ?? 0), 2);
+    $start_date = sanitize($_POST['subscription_start_date'] ?? '');
+    $end_date = sanitize($_POST['subscription_end_date'] ?? '');
+    $auto_renew = !empty($_POST['auto_renew']) ? 1 : 0;
+    
+    if (!$tenant_id) {
+        sa_flash('error', 'Select a tenant.');
+        redirect('subscriptions.php');
+    }
+    
+    // Validate plan
+    $plan = admin_row($conn, "SELECT * FROM subscription_plans WHERE id = " . $plan_id . " AND status = 'active' LIMIT 1");
+    if ($plan_id > 0 && !$plan) {
+        sa_flash('error', 'The selected plan is not available.');
+        redirect('subscriptions.php');
+    }
+    
+    // Validate status
+    if (!in_array($status, ['trial', 'active', 'inactive', 'cancelled'])) {
+        sa_flash('error', 'Invalid subscription status.');
+        redirect('subscriptions.php');
+    }
+    
+    // Get current tenant data
+    $tenant = admin_row($conn, "SELECT * FROM tenants WHERE id = " . $tenant_id . " LIMIT 1");
+    if (!$tenant) {
+        sa_flash('error', 'Tenant not found.');
+        redirect('subscriptions.php');
+    }
+    
+    $old_plan_id = (int) $tenant['plan_id'];
+    $old_price = (float) $tenant['subscription_price'];
+    $old_status = $tenant['subscription_status'];
+    
+    // Update subscription
+    $stmt = $conn->prepare("
+        UPDATE tenants 
+        SET plan_id = ?, subscription_status = ?, subscription_price = ?,
+            subscription_start_date = ?, subscription_end_date = ?,
+            auto_renew = ?
+        WHERE id = ?
+    ");
+    $stmt->bind_param(
+        "isdissii",
+        $plan_id,
+        $status,
+        $price,
+        $start_date ?: null,
+        $end_date ?: null,
+        $auto_renew,
+        $tenant_id
+    );
+    
+    if ($stmt->execute()) {
+        $stmt->close();
+        
+        // Log the change
+        sa_log_activity($conn, 'superadmin', $_SESSION['super_admin_id'] ?? null, 'subscription_update', 
+            "Updated subscription for {$tenant['company_name']}: plan #{$old_plan_id}→#{$plan_id}, status {$old_status}→{$status}, price {$old_price}→{$price}");
+        
+        // If plan changed, create a subscription request record for audit trail
+        if ($old_plan_id !== $plan_id && $plan_id > 0) {
+            $direction = (float) $plan['price'] > $old_price ? 'upgrade' : 'downgrade';
+            $conn->query("
+                INSERT INTO subscription_requests 
+                (tenant_id, current_plan_id, requested_plan_id, direction, status, created_at, resolved_at)
+                VALUES ({$tenant_id}, {$old_plan_id}, {$plan_id}, '{$direction}', 'approved', NOW(), NOW())
+            ");
+        }
+        
+        sa_flash('success', "Subscription updated for {$tenant['company_name']}.");
+    } else {
+        $stmt->close();
+        sa_flash('error', 'Could not update the subscription.');
+    }
+    
+    redirect('subscriptions.php');
+}
+
+if ($action === 'update_status' && $id) {
+    $status = in_array($_POST['status'] ?? '', ['trial', 'active', 'inactive', 'cancelled'], true) ? $_POST['status'] : '';
+    if ($status) {
+        $stmt = $conn->prepare("UPDATE tenants SET subscription_status = ? WHERE id = ?");
+        $stmt->bind_param("si", $status, $id);
         $stmt->execute();
         $stmt->close();
-        sa_flash('success', $on ? 'Auto-renew switched on.' : 'Auto-renew switched off.');
-        redirect('subscriptions.php');
+        sa_flash('success', 'Subscription marked ' . $status . '.');
     }
-
-    if ($action === 'update_status' && $id) {
-        $status = in_array($_POST['status'] ?? '', ['trial', 'active', 'inactive', 'cancelled'], true) ? $_POST['status'] : '';
-        if ($status) {
-            $stmt = $conn->prepare("UPDATE tenants SET subscription_status = ? WHERE id = ?");
-            $stmt->bind_param("si", $status, $id);
-            $stmt->execute();
-            $stmt->close();
-            sa_flash('success', 'Subscription marked ' . $status . '.');
-        }
-        redirect('subscriptions.php');
-    }
+    redirect('subscriptions.php');
+}
 
     if ($action === 'extend' && $id) {
         $months = max(1, min(60, (int) ($_POST['extend_months'] ?? 12)));
@@ -253,6 +326,7 @@ $recent_payments = sa_query(
     ['subscription_payments', 'tenants']
 );
 $tenants_dropdown = sa_query($conn, "SELECT id, company_name, subscription_price FROM tenants ORDER BY company_name ASC", 'tenants');
+$plans_dropdown = sa_query($conn, "SELECT id, plan_name, price FROM subscription_plans WHERE status = 'active' ORDER BY price ASC", 'subscription_plans');
 
 $mrr_visible = 0.0;
 foreach ($rows as $r) {
@@ -520,6 +594,18 @@ foreach ($chips as $key => $chip): ?>
                                     <?php echo sa_icon('refresh'); ?> +12 mo
                                 </button>
                             </form>
+                            <button type="button" class="sa-btn sa-btn-sm sa-btn-ghost" 
+                                    data-sa-open-dialog="#quickEditDialog"
+                                    data-tenant-id="<?php echo (int) $s['id']; ?>"
+                                    data-company="<?php echo sa_e($s['company_name']); ?>"
+                                    data-plan-id="<?php echo (int) $s['plan_id']; ?>"
+                                    data-status="<?php echo sa_e($s['subscription_status']); ?>"
+                                    data-price="<?php echo (float) $s['subscription_price']; ?>"
+                                    data-end-date="<?php echo sa_e($s['subscription_end_date']); ?>"
+                                    data-auto-renew="<?php echo $s['auto_renew'] ? '1' : '0'; ?>"
+                                    title="Quick edit subscription">
+                                <?php echo sa_icon('edit'); ?> Edit
+                            </button>
                             <a class="sa-btn sa-btn-sm sa-btn-ghost" href="tenant_details.php?id=<?php echo (int) $s['id']; ?>" title="Open tenant">
                                 <?php echo sa_icon('eye'); ?>
                             </a>
@@ -721,5 +807,133 @@ foreach ($chips as $key => $chip): ?>
         </div>
     </form>
 </dialog>
+
+<!-- ============ QUICK EDIT SUBSCRIPTION DIALOG ============ -->
+<dialog class="sa-dialog" id="quickEditDialog" aria-labelledby="quickEditDialogTitle">
+    <form method="POST" action="subscriptions.php" class="sa-form">
+        <?php echo sa_csrf_field(); ?>
+        <input type="hidden" name="action" value="update_subscription">
+        <input type="hidden" name="tenant_id" id="qe_tenant_id" value="">
+        <div class="sa-dialog-head">
+            <div>
+                <h3 id="quickEditDialogTitle">Quick Edit Subscription</h3>
+                <p>Update plan, status, price and renewal settings for a workspace.</p>
+            </div>
+            <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>
+        </div>
+
+        <div class="sa-dialog-body">
+            <div class="sa-form-grid">
+                <div class="sa-field" style="grid-column:1/-1">
+                    <label for="qe_company">Tenant / Company</label>
+                    <input id="qe_company" type="text" class="sa-input" readonly style="background:#f8f9fa">
+                </div>
+
+                <div class="sa-field">
+                    <label for="qe_plan">Plan</label>
+                    <select id="qe_plan" name="plan_id" required>
+                        <option value="0">No plan (free/trial)</option>
+                        <?php foreach ($plans_dropdown as $p): ?>
+                        <option value="<?php echo (int) $p['id']; ?>" data-price="<?php echo (float) $p['price']; ?>">
+                            <?php echo sa_e($p['plan_name']); ?> — <?php echo sa_e(sa_money($p['price'])); ?>/mo
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="sa-field">
+                    <label for="qe_status">Status</label>
+                    <select id="qe_status" name="subscription_status" required>
+                        <option value="trial">Trial</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+
+                <div class="sa-field">
+                    <label for="qe_price">Subscription Price</label>
+                    <input id="qe_price" type="number" step="0.01" min="0" name="subscription_price" placeholder="0.00">
+                    <span class="sa-hint">Monthly price for this workspace</span>
+                </div>
+
+                <div class="sa-field">
+                    <label for="qe_end">Subscription Ends</label>
+                    <input id="qe_end" type="date" name="subscription_end_date">
+                    <span class="sa-hint">Leave blank to keep current end date</span>
+                </div>
+
+                <div class="sa-field">
+                    <label class="sa-checkbox-label">
+                        <input type="checkbox" name="auto_renew" id="qe_auto_renew" value="1">
+                        <span>Enable auto-renew</span>
+                    </label>
+                    <span class="sa-hint">Automatically renew when subscription ends</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="sa-dialog-foot">
+            <button type="button" class="sa-btn sa-btn-ghost" data-sa-close-dialog>Cancel</button>
+            <button type="submit" class="sa-btn sa-btn-primary">
+                <?php echo sa_icon('check'); ?> Update Subscription
+            </button>
+        </div>
+    </form>
+</dialog>
+
+<script>
+/* Quick Edit Subscription Dialog */
+(function() {
+    var dialog = document.getElementById('quickEditDialog');
+    if (!dialog) return;
+
+    function openDialog(data) {
+        document.getElementById('qe_tenant_id').value = data.tenantId;
+        document.getElementById('qe_company').value = data.company;
+        document.getElementById('qe_plan').value = data.planId;
+        document.getElementById('qe_status').value = data.status;
+        document.getElementById('qe_price').value = data.price || '';
+        document.getElementById('qe_end').value = data.endDate || '';
+        document.getElementById('qe_auto_renew').checked = data.autoRenew === '1';
+
+        // Update title
+        document.getElementById('quickEditDialogTitle').textContent = 'Edit: ' + data.company;
+
+        // Open dialog
+        if (typeof dialog.showModal === 'function') {
+            dialog.showModal();
+        } else {
+            dialog.setAttribute('open', '');
+            dialog.classList.add('is-open-fallback');
+        }
+    }
+
+    // Handle edit buttons
+    document.querySelectorAll('[data-sa-open-dialog="#quickEditDialog"]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var data = btn.dataset;
+            openDialog({
+                tenantId: data.tenantId,
+                company: data.company,
+                planId: data.planId,
+                status: data.status,
+                price: data.price,
+                endDate: data.endDate,
+                autoRenew: data.autoRenew
+            });
+        });
+    });
+
+    // Auto-fill price when plan changes
+    document.getElementById('qe_plan').addEventListener('change', function() {
+        var option = this.options[this.selectedIndex];
+        var price = option.getAttribute('data-price');
+        if (price) {
+            document.getElementById('qe_price').value = price;
+        }
+    });
+})();
+</script>
 
 <?php include __DIR__ . '/_shell_footer.php'; ?>

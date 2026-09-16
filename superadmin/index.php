@@ -174,7 +174,7 @@ include __DIR__ . '/_shell.php';
 <!-- ============ KPI ROW ============ -->
 <div class="sa-grid sa-kpis sa-anim">
 
-    <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-lime);--kpi-soft:var(--sa-accent-soft);--kpi-line:var(--sa-accent-line)">
+        <article class="sa-card sa-kpi" data-card-id="kpi_mrr" style="--kpi-accent:var(--sa-lime);--kpi-soft:var(--sa-accent-soft);--kpi-line:var(--sa-accent-line)">
         <div class="sa-kpi-top">
             <span class="sa-kpi-label">Monthly recurring revenue</span>
             <span class="sa-kpi-icon"><?php echo sa_icon('dollar'); ?></span>
@@ -190,7 +190,7 @@ include __DIR__ . '/_shell.php';
         <div class="sa-kpi-note">vs last month · <?php echo sa_e(sa_money($m['arr'], 0)); ?> ARR</div>
     </article>
 
-    <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-info);--kpi-soft:var(--sa-info-soft);--kpi-line:var(--sa-info-line)">
+        <article class="sa-card sa-kpi" data-card-id="kpi_tenants" style="--kpi-accent:var(--sa-info);--kpi-soft:var(--sa-info-soft);--kpi-line:var(--sa-info-line)">
         <div class="sa-kpi-top">
             <span class="sa-kpi-label">Total tenants</span>
             <span class="sa-kpi-icon"><?php echo sa_icon('building'); ?></span>
@@ -205,7 +205,7 @@ include __DIR__ . '/_shell.php';
         <div class="sa-kpi-note"><?php echo sa_e(sa_num($m['new_tenants_30d'])); ?> joined in the last 30 days</div>
     </article>
 
-    <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-success);--kpi-soft:var(--sa-success-soft);--kpi-line:var(--sa-success-line)">
+        <article class="sa-card sa-kpi" data-card-id="kpi_subscriptions" style="--kpi-accent:var(--sa-success);--kpi-soft:var(--sa-success-soft);--kpi-line:var(--sa-success-line)">
         <div class="sa-kpi-top">
             <span class="sa-kpi-label">Active subscriptions</span>
             <span class="sa-kpi-icon"><?php echo sa_icon('card'); ?></span>
@@ -220,7 +220,7 @@ include __DIR__ . '/_shell.php';
         <div class="sa-kpi-note"><?php echo sa_e(sa_num($m['status']['trial'])); ?> on trial · <?php echo sa_e(sa_num($m['status']['cancelled'])); ?> cancelled</div>
     </article>
 
-    <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-warning);--kpi-soft:var(--sa-warning-soft);--kpi-line:var(--sa-warning-line)">
+        <article class="sa-card sa-kpi" data-card-id="kpi_ratings" style="--kpi-accent:var(--sa-warning);--kpi-soft:var(--sa-warning-soft);--kpi-line:var(--sa-warning-line)">
         <div class="sa-kpi-top">
             <span class="sa-kpi-label">Ratings collected</span>
             <span class="sa-kpi-icon"><?php echo sa_icon('star'); ?></span>
@@ -235,7 +235,7 @@ include __DIR__ . '/_shell.php';
         <div class="sa-kpi-note"><?php echo $m['avg_rating'] > 0 ? sa_stars($m['avg_rating']) : 'No ratings yet'; ?></div>
     </article>
 
-    <article class="sa-card sa-kpi" style="--kpi-accent:var(--sa-violet);--kpi-soft:var(--sa-violet-soft);--kpi-line:var(--sa-violet-line)">
+        <article class="sa-card sa-kpi" data-card-id="kpi_quotes" style="--kpi-accent:var(--sa-violet);--kpi-soft:var(--sa-violet-soft);--kpi-line:var(--sa-violet-line)">
         <div class="sa-kpi-top">
             <span class="sa-kpi-label">Quote pipeline</span>
             <span class="sa-kpi-icon"><?php echo sa_icon('inbox'); ?></span>
@@ -255,13 +255,16 @@ include __DIR__ . '/_shell.php';
 <!-- ============ TRENDS ============ -->
 <div class="sa-grid sa-split-2-1">
 
-    <section class="sa-card">
+                <section class="sa-card" data-card-id="trends">
         <div class="sa-card-head">
             <div>
                 <h3>Revenue &amp; tenant growth</h3>
                 <p>Cumulative MRR against newly signed tenants, last 12 months</p>
             </div>
             <div class="sa-card-head-actions">
+                <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse">
+                    <?php echo sa_icon('chevron-up'); ?>
+                </button>
                 <span class="sa-pill"><i style="width:9px;height:3px;border-radius:2px;background:var(--sa-lime);display:inline-block"></i> MRR</span>
                 <span class="sa-pill"><i style="width:9px;height:3px;border-radius:2px;background:var(--sa-info);display:inline-block"></i> New tenants</span>
             </div>
@@ -278,12 +281,15 @@ include __DIR__ . '/_shell.php';
         </div>
     </section>
 
-    <section class="sa-card">
+            <section class="sa-card" data-card-id="plan_distribution">
         <div class="sa-card-head">
             <div>
                 <h3>Plan distribution</h3>
                 <p>Active and trial tenants per plan</p>
             </div>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse">
+                <?php echo sa_icon('chevron-up'); ?>
+            </button>
         </div>
         <div class="sa-card-pad">
             <?php echo sa_donut($plan_segments, [
@@ -302,13 +308,16 @@ include __DIR__ . '/_shell.php';
 <!-- ============ TENANT HEALTH + RENEWALS ============ -->
 <div class="sa-grid sa-split-2-1 sa-mt">
 
-    <section class="sa-card">
+        <section class="sa-card" data-card-id="recent_tenants">
         <div class="sa-card-head">
             <div>
                 <h3>Recent tenants</h3>
                 <p>Newest companies onboarded to the platform</p>
             </div>
             <div class="sa-card-head-actions">
+                <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse" style="margin-right:4px">
+                    <?php echo sa_icon('chevron-up'); ?>
+                </button>
                 <a class="sa-btn sa-btn-sm sa-btn-ghost" href="tenants.php">View all</a>
             </div>
         </div>
@@ -379,13 +388,18 @@ include __DIR__ . '/_shell.php';
         </div>
     </section>
 
-    <section class="sa-card">
+        <section class="sa-card" data-card-id="renewals">
         <div class="sa-card-head">
             <div>
                 <h3>Renewals &amp; churn risk</h3>
                 <p>Subscriptions ending within 30 days</p>
             </div>
-            <span class="sa-pill"><?php echo sa_e(sa_num($m['expiring_soon'])); ?> flagged</span>
+            <div class="sa-card-head-actions">
+                <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse" style="margin-right:4px">
+                    <?php echo sa_icon('chevron-up'); ?>
+                </button>
+                <span class="sa-pill"><?php echo sa_e(sa_num($m['expiring_soon'])); ?> flagged</span>
+            </div>
         </div>
 
 <?php if (!$expiring): ?>
@@ -425,12 +439,15 @@ include __DIR__ . '/_shell.php';
 <!-- ============ ENGAGEMENT ============ -->
 <div class="sa-grid sa-cols-3 sa-mt">
 
-    <section class="sa-card">
+    <section class="sa-card" data-card-id="top_rated">
         <div class="sa-card-head">
             <div>
                 <h3>Top rated companies</h3>
                 <p>Most reviewed across all tenants</p>
             </div>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse">
+                <?php echo sa_icon('chevron-up'); ?>
+            </button>
         </div>
         <div class="sa-card-pad">
             <?php echo sa_bar_list($top_bars); ?>
@@ -441,12 +458,15 @@ include __DIR__ . '/_shell.php';
         </div>
     </section>
 
-    <section class="sa-card">
+    <section class="sa-card" data-card-id="rating_breakdown">
         <div class="sa-card-head">
             <div>
                 <h3>Rating breakdown</h3>
                 <p><?php echo $m['avg_rating'] > 0 ? sa_stars($m['avg_rating']) : 'No ratings recorded yet'; ?></p>
             </div>
+            <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse">
+                <?php echo sa_icon('chevron-up'); ?>
+            </button>
         </div>
         <div class="sa-card-pad">
             <?php echo sa_bar_list($star_items); ?>
@@ -454,39 +474,22 @@ include __DIR__ . '/_shell.php';
         <div class="sa-card-foot">
             <span><?php echo sa_e(number_format(sa_pct($m['five_star'], $m['ratings_total'], 0))); ?>% are 5-star</span>
             <span><?php echo sa_e(sa_num($m['new_ratings_30d'])); ?> in the last 30 days</span>
-        </div>
+                </div>
     </section>
 
-    <section class="sa-card">
-        <div class="sa-card-head">
-            <div>
-                <h3>Tenant health</h3>
-                <p>Where the <?php echo sa_e(sa_num($m['tenants_total'])); ?> tenants stand</p>
-            </div>
-        </div>
-        <div class="sa-card-pad">
-            <?php echo sa_donut($status_segments, [
-                'value' => sa_num($m['tenants_total']),
-                'label' => 'Tenants',
-            ], 150); ?>
-            <div class="sa-section-title" style="margin:22px 0 11px">Rating activity</div>
-            <?php echo sa_heatmap($heat_cells, 18); ?>
-            <p class="sa-faint" style="font-size:11.6px;margin-top:9px">Last 54 days &middot; darker means more ratings</p>
-        </div>
-    </section>
-
-</div>
-
-<!-- ============ PIPELINE + ACTIVITY ============ -->
+<!-- ============ QUOTE REQUESTS + ACTIVITY ============ -->
 <div class="sa-grid sa-split-2-1 sa-mt">
 
-    <section class="sa-card">
+    <section class="sa-card" data-card-id="quotes">
         <div class="sa-card-head">
             <div>
                 <h3>Quote requests</h3>
-                <p>Inbound interest from the public “Get started” wizard</p>
+                <p>Inbound interest from the public "Get started" wizard</p>
             </div>
             <div class="sa-card-head-actions">
+                <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse" style="margin-right:4px">
+                    <?php echo sa_icon('chevron-up'); ?>
+                </button>
                 <a class="sa-btn sa-btn-sm sa-btn-ghost" href="quote_requests.php">Open pipeline</a>
             </div>
         </div>
@@ -517,15 +520,20 @@ include __DIR__ . '/_shell.php';
 <?php endif; ?>
     </section>
 
-    <section class="sa-card">
+    <section class="sa-card" data-card-id="activity">
         <div class="sa-card-head">
             <div>
                 <h3>Activity feed</h3>
                 <p>Latest events across the platform</p>
             </div>
-            <button type="button" class="sa-icon-btn" onclick="window.location.reload()" title="Refresh" aria-label="Refresh">
-                <?php echo sa_icon('refresh'); ?>
-            </button>
+            <div class="sa-card-head-actions">
+                <button type="button" class="sa-card-toggle" aria-label="Collapse card" title="Collapse" style="margin-right:4px">
+                    <?php echo sa_icon('chevron-up'); ?>
+                </button>
+                <button type="button" class="sa-icon-btn" onclick="window.location.reload()" title="Refresh" aria-label="Refresh">
+                    <?php echo sa_icon('refresh'); ?>
+                </button>
+            </div>
         </div>
 <?php if (!$activity): ?>
         <div class="sa-empty">
@@ -554,3 +562,5 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <?php include __DIR__ . '/_shell_footer.php'; ?>
+
+<script src="../superadmin/dashboard_sections.js"></script>

@@ -2343,15 +2343,142 @@ if (!function_exists('getAppBaseUrl')) {
     }
 }
 
+if (!function_exists('generateUuidV7')) {
+    /**
+     * Generate an RFC 9562 UUIDv7 (time-ordered, 36 chars hyphenated).
+     */
+    function generateUuidV7() {
+        $timeMs = (int)(microtime(true) * 1000);
+        $timeHex = str_pad(dechex($timeMs), 12, '0', STR_PAD_LEFT);
+        $rand = bin2hex(random_bytes(10));
+        $p1 = substr($timeHex, 0, 8);
+        $p2 = substr($timeHex, 8, 4);
+        $p3 = '7' . substr($rand, 0, 3);
+        $variantNibble = dechex(0x8 | (hexdec(substr($rand, 3, 1)) & 0x3));
+        $p4 = $variantNibble . substr($rand, 4, 3);
+        $p5 = substr($rand, 7, 12);
+        return sprintf('%s-%s-%s-%s-%s', $p1, $p2, $p3, $p4, $p5);
+    }
+}
+
+if (!function_exists('ensureCompanyUuidSchema')) {
+    /**
+     * Ensures customers table has the uuid column with unique index and backfills missing UUIDs.
+     *
+     * @param mysqli $conn
+     * @return void
+     */
+    function ensureCompanyUuidSchema($conn) {
+        if (!is_object($conn)) return;
+        static $checked = false;
+        if ($checked) return;
+        $checked = true;
+
+        $chk = @$conn->query("SHOW COLUMNS FROM customers LIKE 'uuid'");
+        if ($chk && $chk->num_rows === 0) {
+            @$conn->query("ALTER TABLE customers ADD COLUMN uuid VARCHAR(36) NULL AFTER id");
+        }
+
+        // Backfill any existing customer rows with missing or empty uuid
+        $missing = @$conn->query("SELECT id FROM customers WHERE uuid IS NULL OR uuid = ''");
+        if ($missing && $missing->num_rows > 0) {
+            $up = $conn->prepare("UPDATE customers SET uuid = ? WHERE id = ?");
+            if ($up) {
+                while ($row = $missing->fetch_assoc()) {
+                    $newUuid = generateUuidV7();
+                    $cid = (int)$row['id'];
+                    $up->bind_param("si", $newUuid, $cid);
+                    $up->execute();
+                }
+                $up->close();
+            }
+        }
+
+        // Ensure unique index exists on uuid
+        $idxChk = @$conn->query("SHOW INDEX FROM customers WHERE Key_name = 'uniq_customer_uuid'");
+        if ($idxChk && $idxChk->num_rows === 0) {
+            @$conn->query("ALTER TABLE customers ADD UNIQUE KEY uniq_customer_uuid (uuid)");
+        }
+    }
+}
+
+if (!function_exists('getCompanyUuid')) {
+    /**
+     * Resolves or generates the UUID for a company.
+     *
+     * @param mysqli $conn
+     * @param int $company_id
+     * @return string
+     */
+    function getCompanyUuid($conn, $company_id) {
+        $company_id = (int)$company_id;
+        if ($company_id <= 0) return '';
+        if (!is_object($conn)) {
+            global $conn;
+        }
+        if (!is_object($conn)) return '';
+
+        ensureCompanyUuidSchema($conn);
+        $stmt = $conn->prepare("SELECT uuid FROM customers WHERE id = ? LIMIT 1");
+        if ($stmt) {
+            $stmt->bind_param("i", $company_id);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            if ($row && !empty($row['uuid'])) {
+                return $row['uuid'];
+            }
+        }
+
+        // Generate and persist new UUID if not present
+        $new_uuid = generateUuidV7();
+        $up = $conn->prepare("UPDATE customers SET uuid = ? WHERE id = ?");
+        if ($up) {
+            $up->bind_param("si", $new_uuid, $company_id);
+            $up->execute();
+            $up->close();
+        }
+        return $new_uuid;
+    }
+}
+
 if (!function_exists('getCompanyPublicRatingUrl')) {
     /**
-     * Generate the complete public rating URL for a company with the tenant name included.
-     * e.g. http://localhost/rate/rate/index.php?company=4&tenant=airport-west-hotel
+     * Generate the complete public rating URL for a company.
+     * Uses clean UUID format (e.g. http://localhost:8080/rate/01a0a9ae-8b79-758a-872e-c36f557c1abd).
+     * Preserves extra query params (e.g. ?src=qr or ?tab=qa).
+     * Gracefully falls back to legacy format if UUID resolution is impossible.
      */
     function getCompanyPublicRatingUrl($company_id, $company_name = '', $extra_params = []) {
+        $company_id = (int)$company_id;
+        global $conn;
+        
+        $uuid = '';
+        if ($company_id > 0 && is_object($conn)) {
+            $uuid = getCompanyUuid($conn, $company_id);
+        }
+
+        $query = '';
+        if (!empty($extra_params) && is_array($extra_params)) {
+            $filtered = [];
+            foreach ($extra_params as $k => $v) {
+                if ($v !== '' && $v !== null && $k !== 'company' && $k !== 'tenant') {
+                    $filtered[$k] = $v;
+                }
+            }
+            if (!empty($filtered)) {
+                $query = '?' . http_build_query($filtered);
+            }
+        }
+
+        if (!empty($uuid)) {
+            return getAppBaseUrl() . '/' . $uuid . $query;
+        }
+
+        // Legacy fallback
         $params = [];
-        if ((int)$company_id > 0) {
-            $params['company'] = (int)$company_id;
+        if ($company_id > 0) {
+            $params['company'] = $company_id;
         }
         if (!empty($company_name)) {
             $params['tenant'] = slugify($company_name);
@@ -2361,8 +2488,272 @@ if (!function_exists('getCompanyPublicRatingUrl')) {
                 if ($v !== '' && $v !== null) $params[$k] = $v;
             }
         }
-        $query = !empty($params) ? ('?' . http_build_query($params)) : '';
-        return getAppBaseUrl() . '/rate/index.php' . $query;
+        $legacy_query = !empty($params) ? ('?' . http_build_query($params)) : '';
+        return getAppBaseUrl() . '/rate/index.php' . $legacy_query;
+    }
+}
+
+if (!function_exists('ensureCompanyEngagementTable')) {
+    /**
+     * Auto-create company_engagements table to track visitor follows and likes.
+     */
+    function ensureCompanyEngagementTable($conn) {
+        if (!is_object($conn)) return;
+        static $checked = false;
+        if ($checked) return;
+        $checked = true;
+
+        if (function_exists('ensureSiteCustomersTable')) {
+            ensureSiteCustomersTable($conn);
+        }
+
+        $sql = "CREATE TABLE IF NOT EXISTS company_engagements (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            company_id INT NOT NULL,
+            action_type ENUM('follow', 'like') NOT NULL,
+            user_ip VARCHAR(45) NOT NULL,
+            user_agent VARCHAR(255) NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_comp_action_ip (company_id, action_type, user_ip),
+            KEY idx_comp_action (company_id, action_type)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+        @$conn->query($sql);
+    }
+}
+
+if (!function_exists('getCompanyEngagementStats')) {
+    /**
+     * Get verified followers, likes, and verified customer counts for a company.
+     * Combines verified customer records and public visitor engagements.
+     *
+     * @param mysqli $conn
+     * @param int $company_id
+     * @param string $user_ip
+     * @return array
+     */
+    function getCompanyEngagementStats($conn, $company_id, $user_ip = '') {
+        $company_id = (int)$company_id;
+        if ($company_id <= 0 || !is_object($conn)) {
+            return [
+                'followers_count'   => 0,
+                'likes_count'       => 0,
+                'verified_count'    => 0,
+                'user_has_followed' => false,
+                'user_has_liked'    => false,
+                'verified_avatars'  => [],
+            ];
+        }
+
+        ensureCompanyEngagementTable($conn);
+
+        // Auto-sync any verified ratings into site_customers if not yet present
+        $un_synced = @$conn->query("
+            SELECT r.id, r.company_id, r.customer_name, r.customer_email, r.verification_type, c.tenant_id 
+            FROM ratings r 
+            JOIN customers c ON r.company_id = c.id
+            WHERE r.company_id = $company_id AND r.is_verified = 1
+              AND r.id NOT IN (SELECT COALESCE(rating_id, 0) FROM site_customers WHERE company_id = $company_id)
+        ");
+        if ($un_synced && $un_synced->num_rows > 0) {
+            $now = date('Y-m-d H:i:s');
+            while ($ur = $un_synced->fetch_assoc()) {
+                $u_rid   = (int)$ur['id'];
+                $u_name  = $ur['customer_name'] ?: 'Verified Customer';
+                $u_email = $ur['customer_email'] ?: ('verified_' . $u_rid . '@customer.optibiz.com');
+                $u_type  = $ur['verification_type'] ?: 'Receipt';
+                $u_tid   = (int)$ur['tenant_id'];
+                $sins = $conn->prepare("INSERT INTO site_customers 
+                    (tenant_id, company_id, customer_name, customer_email, rating_id, rating_value, is_following, is_liked, is_verified, verification_type, last_activity_at)
+                    VALUES (?, ?, ?, ?, ?, 5, 1, 1, 1, ?, ?)");
+                if ($sins) {
+                    $sins->bind_param("iississ", $u_tid, $company_id, $u_name, $u_email, $u_rid, $u_type, $now);
+                    $sins->execute();
+                    $sins->close();
+                }
+            }
+        }
+
+        // 1. Count verified followers (site_customers is_following = 1 + company_engagements action_type = 'follow')
+        $sc_follow = 0;
+        $q1 = $conn->prepare("SELECT COUNT(*) AS c FROM site_customers WHERE company_id = ? AND is_following = 1");
+        if ($q1) {
+            $q1->bind_param("i", $company_id);
+            $q1->execute();
+            $sc_follow = (int)($q1->get_result()->fetch_assoc()['c'] ?? 0);
+            $q1->close();
+        }
+
+        $ce_follow = 0;
+        $q2 = $conn->prepare("SELECT COUNT(*) AS c FROM company_engagements WHERE company_id = ? AND action_type = 'follow'");
+        if ($q2) {
+            $q2->bind_param("i", $company_id);
+            $q2->execute();
+            $ce_follow = (int)($q2->get_result()->fetch_assoc()['c'] ?? 0);
+            $q2->close();
+        }
+        $followers_count = $sc_follow + $ce_follow;
+
+        // 2. Count likes (site_customers is_liked = 1 + company_engagements action_type = 'like' + review helpful likes)
+        $sc_likes = 0;
+        $q3 = $conn->prepare("SELECT COUNT(*) AS c FROM site_customers WHERE company_id = ? AND is_liked = 1");
+        if ($q3) {
+            $q3->bind_param("i", $company_id);
+            $q3->execute();
+            $sc_likes = (int)($q3->get_result()->fetch_assoc()['c'] ?? 0);
+            $q3->close();
+        }
+
+        $ce_likes = 0;
+        $q4 = $conn->prepare("SELECT COUNT(*) AS c FROM company_engagements WHERE company_id = ? AND action_type = 'like'");
+        if ($q4) {
+            $q4->bind_param("i", $company_id);
+            $q4->execute();
+            $ce_likes = (int)($q4->get_result()->fetch_assoc()['c'] ?? 0);
+            $q4->close();
+        }
+
+        $review_likes = 0;
+        $q5 = $conn->prepare("SELECT COALESCE(SUM(helpful_count), 0) AS c FROM ratings WHERE company_id = ?");
+        if ($q5) {
+            $q5->bind_param("i", $company_id);
+            $q5->execute();
+            $review_likes = (int)($q5->get_result()->fetch_assoc()['c'] ?? 0);
+            $q5->close();
+        }
+        $likes_count = $sc_likes + $ce_likes + $review_likes;
+
+        // 3. Count total verified customers
+        $verified_count = 0;
+        $q6 = $conn->prepare("SELECT COUNT(DISTINCT id) AS c FROM ratings WHERE company_id = ? AND is_verified = 1");
+        if ($q6) {
+            $q6->bind_param("i", $company_id);
+            $q6->execute();
+            $verified_count = (int)($q6->get_result()->fetch_assoc()['c'] ?? 0);
+            $q6->close();
+        }
+        if ($verified_count === 0) {
+            $q6b = $conn->prepare("SELECT COUNT(*) AS c FROM site_customers WHERE company_id = ? AND is_verified = 1");
+            if ($q6b) {
+                $q6b->bind_param("i", $company_id);
+                $q6b->execute();
+                $verified_count = (int)($q6b->get_result()->fetch_assoc()['c'] ?? 0);
+                $q6b->close();
+            }
+        }
+
+        // 4. Check if current visitor has followed or liked
+        $user_has_followed = false;
+        $user_has_liked    = false;
+        if (!empty($user_ip)) {
+            $chk = $conn->prepare("SELECT action_type FROM company_engagements WHERE company_id = ? AND user_ip = ?");
+            if ($chk) {
+                $chk->bind_param("is", $company_id, $user_ip);
+                $chk->execute();
+                $res = $chk->get_result();
+                while ($r = $res->fetch_assoc()) {
+                    if ($r['action_type'] === 'follow') $user_has_followed = true;
+                    if ($r['action_type'] === 'like') $user_has_liked = true;
+                }
+                $chk->close();
+            }
+        }
+
+        // 5. Fetch verified customer initials for trust avatar stack
+        $verified_avatars = [];
+        $av_stmt = $conn->prepare("SELECT customer_name, verification_type FROM ratings WHERE company_id = ? AND is_verified = 1 AND customer_name IS NOT NULL AND customer_name != '' ORDER BY id DESC LIMIT 5");
+        if ($av_stmt) {
+            $av_stmt->bind_param("i", $company_id);
+            $av_stmt->execute();
+            $av_res = $av_stmt->get_result();
+            while ($ar = $av_res->fetch_assoc()) {
+                $name = trim($ar['customer_name']);
+                $parts = preg_split('/\s+/', $name);
+                $initials = '';
+                if (count($parts) >= 2) {
+                    $initials = strtoupper(substr($parts[0], 0, 1) . substr($parts[1], 0, 1));
+                } else {
+                    $initials = strtoupper(substr($name, 0, 2));
+                }
+                $verified_avatars[] = [
+                    'name'     => $name,
+                    'initials' => $initials,
+                    'type'     => $ar['verification_type'] ?: 'Verified',
+                ];
+            }
+            $av_stmt->close();
+        }
+
+        return [
+            'followers_count'   => $followers_count,
+            'likes_count'       => $likes_count,
+            'verified_count'    => $verified_count,
+            'user_has_followed' => $user_has_followed,
+            'user_has_liked'    => $user_has_liked,
+            'verified_avatars'  => $verified_avatars,
+        ];
+    }
+}
+
+if (!function_exists('toggleCompanyEngagement')) {
+    /**
+     * Toggles a visitor's follow or like for a company.
+     *
+     * @param mysqli $conn
+     * @param int $company_id
+     * @param string $action 'follow' | 'like'
+     * @param string $user_ip
+     * @param string $user_agent
+     * @return array Updated stats and status
+     */
+    function toggleCompanyEngagement($conn, $company_id, $action, $user_ip = '', $user_agent = '') {
+        $company_id = (int)$company_id;
+        $action     = in_array($action, ['follow', 'like'], true) ? $action : '';
+        $user_ip    = trim((string)$user_ip);
+        if ($company_id <= 0 || $action === '' || !is_object($conn)) {
+            return ['success' => false, 'message' => 'Invalid parameters'];
+        }
+        if (empty($user_ip)) {
+            $user_ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        }
+
+        ensureCompanyEngagementTable($conn);
+
+        // Check if existing
+        $chk = $conn->prepare("SELECT id FROM company_engagements WHERE company_id = ? AND action_type = ? AND user_ip = ? LIMIT 1");
+        $chk->bind_param("iss", $company_id, $action, $user_ip);
+        $chk->execute();
+        $row = $chk->get_result()->fetch_assoc();
+        $chk->close();
+
+        $active = false;
+        if ($row) {
+            // Already engaged -> toggle off
+            $del = $conn->prepare("DELETE FROM company_engagements WHERE id = ?");
+            $del->bind_param("i", $row['id']);
+            $del->execute();
+            $del->close();
+            $active = false;
+        } else {
+            // New engagement -> insert
+            $ins = $conn->prepare("INSERT INTO company_engagements (company_id, action_type, user_ip, user_agent, created_at) VALUES (?, ?, ?, ?, NOW())");
+            $ins->bind_param("isss", $company_id, $action, $user_ip, $user_agent);
+            $ins->execute();
+            $ins->close();
+            $active = true;
+        }
+
+        $stats = getCompanyEngagementStats($conn, $company_id, $user_ip);
+
+        return [
+            'success'           => true,
+            'action'            => $action,
+            'is_active'         => $active,
+            'followers_count'   => $stats['followers_count'],
+            'likes_count'       => $stats['likes_count'],
+            'verified_count'    => $stats['verified_count'],
+            'user_has_followed' => $stats['user_has_followed'],
+            'user_has_liked'    => $stats['user_has_liked'],
+        ];
     }
 }
 

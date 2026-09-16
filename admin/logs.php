@@ -32,6 +32,77 @@ if ($is_tenant && $tenant_id) {
     $filters['entity_type'] = 'tenant';
     $filters['entity_id'] = $tenant_id;
 }
+if ($filter_action) $filters['action'] = $filter_action;
+if ($filter_start) $filters['start_date'] = $filter_start;
+if ($filter_end) $filters['end_date'] = $filter_end;
+
+$logs = sa_get_logs($conn, 'admin', array_merge($filters, ['limit' => $per_page, 'offset' => ($filter_page - 1) * $per_page]));
+$total_logs = sa_get_logs_count($conn, 'admin', $filters);
+$total_pages = ceil($total_logs / $per_page);
+$actions = sa_get_log_actions($conn, 'admin');
+
+if (isset($_GET['export'])) {
+    if (function_exists('sa_export_logs_csv')) {
+        $filename = 'workspace_logs_' . date('Y-m-d_His') . '.csv';
+        sa_export_logs_csv($conn, 'admin', $filters, $filename);
+        exit;
+    }
+}
+
+if (!function_exists('sa_e')) {
+    function sa_e($val) {
+        return htmlspecialchars((string) $val, ENT_QUOTES, 'UTF-8');
+    }
+}
+if (!function_exists('sa_icon')) {
+    function sa_icon($name, $attrs = '') {
+        $icons = [
+            'download'     => '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+            'info'         => '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+            'inbox'        => '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+            'arrow-left'   => '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+            'chevron-right'=> '<polyline points="9 18 15 12 9 6"/>',
+        ];
+        $body = $icons[$name] ?? $icons['info'];
+        return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' . $attrs . '>' . $body . '</svg>';
+    }
+}
+
+include __DIR__ . '/_shell.php';
+?>
+
+<style>
+.sa-card { background: #fff; border: 1px solid var(--line, #e2e8f0); border-radius: 12px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.sa-card-head { display: flex; justify-content: space-between; align-items: center; padding: 18px 24px; border-bottom: 1px solid var(--line, #e2e8f0); }
+.sa-card-head h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--ink, #0f172a); }
+.sa-card-head p { margin: 4px 0 0; font-size: 13px; color: var(--muted, #64748b); }
+.sa-card-pad { padding: 20px 24px; }
+.sa-mt { margin-top: 20px; }
+.sa-mb { margin-bottom: 16px; }
+.sa-grid { display: grid; gap: 16px; }
+.sa-grid-3 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.sa-field-label { display: block; font-size: 12px; font-weight: 600; color: var(--muted, #64748b); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.sa-input { width: 100%; padding: 9px 12px; border: 1px solid var(--line, #cbd5e1); border-radius: 8px; font-size: 14px; background: #fff; color: var(--ink, #0f172a); }
+.sa-btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; }
+.sa-btn-sm { padding: 6px 12px; font-size: 12px; }
+.sa-btn-ghost { background: transparent; border-color: var(--line, #cbd5e1); color: var(--ink, #0f172a); }
+.sa-btn-ghost:hover { background: var(--bg, #f8fafc); }
+.sa-info { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; font-size: 13px; color: #166534; }
+.sa-alert { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 8px; font-size: 13px; }
+.sa-alert-info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+.sa-table-wrap { overflow-x: auto; }
+.sa-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13.5px; }
+.sa-table th { padding: 12px 16px; background: var(--bg, #f8fafc); font-weight: 600; color: var(--muted, #64748b); border-bottom: 1px solid var(--line, #e2e8f0); }
+.sa-table td { padding: 12px 16px; border-bottom: 1px solid var(--line, #e2e8f0); color: var(--ink, #0f172a); }
+.sa-mono { font-family: monospace; font-size: 12px; }
+.sa-small { font-size: 11.5px; color: var(--muted, #64748b); }
+.sa-empty { text-align: center; padding: 40px 20px; color: var(--muted, #64748b); }
+.sa-empty svg { width: 36px; height: 36px; stroke: #94a3b8; margin-bottom: 10px; }
+.sa-empty strong { display: block; font-size: 15px; color: var(--ink, #0f172a); margin-bottom: 4px; }
+.sa-card-foot { padding: 14px 24px; border-top: 1px solid var(--line, #e2e8f0); }
+.sa-pagination { display: flex; align-items: center; justify-content: space-between; }
+</style>
+
 <div class="sa-card">
     <div class="sa-card-head">
         <div><h3>Activity Logs</h3><p>Workspace activity history</p></div>
@@ -40,7 +111,7 @@ if ($is_tenant && $tenant_id) {
     <div class="sa-card-pad">
         <?php if ($is_tenant): ?>
         <div class="sa-info">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <?php echo sa_icon('info'); ?>
             <div><strong>Workspace:</strong> Tenants view their own activity</div>
         </div>
         <?php endif; ?>
@@ -60,6 +131,9 @@ if ($is_tenant && $tenant_id) {
         <div class="sa-topbar-actions">
             <form method="GET" style="display:inline">
                 <input type="hidden" name="export" value="1">
+                <input type="hidden" name="action" value="<?php echo sa_e($filter_action); ?>">
+                <input type="hidden" name="start" value="<?php echo sa_e($filter_start); ?>">
+                <input type="hidden" name="end" value="<?php echo sa_e($filter_end); ?>">
                 <button type="submit" class="sa-btn sa-btn-sm sa-btn-ghost"><?php echo sa_icon('download'); ?> Export CSV</button>
             </form>
         </div>
@@ -126,7 +200,7 @@ if ($is_tenant && $tenant_id) {
             <?php endif; ?>
             <span class="sa-muted">Page <?php echo $filter_page; ?> of <?php echo $total_pages; ?></span>
             <?php if ($filter_page < $total_pages): ?>
-                <a href="?page=<?php echo $filter_page + 1; ?>&action=<?php echo urlencode($filter_action); ?>&start=<?php echo urlencode($filter_start); ?>&end=<?php echo urlencode($filter_end); ?>" class="sa-btn sa-btn-sm sa-btn-ghost">Next <?php echo sa_icon('arrow-left'); ?></a>
+                <a href="?page=<?php echo $filter_page + 1; ?>&action=<?php echo urlencode($filter_action); ?>&start=<?php echo urlencode($filter_start); ?>&end=<?php echo urlencode($filter_end); ?>" class="sa-btn sa-btn-sm sa-btn-ghost">Next <?php echo sa_icon('chevron-right'); ?></a>
             <?php endif; ?>
         </div>
     </div>
@@ -135,23 +209,3 @@ if ($is_tenant && $tenant_id) {
 </div>
 
 <?php include __DIR__ . '/_shell_footer.php'; ?>
-if ($filter_action) $filters['action'] = $filter_action;
-if ($filter_start) $filters['start_date'] = $filter_start;
-if ($filter_end) $filters['end_date'] = $filter_end;
-
-$logs = sa_get_logs($conn, 'admin', array_merge($filters, ['limit' => $per_page, 'offset' => ($filter_page - 1) * $per_page]));
-$total_logs = sa_get_logs_count($conn, 'admin', $filters);
-$total_pages = ceil($total_logs / $per_page);
-$actions = sa_get_log_actions($conn, 'admin');
-
-if (isset($_GET['export'])) {
-    if (function_exists('sa_export_logs_csv')) {
-        $filename = 'workspace_logs_' . date('Y-m-d_His') . '.csv';
-        sa_export_logs_csv($conn, 'admin', $filters, $filename);
-        exit;
-    }
-}
-
-include dirname(__DIR__) . '/includes/header.php';
-include __DIR__ . '/_shell.php';
-?>

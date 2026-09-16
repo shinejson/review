@@ -1,0 +1,11 @@
+# Subfolder rewrite for rate/ directory
+RewriteEngine On
+RewriteBase /rate/rate/
+
+# Allow existing files to pass through
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Clean UUID rewrite inside rate/
+RewriteRule ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/?$ index.php?uuid=$1 [QSA,L]

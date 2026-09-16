@@ -274,14 +274,14 @@ include __DIR__ . '/_shell.php';
         <table class="sa-table" id="reviewsTable" data-sa-sortable-table>
             <thead scope="col">
                 <tr>
-                    <th data-sa-sort="0" data-type="num" scope="col" aria-sort="none">ID</th>
-                    <th data-sa-sort="1" data-type="num" scope="col" aria-sort="none">Score</th>
-                    <th data-sa-sort="2" scope="col" aria-sort="none">Reviewer</th>
-                    <th data-sa-sort="3" scope="col" aria-sort="none">Target profile &amp; tenant</th>
-                    <th scope="col">Review feedback</th>
-                    <th data-sa-sort="5" scope="col" aria-sort="none">Status</th>
-                    <th data-sa-sort="6" data-type="date" scope="col" aria-sort="none">Date</th>
-                    <th data-no-export scope="col"><span class="sa-sr-only">Actions</span></th>
+                    <th data-sa-sort="0" data-type="num" scope="col" aria-sort="none" style="width:60px">ID</th>
+                    <th data-sa-sort="1" data-type="num" scope="col" aria-sort="none" style="width:125px">Score</th>
+                    <th data-sa-sort="2" scope="col" aria-sort="none" style="width:170px">Reviewer</th>
+                    <th data-sa-sort="3" scope="col" aria-sort="none" style="width:170px">Target profile &amp; tenant</th>
+                    <th scope="col" style="min-width:200px;max-width:320px">Feedback</th>
+                    <th data-sa-sort="5" scope="col" aria-sort="none" style="width:140px">Status</th>
+                    <th data-sa-sort="6" data-type="date" scope="col" aria-sort="none" style="width:105px">Date</th>
+                    <th data-no-export scope="col" style="width:110px;text-align:right"><span class="sa-sr-only">Actions</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -311,19 +311,19 @@ include __DIR__ . '/_shell.php';
                             <span style="font-size:11px;color:var(--sa-muted);margin-left:4px">(<?php echo (int) $rev['rating']; ?>.0)</span>
                         </div>
                     </td>
-                    <td>
+                    <td style="max-width:170px">
                         <div class="sa-cell-main">
                             <span class="sa-cell-avatar" style="font-size:11px"><?php echo sa_e(sa_initials($rev['customer_name'] ?: 'Anonymous')); ?></span>
-                            <span class="sa-cell-text">
-                                <strong><?php echo sa_e($rev['customer_name'] ?: 'Anonymous'); ?></strong>
-                                <span><?php echo sa_e($rev['customer_email'] ?: 'No email given'); ?></span>
+                            <span class="sa-cell-text" style="max-width:125px">
+                                <strong title="<?php echo sa_e($rev['customer_name'] ?: 'Anonymous'); ?>"><?php echo sa_e($rev['customer_name'] ?: 'Anonymous'); ?></strong>
+                                <span title="<?php echo sa_e($rev['customer_email'] ?: 'No email given'); ?>"><?php echo sa_e($rev['customer_email'] ?: 'No email given'); ?></span>
                             </span>
                         </div>
                     </td>
-                    <td>
-                        <span class="sa-cell-text">
-                            <strong><?php echo sa_e($rev['profile_name'] ?: 'Unknown Profile'); ?></strong>
-                            <span style="color:var(--sa-primary,#6366f1);font-size:11px">
+                    <td style="max-width:170px">
+                        <span class="sa-cell-text" style="max-width:170px">
+                            <strong title="<?php echo sa_e($rev['profile_name'] ?: 'Unknown Profile'); ?>"><?php echo sa_e($rev['profile_name'] ?: 'Unknown Profile'); ?></strong>
+                            <span style="color:var(--sa-primary,#6366f1);font-size:11px" title="<?php echo sa_e($rev['tenant_name'] ?? 'Platform Direct'); ?>">
                                 <?php if ($rev['tenant_id']): ?>
                                     <a href="tenant_details.php?id=<?php echo (int) $rev['tenant_id']; ?>" style="color:inherit;text-decoration:none">
                                         <?php echo sa_e($rev['tenant_name']); ?>
@@ -334,25 +334,29 @@ include __DIR__ . '/_shell.php';
                             </span>
                         </span>
                     </td>
-                    <td style="max-width:320px">
-                        <div style="font-size:12px;line-height:1.45;color:var(--sa-text);word-break:break-word">
+                    <td class="sa-review-comment-wrap" style="max-width:320px;min-width:200px">
+                        <div class="sa-review-comment-text"
+                             title="<?php echo sa_e($rev['comment'] ?: '— No written comment —'); ?> (Click to expand/collapse)"
+                             onclick="this.classList.toggle('is-expanded')">
                             <?php echo sa_e($rev['comment'] ?: '— No written comment —'); ?>
                         </div>
                         <?php if (!empty($rev['admin_reply'])): ?>
-                            <div style="font-size:11px;margin-top:4px;padding:3px 6px;background:rgba(0,0,0,0.03);border-left:2px solid var(--sa-primary,#6366f1);border-radius:2px;color:var(--sa-muted)">
-                                <strong>Reply:</strong> <?php echo sa_e(mb_substr($rev['admin_reply'], 0, 80)); ?><?php echo mb_strlen($rev['admin_reply']) > 80 ? '…' : ''; ?>
+                            <div class="sa-review-reply-text"
+                                 title="Reply: <?php echo sa_e($rev['admin_reply']); ?> (Click to expand/collapse)"
+                                 onclick="this.classList.toggle('is-expanded')">
+                                <strong>Reply:</strong> <?php echo sa_e($rev['admin_reply']); ?>
                             </div>
                         <?php endif; ?>
                     </td>
-                    <td>
+                    <td style="width:140px">
                         <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
                             <?php if ($is_reported): ?>
                                 <span class="sa-badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-weight:600;font-size:10.5px">
                                     <?php echo sa_icon('alert', 'style="width:11px;height:11px;vertical-align:-1px"'); ?> Flagged (<?php echo (int) $rev['report_count']; ?>)
                                 </span>
                                 <?php if (!empty($rev['report_reasons'])): ?>
-                                    <span style="font-size:10px;color:#b91c1c;max-width:140px;line-height:1.2" title="<?php echo sa_e($rev['report_reasons']); ?>">
-                                        Reason: <?php echo sa_e(mb_substr($rev['report_reasons'], 0, 30)); ?><?php echo mb_strlen($rev['report_reasons']) > 30 ? '…' : ''; ?>
+                                    <span style="font-size:10px;color:#b91c1c;max-width:140px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block" title="<?php echo sa_e($rev['report_reasons']); ?>">
+                                        Reason: <?php echo sa_e($rev['report_reasons']); ?>
                                     </span>
                                 <?php endif; ?>
                             <?php else: ?>
@@ -368,13 +372,13 @@ include __DIR__ . '/_shell.php';
                             <?php endif; ?>
                         </div>
                     </td>
-                    <td data-sort-value="<?php echo sa_e($rev['created_at']); ?>">
+                    <td data-sort-value="<?php echo sa_e($rev['created_at']); ?>" style="width:105px">
                         <span style="font-size:11.5px;color:var(--sa-muted);white-space:nowrap">
                             <?php echo sa_e(sa_date($rev['created_at'])); ?>
                         </span>
                     </td>
-                    <td data-no-export>
-                        <div class="sa-row-actions">
+                    <td data-no-export style="width:110px;text-align:right">
+                        <div class="sa-row-actions" style="justify-content:flex-end">
                             <?php if ($is_reported): ?>
                                 <form method="POST" action="reviews.php" style="display:inline" title="Dismiss reports and restore to public visibility">
                                     <?php echo sa_csrf_field(); ?>

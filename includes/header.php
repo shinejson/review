@@ -64,6 +64,37 @@ if (!function_exists('sa_asset')) {
     }
 }
 
+// Auto-detect superadmin pages to ensure styles and body class are always applied
+$is_superadmin_dir = false;
+$script_path = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? ($_SERVER['PHP_SELF'] ?? ''));
+if (strpos($script_path, '/superadmin/') !== false) {
+    $is_superadmin_dir = true;
+} else {
+    $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 3);
+    foreach ($trace as $step) {
+        if (!empty($step['file']) && strpos(str_replace('\\', '/', $step['file']), '/superadmin/') !== false) {
+            $is_superadmin_dir = true;
+            break;
+        }
+    }
+}
+
+// Do not force superadmin.css onto superadmin/login.php which uses auth.css
+$is_sa_login = (strpos($script_path, 'login.php') !== false) || (isset($pageTitle) && $pageTitle === 'Super Admin Login');
+
+if ($is_superadmin_dir && !$is_sa_login) {
+    if (empty($extraCss)) {
+        $extraCss = ['assets/css/superadmin.css'];
+    } elseif (!in_array('assets/css/superadmin.css', (array)$extraCss, true)) {
+        $extraCss = array_merge(['assets/css/superadmin.css'], (array)$extraCss);
+    }
+    if (empty($bodyClass)) {
+        $bodyClass = 'sa-body';
+    } elseif (strpos($bodyClass, 'sa-body') === false) {
+        $bodyClass = 'sa-body ' . $bodyClass;
+    }
+}
+
 $sa_theme    = (isset($theme) && $theme === 'light') ? 'light' : 'dark';
 $sa_page     = isset($pageTitle) ? $pageTitle : 'Optibiz';
 $sa_body_cls = isset($bodyClass) ? ' ' . trim($bodyClass) : '';
