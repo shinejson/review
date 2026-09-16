@@ -18,6 +18,7 @@
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/logging_helpers.php';
 require_once dirname(__DIR__) . '/includes/admin_helpers.php';
 require_once dirname(__DIR__) . '/includes/social_publisher.php';
 
@@ -139,6 +140,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->close();
         }
 
+        if ($ok) {
+            admin_log_activity($conn, 'social_connect', 'Connected the ' . $platform_display . ' account', 'social_account', isset($eid) ? $eid : (int) $conn->insert_id);
+        }
         sa_flash($ok ? 'success' : 'error', $ok
             ? $platform_display . ' connected.'
             : 'Could not save the connection.');
@@ -153,6 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param('is', $workspace_id, $platform);
             $stmt->execute();
             $stmt->close();
+            admin_log_activity($conn, 'social_disconnect', 'Disconnected the ' . $platforms[$platform]['label'] . ' account', 'social_account');
             sa_flash('success', $platforms[$platform]['label'] . ' disconnected.');
         }
         redirect('social.php');
@@ -295,7 +300,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error
         );
         $stmt->execute();
+        $post_id = (int) $conn->insert_id;
         $stmt->close();
+
+        admin_log_activity(
+            $conn,
+            $status === 'published' ? 'social_publish' : 'social_draft',
+            $status === 'published'
+                ? 'Published a post to ' . $platforms[$platform]['label']
+                : 'Saved a draft post for ' . $platforms[$platform]['label'],
+            'social_post',
+            $post_id
+        );
 
         if ($status === 'published') {
             sa_flash('success', 'Posted to ' . $platforms[$platform]['label'] . '.');
@@ -317,6 +333,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $stmt->bind_param('sii', $content, $post_id, $workspace_id);
             if ($stmt->execute()) {
+                admin_log_activity($conn, 'social_draft', 'Updated a draft post', 'social_post', $post_id);
                 sa_flash('success', 'Post updated successfully.');
             } else {
                 sa_flash('error', 'Failed to update post.');
@@ -335,6 +352,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param('ii', $post_id, $workspace_id);
         $stmt->execute();
         $stmt->close();
+        admin_log_activity($conn, 'social_delete', 'Removed a post from the library', 'social_post', $post_id);
         sa_flash('success', 'Post removed from the library.');
         redirect('social.php');
     }
@@ -369,6 +387,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param('ssii', $result['id'], $result['url'], $post_id, $workspace_id);
             $stmt->execute();
             $stmt->close();
+            admin_log_activity($conn, 'social_publish', 'Published a saved post to ' . social_platform($platform)['label'], 'social_post', $post_id);
             sa_flash('success', 'Posted to ' . social_platform($platform)['label'] . '.');
         } else {
             $stmt = $conn->prepare("UPDATE social_posts SET status = 'failed', error = ? WHERE id = ? AND tenant_id = ?");

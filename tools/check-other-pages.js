@@ -490,6 +490,27 @@ function main() {
         console.log(`  [${dok ? ' ok ' : 'FAIL'}] ${'backups · foreign download refused'.padEnd(44)} ${dok ? 'returned no file' : 'STREAMED A FOREIGN BACKUP'}`);
     }
 
+    console.log('\nWorkspace writes land in its own activity log:');
+    {
+        /* Toggling a service must write a system_logs row tagged with this
+           workspace, so admin/logs.php fills up on its own. */
+        const r = runPhp('admin/services.php', 'action=toggle_status&service_id=1', { noSuper: true, tenantId: 18, post: true });
+        const { fatal, warnings } = diagnostics(r.html, r.stderr);
+        const notes = [];
+        if (fatal) notes.push('fatal error');
+        warnings.slice(0, 2).forEach((w) => notes.push(w.trim()));
+        const logged = r.writes.find((w) => /^INSERT INTO system_logs/i.test(w));
+        if (!logged) {
+            notes.push('the write was not logged');
+        } else {
+            if (!/"admin",18,/.test(logged)) notes.push('logged the event against another workspace');
+            if (!/"service_toggle"/.test(logged)) notes.push('logged the wrong action name');
+        }
+        const ok = notes.length === 0;
+        if (!ok) failures++;
+        console.log(`  [${ok ? ' ok ' : 'FAIL'}] ${'services · write is logged'.padEnd(44)} ${ok ? 'recorded against this workspace' : notes.join(', ')}`);
+    }
+
     console.log('\nPublic API endpoints:');
     const APIS = [
         [

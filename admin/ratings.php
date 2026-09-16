@@ -2,6 +2,7 @@
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/logging_helpers.php';
 
 requireLogin();
 requireTeamAccess('ratings');
@@ -74,6 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->bind_param("iiisssssi", $company_id, $service_id, $question_id, $rating_score, $customer_name, $customer_email, $comment, $is_verified);
                 if ($stmt->execute()) {
                     $success = "New rating & review created successfully!";
+                    admin_log_activity($conn, 'review_create', 'Created a rating & review for ' . $customer_name, 'rating', (int) $conn->insert_id);
                 } else {
                     $error = "Failed to create rating: " . $conn->error;
                 }
@@ -123,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->bind_param("ii", $new_val, $rating_id);
                 if ($stmt->execute()) {
                     $success = $new_val ? "Review #$rating_id marked as Verified Customer (Badge active)!" : "Review #$rating_id unmarked as verified.";
+                    admin_log_activity($conn, 'review_verify', $new_val ? 'Marked a review as a verified customer' : 'Removed the verified badge from a review', 'rating', $rating_id);
                 } else {
                     $error = "Failed to update verification status: " . $conn->error;
                 }
@@ -170,6 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $success = ($new_status === 'resolved')
                         ? "Complaint on Review #$rating_id marked as Resolved!"
                         : "Review #$rating_id reopened as Pending Resolution.";
+                    admin_log_activity($conn, 'review_escalate', $new_status === 'resolved' ? 'Resolved a complaint on a review' : 'Reopened a complaint on a review', 'rating', $rating_id);
                 } else {
                     $error = "Failed to update resolution status: " . $conn->error;
                 }
@@ -202,6 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->bind_param("i", $rating_id);
                 if ($stmt->execute()) {
                     $success = "Rating #$rating_id deleted successfully.";
+                    admin_log_activity($conn, 'review_delete', 'Deleted a review', 'rating', $rating_id);
                 } else {
                     $error = "Failed to delete rating: " . $conn->error;
                 }
@@ -233,6 +238,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->bind_param("si", $admin_reply, $rating_id);
                 if ($stmt->execute()) {
                     $success = "Your response has been saved!";
+                    admin_log_activity($conn, 'review_reply', 'Replied to a customer review', 'rating', $rating_id);
                 } else {
                     $error = "Failed to save response: " . $conn->error;
                 }
@@ -254,6 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt->bind_param("iisi", $target_tenant_id, $q_company_id, $question_text, $is_active);
             if ($stmt->execute()) {
                 $success = "Rating question created successfully!";
+                admin_log_activity($conn, 'question_create', 'Added a rating question', 'rating_question', (int) $conn->insert_id);
             } else {
                 $error = "Failed to create question: " . $conn->error;
             }
@@ -286,6 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->bind_param("siii", $question_text, $q_company_id, $is_active, $question_id);
                 if ($stmt->execute()) {
                     $success = "Question updated successfully!";
+                    admin_log_activity($conn, 'question_update', 'Updated a rating question', 'rating_question', (int) ($_POST['question_id'] ?? 0));
                 } else {
                     $error = "Failed to update question: " . $conn->error;
                 }
@@ -316,6 +324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->bind_param("i", $question_id);
                 if ($stmt->execute()) {
                     $success = "Question deleted successfully!";
+                    admin_log_activity($conn, 'question_delete', 'Deleted a rating question', 'rating_question', (int) ($_POST['question_id'] ?? 0));
                 } else {
                     $error = "Failed to delete question: " . $conn->error;
                 }

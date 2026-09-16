@@ -2,6 +2,7 @@
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/logging_helpers.php';
 
 requireLogin();
 requireTeamAccess('settings');
@@ -105,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $_SESSION['tenant_banner'] = $banner_path;
                 }
                 $_SESSION['success'] = "Profile updated successfully!";
+                admin_log_activity($conn, 'profile_update', 'Updated the workspace profile', 'tenant', (int) $tenant_id);
             } else {
                 $_SESSION['error'] = "Failed to update profile: " . $conn->error;
             }
@@ -117,6 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $_SESSION['admin_username'] = $company_name;
             $_SESSION['admin_email']    = $email;
             $_SESSION['success'] = "Account updated successfully!";
+            admin_log_activity($conn, 'profile_update', 'Updated the account details');
         } else {
             $_SESSION['error'] = "Failed to update account: " . $conn->error;
         }
@@ -161,6 +164,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $closed  = auth_session_logout_others($conn, 'admin', $tenant_id, 'password');
                     $success = "Password changed successfully!"
                         . ($closed > 0 ? " $closed other session(s) were signed out." : "");
+                    admin_log_activity($conn, 'password_change', 'Changed the password');
+                    admin_log_activity($conn, 'password_change', 'Changed the password');
                 } else {
                     $error = "Failed to update password.";
                 }
@@ -199,6 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     } else {
         $closed = auth_session_logout_others($conn, 'admin');
         if ($closed > 0) {
+            admin_log_activity($conn, 'sessions_revoked', 'Signed out ' . $closed . ' other session(s)');
             $success = "Signed out of $closed other session(s). This browser stays signed in.";
         } else {
             $success = "No other session is live — this is the only one.";
