@@ -276,7 +276,10 @@ include __DIR__ . '/_shell.php';
             <a class="notif-tab<?php echo $status === 'all' ? ' is-on' : ''; ?>"
                href="<?php echo htmlspecialchars(admin_notifications_url(['status' => '', 'page' => null])); ?>">All</a>
             <a class="notif-tab<?php echo $status === 'unread' ? ' is-on' : ''; ?>"
-               href="<?php echo htmlspecialchars(admin_notifications_url(['status' => 'unread', 'page' => null])); ?>">Unread · <?php echo (int) $unread; ?></a>
+               href="<?php echo htmlspecialchars(admin_notifications_url(['status' => 'unread', 'page' => null])); ?>">
+                <span aria-hidden="true" class="notif-tab-star">★</span>
+                <?php echo 'Unread'; ?><?php echo $unread > 0 ? ' · ' . (int) $unread : ''; ?>
+            </a>
             <a class="notif-tab<?php echo $status === 'read' ? ' is-on' : ''; ?>"
                href="<?php echo htmlspecialchars(admin_notifications_url(['status' => 'read', 'page' => null])); ?>">Read</a>
         </div>
@@ -346,7 +349,7 @@ include __DIR__ . '/_shell.php';
                         <button type="submit" name="action" value="<?php echo $is_read ? 'unread' : 'read'; ?>"
                                 class="btn btn-secondary" style="padding:6px 11px;font-size:12px;"
                                 title="<?php echo $is_read ? 'Put this back on the unread pile' : 'Mark this as read'; ?>">
-                            <?php echo $is_read ? 'Unread' : 'Read'; ?>
+                            <?php echo $is_read ? 'Mark as unread' : 'Mark as read'; ?>
                         </button>
                     </form>
                     <form method="post" action="notifications.php"
