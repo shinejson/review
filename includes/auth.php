@@ -200,21 +200,22 @@ function requireSuperAdminLogin($conn = null) {
  */
 function sa_permission_list() {
     return [
-        'dashboard'     => 'Dashboard',
-        'analytics'     => 'Analytics',
-        'tenants'       => 'Tenants',
-        'subscriptions' => 'Subscriptions',
-        'finance'       => 'Financials',
-        'gateways'      => 'Payment integrations',
-        'plans'         => 'Plans',
-        'quotes'        => 'Quote requests',
-        'reviews'       => 'Reviews moderation',
-        'customers'     => 'Customers',
-        'categories'    => 'Categories',
-        'users'         => 'Users & roles',
-        'settings'      => 'Settings',
-        'backups'       => 'Backups',
-        'logs'          => 'Activity logs',
+        'dashboard'       => 'Dashboard',
+        'analytics'       => 'Analytics',
+        'tenants'         => 'Tenants',
+        'subscriptions'   => 'Subscriptions',
+        'finance'         => 'Financials',
+        'gateways'        => 'Payment integrations',
+        'plans'           => 'Plans',
+        'quotes'          => 'Quote requests',
+        'reviews'         => 'Reviews moderation',
+        'support_tickets' => 'Support Tickets',
+        'customers'       => 'Customers',
+        'categories'      => 'Categories',
+        'users'           => 'Users & roles',
+        'settings'        => 'Settings',
+        'backups'         => 'Backups',
+        'logs'            => 'Activity logs',
     ];
 }
 
