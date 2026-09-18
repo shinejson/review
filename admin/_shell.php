@@ -21,6 +21,10 @@ if (!isset($BASE)) {
    admin/notifications.php. */
 require_once dirname(__DIR__) . '/includes/notifications.php';
 
+if (function_exists('sa_ensure_platform_feedback_schema') && isset($conn)) {
+    sa_ensure_platform_feedback_schema($conn);
+}
+
 // Multi-company / multi-branch resolution for workspace tenants
 $tenant_id = $tenant_id ?? (function_exists('getTenantId') ? getTenantId() : 0);
 $is_tenant = $is_tenant ?? (function_exists('isTenant') ? isTenant() : false);
@@ -174,7 +178,14 @@ $activeNav = $activeNav ?? 'dashboard';
     // Count tickets with unread platform replies for badge
     $support_unread = 0;
     if (isset($conn) && $is_tenant && $tenant_id) {
-        $support_unread = (int) @$conn->query("SELECT COUNT(*) FROM platform_feedback WHERE tenant_id = " . (int)$tenant_id . " AND status IN ('open','in_progress','resolved') AND last_reply_by = 'superadmin'")->fetch_assoc()['COUNT(*)'] ?? 0;
+        try {
+            $r = @$conn->query("SELECT COUNT(*) FROM platform_feedback WHERE tenant_id = " . (int)$tenant_id . " AND status IN ('open','in_progress','resolved') AND last_reply_by = 'superadmin'");
+            if ($r) {
+                $support_unread = (int) ($r->fetch_assoc()['COUNT(*)'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            $support_unread = 0;
+        }
     }
     ?>
     <a <?php echo $activeNav === 'support' ? 'class="active"' : ''; ?> href="support.php" title="Platform Support & Feedback">

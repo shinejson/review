@@ -206,6 +206,236 @@ $BASE = '../';
 include __DIR__ . '/_shell.php';
 ?>
 
+<style>
+  /* Support Portal Dark Mode & Interactive Enhancements */
+  .support-card {
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    transition: background-color .2s ease, border-color .2s ease;
+  }
+  :root[data-theme='dark'] .support-card {
+    background: #0f1f2e;
+    border-color: rgba(255,255,255,0.08);
+    box-shadow: none;
+  }
+  .support-kpi-card {
+    text-decoration: none;
+    background: var(--card-bg, #fff);
+    border-radius: 12px;
+    padding: 16px;
+    transition: all .15s ease;
+    display: block;
+  }
+  .support-kpi-card:hover {
+    transform: translateY(-2px);
+  }
+  :root[data-theme='dark'] .support-kpi-card {
+    background: #0f1f2e;
+  }
+  .support-kpi-num {
+    font-size: 24px;
+    font-weight: 800;
+    margin-top: 6px;
+    transition: color .2s ease;
+  }
+  :root[data-theme='dark'] .kpi-num-all { color: #f1f5f9 !important; }
+  :root[data-theme='dark'] .kpi-num-open { color: #fbbf24 !important; }
+  :root[data-theme='dark'] .kpi-num-in_progress { color: #60a5fa !important; }
+  :root[data-theme='dark'] .kpi-num-resolved { color: #4ade80 !important; }
+
+  /* Message bubbles */
+  .support-bubble-user {
+    background: var(--card-sub, #f8fafc);
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--body, #334155);
+    white-space: pre-wrap;
+  }
+  :root[data-theme='dark'] .support-bubble-user {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.08);
+    color: #e2e8f0;
+  }
+  .support-bubble-platform {
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: #312e81;
+    white-space: pre-wrap;
+  }
+  :root[data-theme='dark'] .support-bubble-platform {
+    background: rgba(99,102,241,0.16);
+    border-color: rgba(99,102,241,0.32);
+    color: #e0e7ff;
+  }
+
+  /* User avatar in thread */
+  .support-av-user {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    font-weight: 800;
+    color: #fff;
+    background: #0f172a;
+  }
+  :root[data-theme='dark'] .support-av-user {
+    background: linear-gradient(135deg, var(--lime, #c2f542), #a8e030);
+    color: var(--navy, #0b1d2b);
+  }
+  .support-av-platform {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    font-weight: 800;
+    color: #fff;
+    background: #6366f1;
+  }
+
+  /* Role tags */
+  .support-tag-platform {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: #eef2ff;
+    color: #4338ca;
+  }
+  :root[data-theme='dark'] .support-tag-platform {
+    background: rgba(99,102,241,0.22);
+    color: #c7d2fe;
+    border: 1px solid rgba(99,102,241,0.35);
+  }
+  .support-tag-user {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: #f1f5f9;
+    color: #475569;
+  }
+  :root[data-theme='dark'] .support-tag-user {
+    background: rgba(255,255,255,0.07);
+    color: #cbd5e1;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  /* Ticket list item */
+  .support-ticket-row {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: all .14s ease;
+  }
+  .support-ticket-row.is-unread {
+    border: 1px solid #c7d2fe;
+    background: #f5f7ff;
+  }
+  .support-ticket-row.is-read {
+    border: 1px solid var(--line, #e2e8f0);
+    background: var(--card-sub, #fcfcfd);
+  }
+  :root[data-theme='dark'] .support-ticket-row.is-unread {
+    border-color: rgba(99,102,241,0.35);
+    background: rgba(99,102,241,0.12);
+  }
+  :root[data-theme='dark'] .support-ticket-row.is-read {
+    border-color: rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.025);
+  }
+  :root[data-theme='dark'] .support-ticket-row.is-read:hover {
+    background: rgba(255,255,255,0.05);
+  }
+  .support-reply-notice {
+    font-size: 12px;
+    color: #4338ca;
+    margin: 8px 0 0;
+    font-weight: 600;
+  }
+  :root[data-theme='dark'] .support-reply-notice {
+    color: #a5b4fc;
+  }
+
+  /* Inputs & Selects */
+  .support-control {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--line, #cbd5e1);
+    font-size: 14px;
+    background: var(--input-bg, #fff);
+    color: inherit;
+    font-family: inherit;
+    color-scheme: inherit;
+    transition: border-color .15s ease, background-color .15s ease;
+  }
+  :root[data-theme='dark'] .support-control {
+    border-color: rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.05);
+    color: #e2e8f0;
+  }
+  .support-control:focus {
+    border-color: var(--lime, #c2f542);
+    outline: none;
+  }
+
+  /* Close button */
+  .support-btn-close {
+    background: #f1f5f9;
+    color: #475569;
+    font-weight: 700;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13.5px;
+    transition: all .15s ease;
+  }
+  .support-btn-close:hover {
+    background: #e2e8f0;
+  }
+  :root[data-theme='dark'] .support-btn-close {
+    background: rgba(255,255,255,0.06);
+    color: #e2e8f0;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  :root[data-theme='dark'] .support-btn-close:hover {
+    background: rgba(255,255,255,0.1);
+  }
+
+  /* Closed box */
+  .support-closed-notice {
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    padding: 18px;
+    text-align: center;
+  }
+  :root[data-theme='dark'] .support-closed-notice {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.12);
+  }
+</style>
+
 <div style="max-width:1180px;margin:0 auto;padding:10px 0 40px;">
 
   <?php if ($active_ticket): ?>
@@ -260,7 +490,7 @@ include __DIR__ . '/_shell.php';
             <?php echo sa_csrf_field(); ?>
             <input type="hidden" name="action" value="close_ticket">
             <input type="hidden" name="ticket_id" value="<?php echo (int)$t['id']; ?>">
-            <button type="submit" class="btn" style="background:#f1f5f9;color:#475569;font-weight:700;">Close ticket</button>
+            <button type="submit" class="support-btn-close">Close ticket</button>
           </form>
         <?php else: ?>
           <form method="POST" action="support.php?id=<?php echo (int)$t['id']; ?>">
@@ -274,7 +504,7 @@ include __DIR__ . '/_shell.php';
     </div>
 
     <!-- Conversation thread -->
-    <div style="background:var(--card-bg,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:24px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+    <div class="support-card" style="margin-bottom:20px;">
       <h2 style="font-size:15px;font-weight:700;color:var(--heading,#0f172a);margin:0 0 18px;display:flex;align-items:center;gap:8px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Conversation
@@ -287,20 +517,18 @@ include __DIR__ . '/_shell.php';
             $is_support = in_array($r['author_kind'] ?? '', ['superadmin'], true);
           ?>
             <div style="display:flex;gap:12px;<?php echo $is_support ? 'flex-direction:row-reverse;' : ''; ?>">
-              <div style="width:36px;height:36px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff;background:<?php echo $is_support ? '#6366f1' : '#0f172a'; ?>;">
+              <div class="<?php echo $is_support ? 'support-av-platform' : 'support-av-user'; ?>">
                 <?php echo htmlspecialchars(sa_initials($r['author_name'] ?? ($is_support ? 'S' : 'Y'))); ?>
               </div>
               <div style="max-width:78%;flex:1;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;<?php echo $is_support ? 'justify-content:flex-end;' : ''; ?>">
                   <strong style="font-size:13px;color:var(--heading,#0f172a);"><?php echo htmlspecialchars($r['author_name'] ?: ($is_support ? 'Platform Support' : 'You')); ?></strong>
-                  <?php if ($is_support): ?>
-                    <span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:#eef2ff;color:#4338ca;">Platform</span>
-                  <?php else: ?>
-                    <span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:#f1f5f9;color:#475569;">You</span>
-                  <?php endif; ?>
+                  <span class="<?php echo $is_support ? 'support-tag-platform' : 'support-tag-user'; ?>">
+                    <?php echo $is_support ? 'Platform' : 'You'; ?>
+                  </span>
                   <span style="font-size:11px;color:var(--muted,#94a3b8);"><?php echo sa_time_ago($r['created_at']); ?></span>
                 </div>
-                <div style="background:<?php echo $is_support ? '#eef2ff' : 'var(--card-sub,#f8fafc)'; ?>;border:1px solid <?php echo $is_support ? '#c7d2fe' : 'var(--line,#e2e8f0)'; ?>;border-radius:12px;padding:12px 14px;font-size:13.5px;line-height:1.6;color:<?php echo $is_support ? '#312e81' : 'var(--body,#334155)'; ?>;white-space:pre-wrap;">
+                <div class="<?php echo $is_support ? 'support-bubble-platform' : 'support-bubble-user'; ?>">
                   <?php echo htmlspecialchars($r['message']); ?>
                 </div>
               </div>
@@ -311,13 +539,13 @@ include __DIR__ . '/_shell.php';
     </div>
 
     <?php if ($t['status'] !== 'closed'): ?>
-    <div style="background:var(--card-bg,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+    <div class="support-card" style="margin-bottom:20px;">
       <h3 style="font-size:14px;font-weight:700;color:var(--heading,#0f172a);margin:0 0 10px;">Reply to platform support</h3>
       <form method="POST" action="support.php?id=<?php echo (int)$t['id']; ?>">
         <?php echo sa_csrf_field(); ?>
         <input type="hidden" name="action" value="reply_ticket">
         <input type="hidden" name="ticket_id" value="<?php echo (int)$t['id']; ?>">
-        <textarea name="message" required rows="3" placeholder="Type your reply..." style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--line,#cbd5e1);font-size:14px;background:var(--input-bg,#fff);color:inherit;font-family:inherit;resize:vertical;"></textarea>
+        <textarea name="message" required rows="3" placeholder="Type your reply..." class="support-control" style="resize:vertical;"></textarea>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px;">
           <p style="font-size:12px;color:var(--muted,#94a3b8);margin:0;">Replies are delivered to platform engineers. Expect a response within 24 hours on business days.</p>
           <button type="submit" class="btn btn-primary" style="font-weight:700;padding:9px 20px;">Send reply</button>
@@ -325,7 +553,7 @@ include __DIR__ . '/_shell.php';
       </form>
     </div>
     <?php else: ?>
-    <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;padding:18px;text-align:center;">
+    <div class="support-closed-notice">
       <p style="margin:0 0 10px;color:var(--muted,#64748b);font-size:13.5px;">This ticket is closed. If the issue persists, re-open it using the button above or start a new request.</p>
     </div>
     <?php endif; ?>
@@ -360,15 +588,15 @@ include __DIR__ . '/_shell.php';
         ['resolved',    'Resolved',       $counts['resolved'] + $counts['closed'], '#16a34a', '#15803d', '#bbf7d0'],
       ];
       foreach ($cards as $c): ?>
-        <a href="?filter=<?php echo $c[0]; ?>" style="text-decoration:none;background:var(--card-bg,#fff);border:1px solid <?php echo $filter === $c[0] ? $c[3] : 'var(--line,#e2e8f0)'; ?>;border-radius:12px;padding:16px;transition:.15s;">
+        <a href="?filter=<?php echo $c[0]; ?>" class="support-kpi-card" style="border:1px solid <?php echo $filter === $c[0] ? $c[3] : 'var(--line,#e2e8f0)'; ?>;">
           <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:<?php echo $c[3]; ?>;"><?php echo $c[1]; ?></div>
-          <div style="font-size:24px;font-weight:800;color:<?php echo $c[4]; ?>;margin-top:6px;"><?php echo (int)$c[2]; ?></div>
+          <div class="support-kpi-num kpi-num-<?php echo $c[0]; ?>" style="color:<?php echo $c[4]; ?>;"><?php echo (int)$c[2]; ?></div>
         </a>
     <?php endforeach; ?>
   </div>
 
   <!-- New Ticket Form -->
-  <div id="newTicketCard" style="background:var(--card-bg,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:22px;margin-bottom:28px;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+  <div id="newTicketCard" class="support-card" style="margin-bottom:28px;">
     <h2 style="font-size:16px;font-weight:700;color:var(--heading,#0f172a);margin:0 0 4px;">Submit a new request</h2>
     <p style="font-size:13px;color:var(--muted,#64748b);margin:0 0 18px;">Describe your concern clearly and our team will respond.</p>
     <form method="POST" action="support.php">
@@ -377,11 +605,11 @@ include __DIR__ . '/_shell.php';
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:14px;margin-bottom:14px;">
         <div>
           <label style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;color:var(--heading,#0f172a);">Subject *</label>
-          <input type="text" id="ticketSubject" name="subject" required placeholder="e.g. Issue with QR scan URL / Billing question" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#cbd5e1);font-size:14px;background:var(--input-bg,#fff);color:inherit;">
+          <input type="text" id="ticketSubject" name="subject" required placeholder="e.g. Issue with QR scan URL / Billing question" class="support-control">
         </div>
         <div>
           <label style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;color:var(--heading,#0f172a);">Category *</label>
-          <select name="ticket_type" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#cbd5e1);font-size:14px;background:var(--input-bg,#fff);color:inherit;">
+          <select name="ticket_type" class="support-control">
             <option value="support">🛠️ Technical Support</option>
             <option value="bug_report">🐞 Bug Report</option>
             <option value="billing">💳 Billing & Subscription</option>
@@ -391,7 +619,7 @@ include __DIR__ . '/_shell.php';
         </div>
         <div>
           <label style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;color:var(--heading,#0f172a);">Priority</label>
-          <select name="priority" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#cbd5e1);font-size:14px;background:var(--input-bg,#fff);color:inherit;">
+          <select name="priority" class="support-control">
             <option value="low">Low — general question</option>
             <option value="medium" selected>Medium — standard response</option>
             <option value="high">High — impacting my work</option>
@@ -401,7 +629,7 @@ include __DIR__ . '/_shell.php';
       </div>
       <div style="margin-bottom:14px;">
         <label style="display:block;font-size:12px;font-weight:700;margin-bottom:5px;color:var(--heading,#0f172a);">Describe your concern *</label>
-        <textarea name="message" required rows="4" placeholder="Explain what happened, steps to reproduce (for bugs), or details of your request..." style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--line,#cbd5e1);font-size:14px;background:var(--input-bg,#fff);color:inherit;font-family:inherit;resize:vertical;"></textarea>
+        <textarea name="message" required rows="4" placeholder="Explain what happened, steps to reproduce (for bugs), or details of your request..." class="support-control" style="resize:vertical;"></textarea>
       </div>
       <div style="text-align:right;">
         <button type="submit" class="btn btn-primary" style="font-weight:700;padding:9px 22px;">Submit Request</button>
@@ -410,7 +638,7 @@ include __DIR__ . '/_shell.php';
   </div>
 
   <!-- Ticket List -->
-  <div style="background:var(--card-bg,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:22px;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+  <div class="support-card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
       <h2 style="font-size:16px;font-weight:700;color:var(--heading,#0f172a);margin:0;">Your requests</h2>
       <?php if ($filter !== 'all'): ?>
@@ -438,7 +666,7 @@ include __DIR__ . '/_shell.php';
           $cs = $status_badges[$t['status']] ?? $status_badges['open'];
           $unread_reply = $t['last_reply_by'] === 'superadmin' && $t['status'] !== 'closed';
         ?>
-          <a href="?id=<?php echo (int)$t['id']; ?>" style="text-decoration:none;color:inherit;display:block;border:1px solid <?php echo $unread_reply ? '#c7d2fe' : 'var(--line,#e2e8f0)'; ?>;border-radius:10px;padding:14px 16px;background:<?php echo $unread_reply ? '#f5f7ff' : 'var(--card-sub,#fcfcfd)'; ?>;transition:.12s;">
+          <a href="?id=<?php echo (int)$t['id']; ?>" class="support-ticket-row <?php echo $unread_reply ? 'is-unread' : 'is-read'; ?>">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                 <span style="font-family:monospace;font-size:12px;font-weight:700;color:var(--muted,#64748b);">#T-<?php echo (int)$t['id']; ?></span>
@@ -457,7 +685,7 @@ include __DIR__ . '/_shell.php';
             <h3 style="font-size:14.5px;font-weight:700;color:var(--heading,#0f172a);margin:8px 0 4px;"><?php echo htmlspecialchars($t['subject']); ?></h3>
             <p style="font-size:12.5px;color:var(--muted,#64748b);margin:0;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;"><?php echo htmlspecialchars($t['message']); ?></p>
             <?php if (!empty($t['admin_reply']) && $t['last_reply_by'] === 'superadmin'): ?>
-              <p style="font-size:12px;color:#4338ca;margin:8px 0 0;font-weight:600;">↳ New reply from platform support</p>
+              <p class="support-reply-notice">↳ New reply from platform support</p>
             <?php endif; ?>
           </a>
         <?php endforeach; ?>

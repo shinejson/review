@@ -71,6 +71,10 @@ if (!function_exists('notifications_ensure_schema')) {
         }
         $done = true;
 
+        if (function_exists('sa_ensure_platform_feedback_schema')) {
+            sa_ensure_platform_feedback_schema($conn);
+        }
+
         if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['notifications_schema_ok'])) {
             return true;
         }
@@ -1034,16 +1038,23 @@ if (!function_exists('notifications_reap')) {
             if ($table === 'ratings' && $type === 'review_reported' && !notifications_has_column($conn, 'ratings', 'reported')) {
                 continue;
             }
+            if ($table === 'platform_feedback' && !notifications_has_column($conn, 'platform_feedback', 'last_reply_by')) {
+                continue;
+            }
             if (!sa_table_exists($conn, $table)) {
                 continue;
             }
-            @$conn->query(
-                'DELETE n FROM notifications n
-                  WHERE ' . $scope . "
-                    AND n.type = '" . $type . "'
-                    AND n.entity_id IS NOT NULL
-                    AND NOT EXISTS (" . $alive . ")"
-            );
+            try {
+                @$conn->query(
+                    'DELETE n FROM notifications n
+                      WHERE ' . $scope . "
+                        AND n.type = '" . $type . "'
+                        AND n.entity_id IS NOT NULL
+                        AND NOT EXISTS (" . $alive . ")"
+                );
+            } catch (\Throwable $e) {
+                // Ignore query error if table or column is unmigrated
+            }
         }
 
         /* tombstones older than a quarter are noise */
