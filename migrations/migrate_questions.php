@@ -3,7 +3,7 @@
  * Migration: Create rating_questions table
  * Run this file once to create the table
  */
-require_once __DIR__ . '/config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 $sql = "CREATE TABLE IF NOT EXISTS rating_questions (
     id INT AUTO_INCREMENT PRIMARY KEY,

@@ -10,7 +10,7 @@
  *
  *     php migrate_notifications.php
  */
-require_once __DIR__ . '/config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 $sql = "CREATE TABLE IF NOT EXISTS notifications (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -44,9 +44,9 @@ if ($conn->query($sql) === TRUE) {
 
 /* Backfill: file the notices the panels would have collected while the
    table did not exist, so an inbox is not empty on day one. */
-require_once __DIR__ . '/includes/functions.php';
-require_once __DIR__ . '/includes/sa_helpers.php';
-require_once __DIR__ . '/includes/notifications.php';
+require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/sa_helpers.php';
+require_once dirname(__DIR__) . '/includes/notifications.php';
 
 $platform = notifications_sync($conn, 'platform', 0, true);
 echo "Filed {$platform} control center notice(s).\n";

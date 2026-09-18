@@ -18,9 +18,9 @@
  *      — or open it in the browser —
  */
 
-require_once __DIR__ . '/config/database.php';
-require_once __DIR__ . '/includes/sa_helpers.php';
-require_once __DIR__ . '/includes/payments.php';
+require_once dirname(__DIR__) . '/config/database.php';
+require_once dirname(__DIR__) . '/includes/sa_helpers.php';
+require_once dirname(__DIR__) . '/includes/payments.php';
 
 header('Content-Type: text/plain; charset=utf-8');
 echo "Payments migration\n==================\n\n";

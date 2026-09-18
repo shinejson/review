@@ -2,7 +2,7 @@
 /**
  * Migration: Add Google Reviews-like features
  */
-require_once __DIR__ . '/config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 // Add photos column (JSON array of photo paths)
 $check = $conn->query("SHOW COLUMNS FROM ratings LIKE 'photos'");

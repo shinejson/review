@@ -7,7 +7,7 @@
  * admin/company.php adds it on the first profile save, so this is
  * only needed to bring an existing database up to date by hand.
  */
-require_once __DIR__ . '/config/database.php';
+require_once dirname(__DIR__) . '/config/database.php';
 
 $checkCol = $conn->query("SHOW COLUMNS FROM customers LIKE 'whatsapp_number'");
 if ($checkCol && $checkCol->num_rows > 0) {
