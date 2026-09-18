@@ -75,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if ($valid) {
                 $is_verified = !empty($_POST['is_verified']) ? 1 : 0;
                 $stmt = $conn->prepare("INSERT INTO ratings (company_id, service_id, question_id, rating, customer_name, customer_email, comment, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-                $stmt->bind_param("iiisssssi", $company_id, $service_id, $question_id, $rating_score, $customer_name, $customer_email, $comment, $is_verified);
+                $stmt->bind_param("iiiisssi", $company_id, $service_id, $question_id, $rating_score, $customer_name, $customer_email, $comment, $is_verified);
                 if ($stmt->execute()) {
                     $success = "New rating & review created successfully!";
                     admin_log_activity($conn, 'review_create', 'Created a rating & review for ' . $customer_name, 'rating', (int) $conn->insert_id);

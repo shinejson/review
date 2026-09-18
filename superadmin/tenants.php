@@ -177,7 +177,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                       WHERE id = ?"
                 );
                 $stmt->bind_param(
-                    "ssssidsdssi",
+                    "sssisdissi",
                     $company, $email, $phone, $plan_id, $status, $price,
                     $auto_renew, $start, $end, $id
                 );

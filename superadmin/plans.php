@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 "INSERT INTO subscription_plans (plan_name, price, max_ratings, max_customers, features, status, annual_discount_percent)
                  VALUES (?, ?, ?, ?, ?, ?, ?)"
             );
-            $stmt->bind_param("sdiissii", $name, $price, $max_ratings, $max_customers, $features_text, $status, $annual_discount_percent);
+            $stmt->bind_param("sdiissi", $name, $price, $max_ratings, $max_customers, $features_text, $status, $annual_discount_percent);
             $stmt->execute();
             sa_flash($stmt->error ? 'error' : 'success', $stmt->error ? 'Could not create the plan: ' . $stmt->error : $name . ' was added to the catalogue.');
             $stmt->close();
@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     SET plan_name = ?, price = ?, max_ratings = ?, max_customers = ?, features = ?, status = ?, annual_discount_percent = ?
                   WHERE id = ?"
             );
-            $stmt->bind_param("sdiissiii", $name, $price, $max_ratings, $max_customers, $features_text, $status, $annual_discount_percent, $id);
+            $stmt->bind_param("sdiissii", $name, $price, $max_ratings, $max_customers, $features_text, $status, $annual_discount_percent, $id);
             $stmt->execute();
             sa_flash($stmt->error ? 'error' : 'success', $stmt->error ? 'Could not save the plan: ' . $stmt->error : $name . ' was updated.');
             $stmt->close();

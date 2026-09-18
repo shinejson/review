@@ -1,4 +1,32 @@
 <?php
+// Lightweight .env file loader for environments where server env vars cannot be set directly
+$envFile = dirname(__DIR__) . '/.env';
+if (is_readable($envFile)) {
+    $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#') continue;
+        if (strpos($line, '=') !== false) {
+            list($envName, $envVal) = explode('=', $line, 2);
+            $envName = trim($envName);
+            $envVal  = trim($envVal, " \t\n\r\0\x0B\"'");
+            if (!array_key_exists($envName, $_SERVER) && !array_key_exists($envName, $_ENV)) {
+                putenv("$envName=$envVal");
+                $_ENV[$envName] = $envVal;
+                $_SERVER[$envName] = $envVal;
+            }
+        }
+    }
+}
+
+// Error reporting: never display raw PHP errors in production to avoid leaking sensitive paths and credentials
+$isDev = (getenv('APP_ENV') === 'development');
+if (!$isDev) {
+    ini_set('display_errors', '0');
+    ini_set('log_errors', '1');
+    error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
+}
+
 // Database configuration — read credentials from the environment.
 // Never hard-code production credentials in source; the defaults below
 // are dev-only and MUST be overridden via environment variables.

@@ -2,26 +2,6 @@
 RewriteEngine On
 RewriteBase /rate/
 
-# ============================================================
-# Admin panel path aliasing
-# ============================================================
-# The tenant workspace is served under a non-guessable alias
-# (/rate/p7xk2mqw9vrt4zhn/...) and direct browser requests to the
-# real /admin/ path are refused with 403.
-#
-# IMPORTANT: keep the slug below in sync with ADMIN_PATH_ALIAS in
-# config/database.php (or set the OPTIBIZ_ADMIN_PATH_ALIAS env var and
-# update the RewriteRule here to match). Internal rewrites never change
-# THE_REQUEST, so the aliased requests are not blocked by the rule above.
-# NOTE: the pattern must contain NO literal spaces — Apache's tokenizer
-# splits directive arguments on any unescaped space ("bad flag delimiters").
-# \s/\S shorthand keeps it a single argument.
-RewriteCond %{THE_REQUEST} ^[A-Z]+\s\S*/admin/ [NC]
-RewriteRule ^ - [F,L]
-
-RewriteRule ^p7xk2mqw9vrt4zhn/?$ admin/index.php [L,QSA]
-RewriteRule ^p7xk2mqw9vrt4zhn/(.*)$ admin/$1 [L,QSA]
-
 # Allow direct access to real existing files and directories
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
@@ -45,12 +25,24 @@ RewriteRule ^(.*)$ $1.php [L]
 # Prevent directory browsing
 Options -Indexes
 
-# Protect config and sensitive files
-<FilesMatch "(^#.*#|\.(bak|config|dist|fla|inc|ini|log|psd|sh|sql|sw[op])|~)$">
-    Order allow,deny
-    Deny from all
-    Satisfy All
+# Protect config and sensitive files (.env, .git, .sql, backups, etc.)
+<FilesMatch "(^\.env|^\.git|^#.*#|\.(bak|config|dist|fla|inc|ini|log|psd|sh|sql|sw[op]|env|gz|tar|zip)|~)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+        Satisfy All
+    </IfModule>
 </FilesMatch>
+
+# Security HTTP Headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
 
 # Set default charset
 AddDefaultCharset UTF-8

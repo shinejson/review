@@ -125,7 +125,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         WHERE id = ?
     ");
     $stmt->bind_param(
-        "isdissii",
+        "isdssii",
         $plan_id,
         $status,
         $price,
