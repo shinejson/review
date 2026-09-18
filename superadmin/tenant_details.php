@@ -302,7 +302,7 @@ include __DIR__ . '/_shell.php';
             </dl>
         </div>
         <div class="sa-card-foot">
-            <span>Login at <span class="sa-mono"><?php echo sa_e($BASE); ?>admin/login.php</span></span>
+            <span>Login at <span class="sa-mono"><?php echo sa_e($BASE . admin_path_alias()); ?>/login.php</span></span>
             <a href="tenants.php">Manage all tenants <?php echo sa_icon('chevron-right'); ?></a>
         </div>
     </section>

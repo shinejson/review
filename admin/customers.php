@@ -108,6 +108,9 @@ function collectEmailRecipients($conn, $tenant_id, $scope, $selected_ids, $cap =
 // POST Request Handlers
 // ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    if (!sa_csrf_ok()) {
+        $error = 'Your session expired. Please refresh the page and try again.';
+    } else {
     $action = $_POST['action'];
 
     // 1. Bulk email to customers
@@ -218,6 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             exit;
         }
     }
+    } // end CSRF-validated POST block
 }
 
 // Flash message banners
@@ -459,7 +463,8 @@ include __DIR__ . '/_shell.php';
 
 <!-- Bulk Email Composer -->
 <form method="POST" action="customers.php" id="custEmailForm">
-    <input type="hidden" name="action" value="send_email">
+    <?php echo sa_csrf_field(); ?>
+                                <input type="hidden" name="action" value="send_email">
     <div class="cust-composer">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
             <div>
@@ -643,14 +648,16 @@ include __DIR__ . '/_shell.php';
                                     <a class="cust-wa" href="https://wa.me/<?php echo $c_wa_digits; ?>" target="_blank" rel="noopener noreferrer" title="Chat on WhatsApp">💬 WA</a>
                                 <?php endif; ?>
                                 <form method="POST" action="customers.php" style="display:inline;">
-                                    <input type="hidden" name="action" value="toggle_verified">
+                                    <?php echo sa_csrf_field(); ?>
+                                <input type="hidden" name="action" value="toggle_verified">
                                     <input type="hidden" name="customer_id" value="<?php echo $c_id; ?>">
                                     <button type="submit" class="cust-mini-btn" title="<?php echo $c_verified ? 'Remove verified badge' : 'Manually award verified badge'; ?>">
                                         <?php echo $c_verified ? '✕ Unverify' : '✓ Verify'; ?>
                                     </button>
                                 </form>
                                 <form method="POST" action="customers.php" style="display:inline;" onsubmit="return confirm('Remove this customer from the list? Their public review will be kept.');">
-                                    <input type="hidden" name="action" value="delete">
+                                    <?php echo sa_csrf_field(); ?>
+                                <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="customer_id" value="<?php echo $c_id; ?>">
                                     <button type="submit" class="cust-mini-btn danger" title="Delete customer record">🗑</button>
                                 </form>

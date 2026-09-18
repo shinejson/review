@@ -1,0 +1,16 @@
+# Block script execution in the uploads directory.
+# Uploaded files are user content and must never be executed as scripts.
+<FilesMatch "\.(php|php3|php4|php5|php7|phps|phtml|pht|cgi|pl|py|sh|asp|aspx|jsp)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Additionally, if PHP is registered as a handler for other extensions,
+# neutralise it so that a renamed file cannot execute.
+<FilesMatch "\.(gif|jpe?|png|webp)$">
+    php_flag engine off
+    RemoveHandler .php .phtml .phar
+</FilesMatch>
+
+# Prevent directory listing
+Options -Indexes

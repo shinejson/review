@@ -6,6 +6,15 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     die('Invalid request method');
 }
 
+// Public write endpoint: limit review spam to 5 submissions per 10 minutes
+// per IP so bots cannot flood a workspace with fake reviews.
+if (function_exists('public_rate_limit')) {
+    $retry_after = public_rate_limit('submit_rating', 5, 600);
+    if ($retry_after > 0) {
+        public_rate_limit_respond($retry_after);
+    }
+}
+
 $company_id = (int)($_POST['company_id'] ?? 0);
 
 if ($company_id <= 0) {
@@ -26,9 +35,109 @@ $c_res = $c_stmt->get_result()->fetch_assoc();
 $c_stmt->close();
 
 $company_name      = $c_res ? $c_res['company_name'] : 'the company';
+$tenant_id         = (int)($c_res['tenant_id'] ?? 0);
 $google_store_url  = cleanGoogleReviewUrl($c_res['google_store_url'] ?? '');
 $booster_enabled   = isset($c_res['booster_enabled']) ? (int)$c_res['booster_enabled'] : 1;
 $booster_min_stars = isset($c_res['booster_min_stars']) ? (int)$c_res['booster_min_stars'] : 4;
+$company_rating_url = function_exists('getCompanyPublicRatingUrl') ? getCompanyPublicRatingUrl($company_id, $company_name) : 'index.php?company=' . $company_id;
+
+if (!function_exists('render_submit_notice')) {
+    function render_submit_notice($title, $message, $icon, $icon_bg, $icon_color, $btn_text, $btn_url) {
+        ?>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title><?php echo htmlspecialchars($title); ?></title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 100vh;
+                    padding: 20px;
+                }
+                .notice-card {
+                    background: white;
+                    border-radius: 20px;
+                    padding: 50px 40px;
+                    text-align: center;
+                    max-width: 520px;
+                    width: 100%;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                }
+                .notice-icon {
+                    width: 80px;
+                    height: 80px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0 auto 24px;
+                    font-size: 38px;
+                }
+                h2 { font-size: 26px; color: #1e293b; margin-bottom: 14px; font-weight: 800; }
+                p { color: #64748b; font-size: 15px; line-height: 1.6; margin-bottom: 28px; }
+                .btn {
+                    display: inline-block;
+                    padding: 13px 26px;
+                    border-radius: 8px;
+                    text-decoration: none;
+                    font-weight: 700;
+                    font-size: 14px;
+                    background: #0f172a;
+                    color: #c2f542;
+                    transition: transform 0.2s, opacity 0.2s;
+                }
+                .btn:hover { transform: translateY(-2px); opacity: 0.95; }
+            </style>
+        </head>
+        <body>
+            <div class="notice-card">
+                <div class="notice-icon" style="background:<?php echo $icon_bg; ?>;color:<?php echo $icon_color; ?>;">
+                    <?php echo $icon; ?>
+                </div>
+                <h2><?php echo htmlspecialchars($title); ?></h2>
+                <p><?php echo $message; ?></p>
+                <a href="<?php echo htmlspecialchars($btn_url); ?>" class="btn"><?php echo htmlspecialchars($btn_text); ?></a>
+            </div>
+        </body>
+        </html>
+        <?php
+    }
+}
+
+// 1. Enforce Company Monthly Plan Quota
+if (function_exists('getTenantMonthlyRatingUsage')) {
+    $company_usage = getTenantMonthlyRatingUsage($conn, $tenant_id);
+    if (!empty($company_usage['is_reached'])) {
+        if ((isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false)
+            || (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(403);
+            echo json_encode([
+                'success' => false,
+                'code'    => 'monthly_quota_exceeded',
+                'message' => 'This business has reached its monthly verified review capacity for this billing period.'
+            ]);
+            exit;
+        }
+        render_submit_notice(
+            'Monthly Feedback Capacity Reached',
+            '<strong>' . htmlspecialchars($company_name) . '</strong> has reached its verified review limit for this billing period. Feedback submissions will automatically reopen on the 1st of next month. Thank you for your patience and support!',
+            '🛡️',
+            '#fef3c7',
+            '#d97706',
+            '← Return to ' . htmlspecialchars($company_name),
+            $company_rating_url
+        );
+        exit;
+    }
+}
 
 // ============================================================
 // Follow / Like targets for the post-signup "Get Verified Badge"
@@ -228,11 +337,13 @@ if ($is_service) {
     $is_question = false;
 }
 
-// Verification metadata (MoMo reference or Receipt/Invoice upload)
+// Verification metadata: MoMo reference or receipt upload puts the review
+// in a PENDING state that the workspace must approve. A non-empty text
+// field alone must never self-verify a review.
 $momo_ref_raw   = isset($_POST['momo_ref']) && is_string($_POST['momo_ref']) ? trim($_POST['momo_ref']) : '';
 $momo_ref       = sanitize($momo_ref_raw);
-$is_verified    = !empty($momo_ref) ? 1 : 0;
-$verification_type = !empty($momo_ref) ? 'momo' : null;
+$is_verified    = 0;
+$verification_type = null;
 $receipt_photo  = null;
 
 if ($rating < 1 || $rating > 5) {
@@ -251,6 +362,33 @@ if (empty($customer_name)) {
 
 if (!$is_question && !$is_service && empty($customer_email)) {
     die('Customer email address is required.');
+}
+
+// 2. Enforce Customer Monthly Cooldown (1 review per company per month)
+if (!empty($customer_email) && function_exists('hasCustomerReviewedThisMonth')) {
+    if (hasCustomerReviewedThisMonth($conn, $company_id, $customer_email)) {
+        if ((isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false)
+            || (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(409);
+            echo json_encode([
+                'success' => false,
+                'code'    => 'customer_monthly_limit_reached',
+                'message' => 'You have already submitted a review for this business this month. Thank you for your feedback!'
+            ]);
+            exit;
+        }
+        render_submit_notice(
+            'Thank You for Your Feedback!',
+            'You have already submitted a verified review for <strong>' . htmlspecialchars($company_name) . '</strong> this month. To maintain review authenticity, customer reviews are limited to once per calendar month. You are welcome to submit new feedback again next month!',
+            '⭐',
+            '#dbeafe',
+            '#1d4ed8',
+            '← Return to ' . htmlspecialchars($company_name),
+            $company_rating_url
+        );
+        exit;
+    }
 }
 
 // Question and service submissions collect no email - store empty string (column is NOT NULL)
@@ -285,20 +423,37 @@ $stmt->bind_param("iiiisssissis", $company_id, $question_id, $service_id, $ratin
 if ($stmt->execute()) {
     $rating_id = $conn->insert_id;
     
-    // Handle receipt photo upload (confirms verified purchase)
+        // Handle receipt photo upload. The photo is stored and the review stays
+    // pending until the tenant confirms the proof in the admin panel.
+    $verification_pending = !empty($momo_ref);
     if (!empty($_FILES['receipt_photo']['name'])) {
         $rec_result = uploadReceiptPhoto($_FILES['receipt_photo'], $rating_id);
         if ($rec_result['success']) {
             $receipt_photo = $rec_result['path'];
-            $is_verified = 1;
-            $verification_type = !empty($momo_ref) ? 'momo_and_receipt' : 'receipt';
-            $upd_v = $conn->prepare("UPDATE ratings SET is_verified = ?, verification_type = ?, receipt_photo = ? WHERE id = ?");
-            $upd_v->bind_param("issi", $is_verified, $verification_type, $receipt_photo, $rating_id);
+            $verification_pending = true;
+            $verification_type = !empty($momo_ref) ? 'momo_and_receipt_pending' : 'receipt_pending';
+            $upd_v = $conn->prepare("UPDATE ratings SET verification_type = ?, receipt_photo = ? WHERE id = ?");
+            $upd_v->bind_param("ssi", $verification_type, $receipt_photo, $rating_id);
             $upd_v->execute();
             $upd_v->close();
         }
     }
+
+    if ($verification_pending && $verification_type === null) {
+        $verification_type = 'momo_pending';
+        $upd_p = $conn->prepare("UPDATE ratings SET verification_type = ? WHERE id = ?");
+        if ($upd_p) {
+            $upd_p->bind_param("si", $verification_type, $rating_id);
+            $upd_p->execute();
+            $upd_p->close();
+        }
+    }
     
+    // Mint the opaque engage token that binds follow/like actions to this
+    // submitter's browser. Only this page (and therefore only this
+    // reviewer) ever sees it.
+    $engage_token = mintReviewEngageToken($conn, $rating_id);
+
     // Handle photo uploads
     $photos = [];
     if (!empty($_FILES['photos']['name'][0])) {
@@ -570,7 +725,7 @@ if ($stmt->execute()) {
             <!-- ============================================================
                  GET VERIFIED BADGE — post-signup follow & like steps
                  ============================================================ -->
-            <div id="engageCard" data-rating-id="<?php echo (int)$rating_id; ?>" data-company-id="<?php echo (int)$company_id; ?>"
+            <div id="engageCard" data-rating-id="<?php echo (int)$rating_id; ?>" data-company-id="<?php echo (int)$company_id; ?>" data-engage-token="<?php echo htmlspecialchars((string)$engage_token, ENT_QUOTES, 'UTF-8'); ?>"
                  style="background:linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);border:2px solid #86efac;border-radius:16px;padding:24px 22px;margin-bottom:26px;text-align:left;box-shadow:0 4px 16px rgba(34,197,94,0.15);">
                 
                 <!-- Header with Badge Preview -->
@@ -731,6 +886,7 @@ if ($stmt->execute()) {
                     fd.append('action', step);
                     fd.append('rating_id', card.getAttribute('data-rating-id'));
                     fd.append('company_id', card.getAttribute('data-company-id'));
+                    fd.append('engage_token', card.getAttribute('data-engage-token') || '');
                     if (step === 'follow') {
                         fd.append('platform', followedPlatform);
                     }

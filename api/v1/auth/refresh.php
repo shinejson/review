@@ -29,6 +29,22 @@ if ($tenantId <= 0) {
     api_send_error('Invalid token payload.', 401);
 }
 
+// Pull the role from the refresh token. If it says team_member, verify the
+// staff record still exists and is still active before issuing a new token.
+$userRole  = isset($payload['role']) ? (string)$payload['role'] : 'tenant_admin';
+$teamId    = isset($payload['team_member_id']) ? (int)$payload['team_member_id'] : 0;
+
+if ($userRole === 'team_member' && $teamId > 0) {
+    $tmCheck = $conn->prepare("SELECT is_active FROM team_members WHERE id = ? AND tenant_id = ? LIMIT 1");
+    $tmCheck->bind_param("ii", $teamId, $tenantId);
+    $tmCheck->execute();
+    $tmRes = $tmCheck->get_result()->fetch_assoc();
+    $tmCheck->close();
+    if (!$tmRes || (int)$tmRes['is_active'] !== 1) {
+        api_send_error('Forbidden: This staff account has been disabled.', 403);
+    }
+}
+
 // Fetch current tenant data
 $stmt = $conn->prepare("SELECT id, public_id, company_name, email, subscription_status, plan_id FROM tenants WHERE id = ? LIMIT 1");
 $stmt->bind_param("i", $tenantId);
@@ -52,16 +68,23 @@ if ($cStmt) {
 }
 
 $newAccessClaims = [
-    'sub'          => (int)$tenant['id'],
-    'tenant_id'    => (int)$tenant['id'],
-    'company_id'   => $companyId,
-    'public_id'    => (string)$tenant['public_id'],
-    'email'        => (string)$tenant['email'],
-    'role'         => 'tenant_admin',
+    'sub'            => (int)$tenant['id'],
+    'tenant_id'      => (int)$tenant['id'],
+    'company_id'     => $companyId,
+    'public_id'      => (string)$tenant['public_id'],
+    'email'          => (string)$tenant['email'],
+    'role'           => $userRole,
+    'team_member_id' => $teamId,
 ];
 
 $newAccessToken  = JWT::generate($newAccessClaims, API_JWT_ACCESS_EXPIRY, 'access');
-$newRefreshToken = JWT::generate(['sub' => (int)$tenant['id'], 'tenant_id' => (int)$tenant['id']], API_JWT_REFRESH_EXPIRY, 'refresh');
+// Preserve role + team_member_id across refresh-token rotation
+$newRefreshToken = JWT::generate([
+    'sub'            => (int)$tenant['id'],
+    'tenant_id'      => (int)$tenant['id'],
+    'role'           => $userRole,
+    'team_member_id' => $teamId,
+], API_JWT_REFRESH_EXPIRY, 'refresh');
 
 api_send_success([
     'tokens' => [

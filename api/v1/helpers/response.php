@@ -4,10 +4,47 @@
  */
 require_once dirname(__DIR__) . '/config.php';
 
-// Automatically handle CORS and Preflight OPTIONS for all API requests
+// Automatically handle CORS and Preflight OPTIONS for all API requests.
+// The Origin is reflected ONLY when it appears on a configured allow-list.
+// Reflecting an arbitrary Origin together with credentials would let any
+// website make credentialed cross-origin requests to this API.
 function api_init_cors() {
-    $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
-    header("Access-Control-Allow-Origin: $origin");
+    // Build an explicit allow-list. In production set the
+    // OPTIBIZ_API_ALLOWED_ORIGINS environment variable to a comma-separated
+    // list of trusted origins (e.g. "https://app.optibiz.com,https://optibiz.com").
+    $envOrigins = getenv('OPTIBIZ_API_ALLOWED_ORIGINS');
+    $allowedOrigins = [];
+    if ($envOrigins) {
+        foreach (explode(',', (string)$envOrigins) as $o) {
+            $o = trim($o);
+            if ($o !== '') {
+                $allowedOrigins[$o] = true;
+            }
+        }
+    }
+
+    // Development convenience: allow the local dev server when no explicit
+    // allow-list has been configured.
+    if (empty($allowedOrigins)) {
+        $allowedOrigins = [
+            'http://localhost'         => true,
+            'http://localhost:3000'    => true,
+            'http://localhost:8080'    => true,
+            'http://127.0.0.1'         => true,
+            'http://127.0.0.1:3000'    => true,
+        ];
+    }
+
+    $origin = isset($_SERVER['HTTP_ORIGIN']) ? (string)$_SERVER['HTTP_ORIGIN'] : '';
+
+    $allow = false;
+    if (isset($allowedOrigins[$origin]) || (isset($_SERVER['HTTP_ORIGIN']) && in_array($origin, array_keys($allowedOrigins), true))) {
+        $allow = true;
+    }
+
+    if ($allow) {
+        header("Access-Control-Allow-Origin: $origin");
+    }
     header("Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS");
     header("Access-Control-Allow-Headers: Authorization, Content-Type, Accept, X-Requested-With, X-Device-Fingerprint, X-Api-Key");
     header("Access-Control-Allow-Credentials: true");
@@ -16,7 +53,18 @@ function api_init_cors() {
 
     // Preflight request terminates immediately with 204 No Content
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        if (!$allow) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'status' => 403, 'message' => 'Origin not allowed']);
+            exit;
+        }
         http_response_code(204);
+        exit;
+    }
+
+    if (!$allow) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'status' => 403, 'message' => 'Origin not allowed']);
         exit;
     }
 }

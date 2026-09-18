@@ -1,0 +1,12 @@
+# Block script execution in the reviews uploads directory.
+<FilesMatch "\.(php|php3|php4|php5|php7|phps|phtml|pht|cgi|pl|py|sh|asp|aspx|jsp)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "\.(gif|jpe?|png|webp)$">
+    php_flag engine off
+    RemoveHandler .php .phtml .phar
+</FilesMatch>
+
+Options -Indexes

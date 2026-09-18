@@ -26,14 +26,28 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+// Slow down automated follow/like farming.
+if (function_exists('public_rate_limit')) {
+    $retry_after = public_rate_limit('customer_engage', 30, 3600);
+    if ($retry_after > 0) {
+        public_rate_limit_respond($retry_after);
+    }
+}
+
 $action     = strtolower(trim((string)($_POST['action'] ?? '')));
 $rating_id  = (int)($_POST['rating_id'] ?? 0);
 $company_id = (int)($_POST['company_id'] ?? 0);
 $platform   = trim((string)($_POST['platform'] ?? ''));
 $phone      = trim((string)($_POST['phone'] ?? ''));
+$engage_token = trim((string)($_POST['engage_token'] ?? ''));
 
 if (!in_array($action, ['follow', 'like'], true)) {
     echo json_encode(['success' => false, 'message' => 'Unknown action.']);
+    exit;
+}
+
+if ($engage_token === '') {
+    echo json_encode(['success' => false, 'message' => 'Missing verification token. Please complete the steps from the page shown right after you submitted your review.']);
     exit;
 }
 
@@ -41,7 +55,7 @@ if ($platform !== '' && !preg_match('/^[a-z0-9_]{1,30}$/i', $platform)) {
     $platform = '';
 }
 
-$result = markCustomerEngagement($conn, $rating_id, $company_id, $action, $platform, $phone);
+$result = markCustomerEngagement($conn, $rating_id, $company_id, $action, $platform, $phone, $engage_token);
 
 if ($result === false || $result === null) {
     echo json_encode([

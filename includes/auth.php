@@ -33,16 +33,49 @@ function getTenantId() {
 }
 
 /**
- * Get display name for logged-in user or company
+ * Get display name for logged-in user
  */
 function getCurrentUserName() {
-    if (isset($_SESSION['tenant_name'])) {
-        return $_SESSION['tenant_name'];
-    }
-    if (isset($_SESSION['admin_username'])) {
+    // 1. If admin or team member username / full_name is set in session
+    if (!empty($_SESSION['admin_username'])) {
         return $_SESSION['admin_username'];
     }
-    return 'User';
+    // 2. If tenant username is set in session
+    if (!empty($_SESSION['tenant_username'])) {
+        return $_SESSION['tenant_username'];
+    }
+    // 3. Fallback: if tenant_id exists in session, load username from database
+    if (!empty($_SESSION['tenant_id'])) {
+        $conn = $GLOBALS['conn'] ?? null;
+        if ($conn) {
+            $stmt = $conn->prepare("SELECT username FROM tenants WHERE id = ? LIMIT 1");
+            if ($stmt) {
+                $tid = (int)$_SESSION['tenant_id'];
+                $stmt->bind_param("i", $tid);
+                $stmt->execute();
+                $res = $stmt->get_result();
+                if ($res && ($row = $res->fetch_assoc())) {
+                    $u = trim((string)($row['username'] ?? ''));
+                    if ($u !== '') {
+                        $_SESSION['tenant_username'] = $u;
+                        $_SESSION['admin_username']  = $u;
+                        $stmt->close();
+                        return $u;
+                    }
+                }
+                $stmt->close();
+            }
+        }
+    }
+    // 4. Generic username session variable if present
+    if (!empty($_SESSION['username'])) {
+        return $_SESSION['username'];
+    }
+    // 5. Fallback to tenant/company name only if no user name is available
+    if (!empty($_SESSION['tenant_name'])) {
+        return $_SESSION['tenant_name'];
+    }
+    return 'Admin';
 }
 
 /**

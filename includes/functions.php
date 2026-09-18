@@ -17,6 +17,26 @@ function redirect($url) {
     exit();
 }
 
+/**
+ * Public URL alias for the tenant admin panel (see ADMIN_PATH_ALIAS in
+ * config/database.php and the matching RewriteRule in .htaccess).
+ * Falls back to 'admin' if the constant is unavailable so links keep
+ * working in contexts where the config has not been loaded yet.
+ */
+function admin_path_alias() {
+    return (defined('ADMIN_PATH_ALIAS') && ADMIN_PATH_ALIAS !== '') ? ADMIN_PATH_ALIAS : 'admin';
+}
+
+/**
+ * Root-relative URL for a workspace (admin) page, e.g.
+ * admin_url('login.php') -> "p7xk2mqw9vrt4zhn/login.php".
+ * Prefix with $BASE / '../' when linking from a subdirectory panel.
+ */
+function admin_url($path = '') {
+    $path = ltrim((string)$path, '/');
+    return admin_path_alias() . ($path !== '' ? '/' . $path : '');
+}
+
 function getAverageRating($company_id, $conn) {
     $stmt = $conn->prepare("SELECT AVG(rating) as avg_rating FROM ratings WHERE company_id = ? AND reported = 0");
     $stmt->bind_param("i", $company_id);
@@ -543,6 +563,106 @@ function getReviews($company_id, $conn, $sort = 'newest', $filter = 0, $limit = 
     return $stmt->get_result();
 }
 
+/**
+ * Shared per-IP rate limiter for the legacy public endpoints.
+ * Uses the api_rate_limits table when available; falls back to a
+ * file-backed bucket in sys temp so endpoints cannot be spammed when
+ * the table is missing.
+ */
+function public_rate_limit($action, $max_attempts, $window_seconds) {
+    $ip = isset($_SERVER['REMOTE_ADDR']) ? (string)$_SERVER['REMOTE_ADDR'] : '127.0.0.1';
+    $key = hash('sha256', $action . '|' . $ip);
+    $now = time();
+
+    $conn = isset($GLOBALS['conn']) ? $GLOBALS['conn'] : null;
+    if (is_object($conn) && method_exists($conn, 'prepare')) {
+        $create = "CREATE TABLE IF NOT EXISTS api_rate_limits (
+            key_hash VARCHAR(64) NOT NULL PRIMARY KEY,
+            hits INT(11) NOT NULL DEFAULT 1,
+            reset_at INT(11) NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+        @$conn->query($create);
+
+        $stmt = @$conn->prepare("SELECT hits, reset_at FROM api_rate_limits WHERE key_hash = ? LIMIT 1");
+        if ($stmt) {
+            $stmt->bind_param("s", $key);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            if ($row) {
+                $reset_at = (int)$row['reset_at'];
+                $hits = (int)$row['hits'];
+                if ($reset_at > $now) {
+                    if ($hits >= $max_attempts) {
+                        return (int)max(1, $reset_at - $now);
+                    }
+                    $upd = @$conn->prepare("UPDATE api_rate_limits SET hits = hits + 1 WHERE key_hash = ?");
+                    if ($upd) {
+                        $upd->bind_param("s", $key);
+                        $upd->execute();
+                        $upd->close();
+                    }
+                    return 0;
+                }
+                $reset_at = $now + $window_seconds;
+                $upd = @$conn->prepare("UPDATE api_rate_limits SET hits = 1, reset_at = ? WHERE key_hash = ?");
+                if ($upd) {
+                    $upd->bind_param("is", $reset_at, $key);
+                    $upd->execute();
+                    $upd->close();
+                }
+                return 0;
+            }
+            $reset_at = $now + $window_seconds;
+            $ins = @$conn->prepare("INSERT INTO api_rate_limits (key_hash, hits, reset_at) VALUES (?, 1, ?)");
+            if ($ins) {
+                $ins->bind_param("si", $key, $reset_at);
+                $ins->execute();
+                $ins->close();
+            }
+            return 0;
+        }
+    }
+
+    // File fallback when the DB table is unavailable.
+    $dir = sys_get_temp_dir() . '/rate-public-limits';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0700, true);
+    }
+    $file = $dir . '/' . $key . '.json';
+    $state = ['hits' => 0, 'reset_at' => 0];
+    if (is_file($file)) {
+        $raw = @file_get_contents($file);
+        $decoded = $raw ? json_decode($raw, true) : null;
+        if (is_array($decoded)) {
+            $state = $decoded + $state;
+        }
+    }
+    if ((int)$state['reset_at'] > $now) {
+        if ((int)$state['hits'] >= $max_attempts) {
+            return (int)max(1, (int)$state['reset_at'] - $now);
+        }
+        $state['hits'] = (int)$state['hits'] + 1;
+        @file_put_contents($file, json_encode($state));
+        return 0;
+    }
+    $state = ['hits' => 1, 'reset_at' => $now + $window_seconds];
+    @file_put_contents($file, json_encode($state));
+    return 0;
+}
+
+/**
+ * Send a JSON 429 response for the legacy public endpoints.
+ */
+function public_rate_limit_respond($retry_after) {
+    if (!headers_sent()) {
+        header('Content-Type: application/json');
+        header('Retry-After: ' . (int)$retry_after);
+    }
+    echo json_encode(['success' => false, 'message' => 'Too many requests. Please try again shortly.', 'retry_after' => (int)$retry_after]);
+    exit;
+}
+
 function markHelpful($rating_id, $conn) {
     $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
     $rating_id = (int)$rating_id;
@@ -577,26 +697,31 @@ function markHelpful($rating_id, $conn) {
 
 function reportReview($rating_id, $reason, $conn) {
     $ip = $_SERVER['REMOTE_ADDR'];
-    
+
     $check = $conn->prepare("SELECT id FROM reported_reviews WHERE rating_id = ? AND reporter_ip = ?");
     $check->bind_param("is", $rating_id, $ip);
     $check->execute();
-    
+
     if ($check->get_result()->num_rows > 0) {
         return ['success' => false, 'message' => 'Already reported'];
     }
-    
+
     $stmt = $conn->prepare("INSERT INTO reported_reviews (rating_id, reason, reporter_ip) VALUES (?, ?, ?)");
     $stmt->bind_param("iss", $rating_id, $reason, $ip);
-    
+
     if ($stmt->execute()) {
-        $count = $conn->query("SELECT COUNT(*) as cnt FROM reported_reviews WHERE rating_id = $rating_id")->fetch_assoc()['cnt'];
-        if ($count >= 3) {
-            $conn->query("UPDATE ratings SET reported = 1 WHERE id = $rating_id");
+        // Reports queue the review for tenant moderation. Nothing is hidden
+        // automatically: a tenant approves or dismisses each report in the
+        // admin panel, which stops coordinated mass-report takedowns.
+        $upd = $conn->prepare("UPDATE ratings SET reported = 0 WHERE id = ?");
+        if ($upd) {
+            $upd->bind_param("i", $rating_id);
+            $upd->execute();
+            $upd->close();
         }
-        return ['success' => true, 'message' => 'Review reported'];
+        return ['success' => true, 'message' => 'Review reported. Our team will review it.'];
     }
-    
+
     return ['success' => false, 'message' => 'Error reporting'];
 }
 
@@ -605,24 +730,53 @@ function uploadReviewPhoto($file, $rating_id) {
     if (!is_dir($upload_dir)) {
         mkdir($upload_dir, 0755, true);
     }
-    
-    $allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!in_array($file['type'], $allowed)) {
+
+    // Verify the file is a real image — never trust the client-supplied
+    // MIME type ($file['type']) or extension, both of which are attacker-controlled.
+    if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+        return ['success' => false, 'message' => 'Invalid upload'];
+    }
+
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime  = $finfo->file($file['tmp_name']);
+
+    $mime_to_ext = [
+        'image/jpeg' => 'jpg',
+        'image/png'  => 'png',
+        'image/gif'  => 'gif',
+        'image/webp' => 'webp',
+    ];
+
+    if (!isset($mime_to_ext[$mime])) {
         return ['success' => false, 'message' => 'Invalid file type'];
     }
-    
+
+    // Belt-and-suspenders: confirm the file has a valid image header.
+    $img_info = @getimagesize($file['tmp_name']);
+    if ($img_info === false) {
+        return ['success' => false, 'message' => 'Invalid image data'];
+    }
+
     if ($file['size'] > 5 * 1024 * 1024) {
         return ['success' => false, 'message' => 'File too large (max 5MB)'];
     }
-    
-    $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-    $filename = 'review_' . $rating_id . '_' . time() . '.' . $ext;
+
+    // Generate a random server-side filename. Never use the client-provided name.
+    $ext = $mime_to_ext[$mime];
+    try {
+        $random = bin2hex(random_bytes(16));
+    } catch (Exception $e) {
+        $random = uniqid('', true);
+    }
+    $filename = 'review_' . (int)$rating_id . '_' . $random . '.' . $ext;
     $filepath = $upload_dir . $filename;
-    
+
     if (move_uploaded_file($file['tmp_name'], $filepath)) {
+        // Serve as a static image — ensure no script execution by setting
+        // a restrictive Content-Type and disabling PHP for the directory.
         return ['success' => true, 'path' => 'uploads/reviews/' . $filename];
     }
-    
+
     return ['success' => false, 'message' => 'Upload failed'];
 }
 
@@ -631,24 +785,51 @@ function uploadReceiptPhoto($file, $rating_id) {
     if (!is_dir($upload_dir)) {
         mkdir($upload_dir, 0755, true);
     }
-    
-    $allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!in_array($file['type'], $allowed)) {
+
+    // Verify the file is a real image — never trust the client-supplied
+    // MIME type or extension.
+    if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+        return ['success' => false, 'message' => 'Invalid upload'];
+    }
+
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime  = $finfo->file($file['tmp_name']);
+
+    $mime_to_ext = [
+        'image/jpeg' => 'jpg',
+        'image/png'  => 'png',
+        'image/gif'  => 'gif',
+        'image/webp' => 'webp',
+    ];
+
+    if (!isset($mime_to_ext[$mime])) {
         return ['success' => false, 'message' => 'Invalid file type'];
     }
-    
+
+    // Belt-and-suspenders: confirm the file has a valid image header.
+    $img_info = @getimagesize($file['tmp_name']);
+    if ($img_info === false) {
+        return ['success' => false, 'message' => 'Invalid image data'];
+    }
+
     if ($file['size'] > 5 * 1024 * 1024) {
         return ['success' => false, 'message' => 'File too large (max 5MB)'];
     }
-    
-    $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-    $filename = 'receipt_' . (int)$rating_id . '_' . time() . '.' . $ext;
+
+    // Generate a random server-side filename. Never use the client-provided name.
+    $ext = $mime_to_ext[$mime];
+    try {
+        $random = bin2hex(random_bytes(16));
+    } catch (Exception $e) {
+        $random = uniqid('', true);
+    }
+    $filename = 'receipt_' . (int)$rating_id . '_' . $random . '.' . $ext;
     $filepath = $upload_dir . $filename;
-    
+
     if (move_uploaded_file($file['tmp_name'], $filepath)) {
         return ['success' => true, 'path' => 'uploads/receipts/' . $filename];
     }
-    
+
     return ['success' => false, 'message' => 'Upload failed'];
 }
 
@@ -1447,8 +1628,10 @@ function ensureSiteCustomersTable($conn) {
 
 /**
  * Create (or refresh) a signed-up customer record when a named
- * general review is submitted. Never downgrades an existing
- * verified state. Returns the row id (0 on failure).
+ * general review is submitted. Verification can never be granted by the
+ * public submission itself: MoMo / receipt claims are recorded as
+ * "pending" and only tenant approval flips is_verified. Never downgrades
+ * an existing verified state. Returns the row id (0 on failure).
  */
 function upsertSiteCustomer($conn, $tenant_id, $company_id, $name, $email, $phone = '', $rating_id = 0, $rating_value = 0, $momo_ref = '', $is_verified = 0, $verification_type = null) {
     if (!is_object($conn) || !method_exists($conn, 'prepare')) return 0;
@@ -1467,10 +1650,10 @@ function upsertSiteCustomer($conn, $tenant_id, $company_id, $name, $email, $phon
 
     $rating_id    = (int)$rating_id;
     $rating_value = (int)$rating_value;
-    $is_verified  = (int)$is_verified;
-    if (!$is_verified) {
-        $verification_type = null;
-    }
+    // A public form can only ever leave verification pending; the actual
+    // badge is granted by admin approval or the follow+like flow.
+    $is_verified  = 0;
+    $verification_type = null;
 
     $stmt = $conn->prepare("SELECT id, is_verified, verification_type, customer_phone, momo_ref FROM site_customers WHERE company_id = ? AND customer_email = ? LIMIT 1");
     if (!$stmt) return 0;
@@ -1482,13 +1665,18 @@ function upsertSiteCustomer($conn, $tenant_id, $company_id, $name, $email, $phon
     $now = date('Y-m-d H:i:s');
 
     if (!$row) {
-        $vtype = $is_verified ? (string)$verification_type : null;
+        // New signup: record the MoMo reference as a pending claim. Claim
+        // types that end in "_pending" never count as verified.
+        $vtype = '';
+        if ($momo_ref !== '') {
+            $vtype = 'momo_pending';
+        }
         $ins = $conn->prepare("INSERT INTO site_customers
                 (tenant_id, company_id, customer_name, customer_email, customer_phone, rating_id, rating_value,
                  is_following, is_liked, is_verified, verification_type, momo_ref, last_activity_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)");
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)");
         if (!$ins) return 0;
-        $ins->bind_param("iiissiiisss", $tenant_id, $company_id, $name, $email, $phone, $rating_id, $rating_value, $is_verified, $vtype, $momo_ref, $now);
+        $ins->bind_param("iiissiisss", $tenant_id, $company_id, $name, $email, $phone, $rating_id, $rating_value, $vtype, $momo_ref, $now);
         if (!$ins->execute()) return 0;
         $cid = (int)$ins->insert_id;
         $ins->close();
@@ -1496,26 +1684,71 @@ function upsertSiteCustomer($conn, $tenant_id, $company_id, $name, $email, $phon
     }
 
     $cid           = (int)$row['id'];
-    $keep_verified = max((int)$row['is_verified'], $is_verified);
+    // Keep any previously verified badge, but never grant or upgrade one
+    // from this public path. A pending claim marker is stored so the
+    // tenant can approve it in the admin panel.
+    $keep_verified = (int)$row['is_verified'];
     $vtype         = $row['verification_type'];
-    if ($keep_verified && empty($vtype)) {
-        $vtype = 'follow_like';
-    }
-    if ($is_verified && !empty($verification_type)) {
-        $vtype = (string)$verification_type;
+    if ($keep_verified === 0 && $momo_ref !== '' && empty($vtype)) {
+        $vtype = 'momo_pending';
     }
     $new_phone = ($phone !== '') ? $phone : (string)$row['customer_phone'];
     $new_momo  = ($momo_ref !== '') ? $momo_ref : (string)$row['momo_ref'];
 
     $upd = $conn->prepare("UPDATE site_customers
             SET customer_name = ?, customer_phone = ?, rating_id = ?, rating_value = ?,
-                last_activity_at = ?, is_verified = ?, verification_type = ?, momo_ref = ?
+                last_activity_at = ?, verification_type = ?, momo_ref = ?
           WHERE id = ?");
     if (!$upd) return 0;
-    $upd->bind_param("ssiisissi", $name, $new_phone, $rating_id, $rating_value, $now, $keep_verified, $vtype, $new_momo, $cid);
+    $upd->bind_param("ssiisssi", $name, $new_phone, $rating_id, $rating_value, $now, $vtype, $new_momo, $cid);
     $upd->execute();
     $upd->close();
     return $cid;
+}
+
+/**
+ * Ensure the review engage-token column exists (auto-migration).
+ *
+ * Each freshly submitted review gets an opaque random token. The
+ * follow/like endpoint must present it, which binds the "verified"
+ * action to the submitter's browser instead of to forgeable IDs.
+ */
+function ensureReviewEngageTokenColumns($conn) {
+    static $done = false;
+    if ($done || !is_object($conn) || !method_exists($conn, 'query')) {
+        return;
+    }
+    $done = true;
+
+    $chk = @$conn->query("SHOW COLUMNS FROM ratings LIKE 'engage_token'");
+    if ($chk && (int)$chk->num_rows === 0) {
+        @$conn->query("ALTER TABLE ratings ADD COLUMN engage_token VARCHAR(64) NULL AFTER receipt_photo, ADD INDEX idx_ratings_engage_token (engage_token)");
+    }
+    if ($chk && method_exists($chk, 'free')) {
+        $chk->free();
+    }
+}
+
+/**
+ * Mint a fresh opaque engage token for a review and store it.
+ * Returns the token string ('' on failure).
+ */
+function mintReviewEngageToken($conn, $rating_id) {
+    if (!is_object($conn) || !method_exists($conn, 'prepare')) return '';
+    ensureReviewEngageTokenColumns($conn);
+    $rating_id = (int)$rating_id;
+    if ($rating_id <= 0) return '';
+    try {
+        $token = bin2hex(random_bytes(24));
+    } catch (Exception $e) {
+        $token = bin2hex(openssl_random_pseudo_bytes(24));
+    }
+    $upd = $conn->prepare("UPDATE ratings SET engage_token = ? WHERE id = ?");
+    if (!$upd) return '';
+    $upd->bind_param("si", $token, $rating_id);
+    $ok = $upd->execute();
+    $upd->close();
+    return $ok ? $token : '';
 }
 
 /**
@@ -1524,20 +1757,26 @@ function upsertSiteCustomer($conn, $tenant_id, $company_id, $name, $email, $phon
  * and award the Verified Customer badge once BOTH steps are
  * done. The badge is also propagated to the linked review row.
  *
+ * Each review is issued an opaque one-time engage token at submit time.
+ * The endpoint must present that token; rating_id + company_id alone are
+ * not enough, otherwise anyone could verify anyone else's review.
+ *
  * @param string $type 'follow' | 'like'
  * @return array|false Engagement state after the update
  */
-function markCustomerEngagement($conn, $rating_id, $company_id, $type, $platform = '', $phone = '') {
+function markCustomerEngagement($conn, $rating_id, $company_id, $type, $platform = '', $phone = '', $engage_token = '') {
     if (!is_object($conn) || !method_exists($conn, 'prepare')) return false;
     ensureSiteCustomersTable($conn);
+    ensureReviewEngageTokenColumns($conn);
 
     $rating_id  = (int)$rating_id;
     $company_id = (int)$company_id;
     $type       = in_array($type, ['follow', 'like'], true) ? $type : '';
     $platform   = trim((string)$platform);
     $phone      = trim((string)$phone);
+    $engage_token = trim((string)$engage_token);
 
-    if ($rating_id <= 0 || $company_id <= 0 || $type === '') return false;
+    if ($rating_id <= 0 || $company_id <= 0 || $type === '' || $engage_token === '') return false;
 
     $stmt = $conn->prepare("SELECT * FROM site_customers WHERE rating_id = ? AND company_id = ? LIMIT 1");
     if (!$stmt) return false;
@@ -1546,6 +1785,22 @@ function markCustomerEngagement($conn, $rating_id, $company_id, $type, $platform
     $cust = $stmt->get_result()->fetch_assoc();
     $stmt->close();
     if (!$cust) return false;
+
+    // The token lives on the review row so a single holder (the submitter's
+    // browser) can complete both steps. Reject anything else.
+    $row_chk = $conn->prepare("SELECT id, company_id, engage_token FROM ratings WHERE id = ? LIMIT 1");
+    if (!$row_chk) return false;
+    $row_chk->bind_param("i", $rating_id);
+    $row_chk->execute();
+    $review = $row_chk->get_result()->fetch_assoc();
+    $row_chk->close();
+    if (!$review
+        || (int)$review['company_id'] !== $company_id
+        || empty($review['engage_token'])
+        || !hash_equals((string)$review['engage_token'], $engage_token)
+    ) {
+        return false;
+    }
 
     $cid          = (int)$cust['id'];
     $is_following = (int)$cust['is_following'];
@@ -1588,7 +1843,8 @@ function markCustomerEngagement($conn, $rating_id, $company_id, $type, $platform
             $vupd->close();
         }
 
-        // Propagate onto the linked review (keep MoMo/receipt verification if present)
+        // Propagate onto the linked review (never overwrite an approved badge;
+        // pending MoMo/receipt claims stay pending until the tenant approves).
         $r = $conn->prepare("UPDATE ratings SET is_verified = 1, verification_type = 'follow_like' WHERE id = ? AND (is_verified = 0 OR is_verified IS NULL)");
         if ($r) {
             $r->bind_param("i", $rating_id);
@@ -2282,20 +2538,47 @@ function generateSecureToken($length = 48) {
 }
 
 function getPlatformBaseUrl() {
+    // Prefer an explicit application URL configured by the operator.
+    // $_SERVER['HTTP_HOST'] is attacker-controlled and must never be used
+    // unvalidated to build password-reset / email links.
+    if (defined('APP_BASE_URL') && APP_BASE_URL !== '') {
+        $url = rtrim((string)APP_BASE_URL, '/');
+        // Basic sanity check — must be an absolute http(s) URL
+        if (preg_match('~^https?://~i', $url)) {
+            return $url;
+        }
+    }
+
+    // Fall back to scheme-relative reconstruction, also gated on a host
+    // allow-list so a spoofed Host header cannot inject an arbitrary domain.
+    $allowedHosts = [];
+    $envHosts = getenv('OPTIBIZ_ALLOWED_HOSTS');
+    if ($envHosts) {
+        $allowedHosts = array_map('trim', explode(',', (string)$envHosts));
+        $allowedHosts = array_filter($allowedHosts);
+    }
+    if (empty($allowedHosts)) {
+        $allowedHosts = ['localhost'];
+    }
+
+    $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '';
+    // Strip port for the allow-list check
+    $hostName = $host !== '' ? preg_replace('/:\d+$/', '', $host) : '';
+    if (!in_array($hostName, $allowedHosts, true)) {
+        return '';
+    }
+
     $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
     $scheme = $https ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+
     // Determine base path: script is /admin/setup-password.php or /api/... -> go up one level
     $script = $_SERVER['SCRIPT_NAME'] ?? '';
     $basePath = '';
     if ($script !== '') {
-        // If script is in subfolder like /admin/ or /api/, base is directory up
-        // We want root: remove last segment if it's a file, then if ends with /admin or /api, remove that too
         $dir = dirname($script);
         if ($dir === '/' || $dir === '\\' || $dir === '.') {
             $basePath = '';
         } else {
-            // Normalize: if dir is /admin or /superadmin or /api, base is /
             if (in_array(basename($dir), ['admin', 'superadmin', 'api', 'includes'], true)) {
                 $basePath = dirname($dir);
                 if ($basePath === '/' || $basePath === '\\' || $basePath === '.') $basePath = '';
@@ -2947,14 +3230,16 @@ function sendTenantSetupEmail($conn, $tenant, $setup_token, $is_new_registration
         }
     }
 
-    $baseUrl = getPlatformBaseUrl();
+            $baseUrl = getPlatformBaseUrl();
     if ($baseUrl === '' || $baseUrl === 'http://localhost' || $baseUrl === 'https://localhost') {
-        // Try to guess from settings or use relative
-        $baseUrl = (isset($_SERVER['HTTP_HOST']) ? ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST']) : 'https://optibiz.example.com');
+        // Fall back to a protocol-relative path so the email works regardless
+        // of whether HTTP_HOST is trustworthy. The browser resolves the
+        // correct absolute URL when the recipient clicks the link.
+        $baseUrl = admin_path_alias();
     }
-    $setupUrl = rtrim($baseUrl, '/') . '/admin/setup-password.php?token=' . urlencode($setup_token);
+    $setupUrl = rtrim($baseUrl, '/') . '/' . admin_path_alias() . '/setup-password.php?token=' . urlencode($setup_token);
     // Also provide login URL
-    $loginUrl = rtrim($baseUrl, '/') . '/admin/login.php';
+    $loginUrl = rtrim($baseUrl, '/') . '/' . admin_path_alias() . '/login.php';
 
     $subject = $is_new_registration
         ? 'Welcome to ' . $site_name . ' — Set up your account password'
@@ -3014,7 +3299,7 @@ function sendQuoteConfirmationEmail($conn, $quote) {
     }
 
     $baseUrl = getPlatformBaseUrl();
-    $loginUrl = rtrim($baseUrl, '/') . '/admin/login.php';
+    $loginUrl = rtrim($baseUrl, '/') . '/' . admin_path_alias() . '/login.php';
 
     $subject = 'Your ' . $site_name . ' quota request received — Ref: ' . $public_id;
 
@@ -3053,7 +3338,7 @@ function sendTenantWelcomeAfterSetup($conn, $tenant) {
     $public_id = $tenant['public_id'] ?? ('OPT-' . ($tenant['id'] ?? ''));
     $site_name = function_exists('sa_setting') && is_object($conn) ? @sa_setting($conn, 'site_name', 'Optibiz') : 'Optibiz';
     $baseUrl = getPlatformBaseUrl();
-    $loginUrl = rtrim($baseUrl, '/') . '/admin/login.php';
+    $loginUrl = rtrim($baseUrl, '/') . '/' . admin_path_alias() . '/login.php';
     $subject = 'Welcome aboard — Your ' . $site_name . ' workspace is ready!';
 
     $bodyHtml = '
@@ -3192,6 +3477,139 @@ if (!function_exists('requireTeamAccess')) {
             header('Location: index.php');
             exit;
         }
+    }
+}
+
+if (!function_exists('getTenantMonthlyRatingUsage')) {
+    /**
+     * Get monthly rating usage and plan limits for a tenant.
+     *
+     * @param mysqli $conn
+     * @param int $tenant_id
+     * @return array ['used' => int, 'limit' => int, 'is_reached' => bool, 'is_unlimited' => bool, 'plan_name' => string]
+     */
+    function getTenantMonthlyRatingUsage($conn, $tenant_id) {
+        $tenant_id = (int)$tenant_id;
+        if ($tenant_id <= 0 || !is_object($conn)) {
+            return ['used' => 0, 'limit' => 0, 'is_reached' => false, 'is_unlimited' => true, 'plan_name' => ''];
+        }
+
+        // Fetch plan quota
+        $stmt = $conn->prepare("
+            SELECT t.plan_id, p.plan_name, p.max_ratings
+              FROM tenants t
+         LEFT JOIN subscription_plans p ON p.id = t.plan_id
+             WHERE t.id = ?
+             LIMIT 1
+        ");
+        $max_ratings = 0;
+        $plan_name   = '';
+        if ($stmt) {
+            $stmt->bind_param("i", $tenant_id);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            if ($row = $res->fetch_assoc()) {
+                $max_ratings = (int)($row['max_ratings'] ?? 0);
+                $plan_name   = (string)($row['plan_name'] ?? '');
+            }
+            $stmt->close();
+        }
+
+        // Calculate count for current calendar month
+        $c_stmt = $conn->prepare("
+            SELECT COUNT(*) AS cnt
+              FROM ratings r
+              JOIN customers c ON c.id = r.company_id
+             WHERE c.tenant_id = ?
+               AND r.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+        ");
+        $used = 0;
+        if ($c_stmt) {
+            $c_stmt->bind_param("i", $tenant_id);
+            $c_stmt->execute();
+            $c_res = $c_stmt->get_result();
+            if ($c_row = $c_res->fetch_assoc()) {
+                $used = (int)($c_row['cnt'] ?? 0);
+            }
+            $c_stmt->close();
+        }
+
+        // 9999 or 0 means unlimited
+        $is_unlimited = ($max_ratings >= 9999 || $max_ratings <= 0);
+        $is_reached   = (!$is_unlimited && $used >= $max_ratings);
+
+        return [
+            'used'         => $used,
+            'limit'        => $max_ratings,
+            'is_reached'   => $is_reached,
+            'is_unlimited' => $is_unlimited,
+            'plan_name'    => $plan_name,
+        ];
+    }
+}
+
+if (!function_exists('getCompanyMonthlyRatingUsage')) {
+    /**
+     * Get monthly rating usage and plan limits for a company by company ID.
+     *
+     * @param mysqli $conn
+     * @param int $company_id
+     * @return array
+     */
+    function getCompanyMonthlyRatingUsage($conn, $company_id) {
+        $company_id = (int)$company_id;
+        if ($company_id <= 0 || !is_object($conn)) {
+            return ['used' => 0, 'limit' => 0, 'is_reached' => false, 'is_unlimited' => true, 'plan_name' => ''];
+        }
+        $t_stmt = $conn->prepare("SELECT tenant_id FROM customers WHERE id = ? LIMIT 1");
+        $tenant_id = 0;
+        if ($t_stmt) {
+            $t_stmt->bind_param("i", $company_id);
+            $t_stmt->execute();
+            if ($row = $t_stmt->get_result()->fetch_assoc()) {
+                $tenant_id = (int)($row['tenant_id'] ?? 0);
+            }
+            $t_stmt->close();
+        }
+        return getTenantMonthlyRatingUsage($conn, $tenant_id);
+    }
+}
+
+if (!function_exists('hasCustomerReviewedThisMonth')) {
+    /**
+     * Check whether a customer (identified by email) has already submitted a review
+     * for the specified company during the current calendar month.
+     *
+     * @param mysqli $conn
+     * @param int $company_id
+     * @param string $email
+     * @return bool
+     */
+    function hasCustomerReviewedThisMonth($conn, $company_id, $email) {
+        $company_id = (int)$company_id;
+        $email      = trim(strtolower((string)$email));
+        if ($company_id <= 0 || $email === '' || !is_object($conn)) {
+            return false;
+        }
+
+        $stmt = $conn->prepare("
+            SELECT id
+              FROM ratings
+             WHERE company_id = ?
+               AND LOWER(TRIM(customer_email)) = ?
+               AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+             LIMIT 1
+        ");
+        if (!$stmt) {
+            return false;
+        }
+        $stmt->bind_param("is", $company_id, $email);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $has_reviewed = ($res && $res->num_rows > 0);
+        $stmt->close();
+
+        return $has_reviewed;
     }
 }
 ?>

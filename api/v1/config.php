@@ -5,8 +5,26 @@
 defined('OPTIBIZ_API_V1') or define('OPTIBIZ_API_V1', true);
 defined('RATE_ROOT_PATH') or define('RATE_ROOT_PATH', dirname(__DIR__, 2));
 
-// Environment-aware JWT secret with robust fallback
-define('API_JWT_SECRET', getenv('OPTIBIZ_JWT_SECRET') ?: 'optibiz_jwt_secret_key_prod_sec_hash_987412389!@#$');
+// Environment-aware JWT secret — NO fallback. A high-entropy secret MUST be
+// provided via the OPTIBIZ_JWT_SECRET environment variable. Falling back to
+// a hard-coded value would let anyone who reads the source forge tokens.
+$jwtSecret = getenv('OPTIBIZ_JWT_SECRET');
+if (!$jwtSecret) {
+    $jwtSecret = getenv('JWT_SECRET');      // common alternative variable name
+}
+if (!$jwtSecret || strlen($jwtSecret) < 32) {
+    // Fail hard so misconfiguration is caught at deploy time, not silently
+    // used against production traffic.
+    if (PHP_SAPI === 'cli') {
+        fwrite(STDERR, "FATAL: OPTIBIZ_JWT_SECRET is not set or is too short (<32 chars).\n");
+        exit(1);
+    }
+    http_response_code(503);
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'status' => 503, 'message' => 'API configuration error. Contact your administrator.']);
+    exit;
+}
+define('API_JWT_SECRET', $jwtSecret);
 define('API_JWT_ISSUER', 'optibiz-api');
 define('API_JWT_AUDIENCE', 'optibiz-mobile-app');
 

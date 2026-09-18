@@ -496,9 +496,13 @@ include __DIR__ . '/_shell.php';
 
 /* QR Container */
 .stand-qr-box {
+    box-sizing: border-box;
+    width: 232px;
     border-radius: 16px;
     padding: 16px;
-    display: inline-block;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
     margin-bottom: 18px;
     box-shadow: 0 10px 25px rgba(0,0,0,0.15);
 }
@@ -714,47 +718,58 @@ if (typeof html2canvas === 'undefined') {
 // ─────────────────────────────────────────────────────────────
 //  Local QR Code Generator (same-origin, zero CORS issues)
 // ─────────────────────────────────────────────────────────────
-var qrTargetUrl = <?php echo json_encode($public_url); ?>;
-var qrDataUrl   = null; // cached data URL from local QRCode.js generation
+var qrTargetUrl   = <?php echo json_encode($public_url); ?>;
+var qrDataUrl     = null; // cached data URL from local QRCode.js generation
+var qrReadyPromise = null;
 
 // ─── Generate QR into hidden off-page div (never touches visible card) ────────
 function initHiddenQr() {
-    var gen = document.getElementById('qrHiddenGen');
-    if (!gen) return;
-    if (typeof QRCode === 'undefined') { setTimeout(initHiddenQr, 100); return; }
+    if (qrDataUrl) return Promise.resolve(qrDataUrl);
+    if (qrReadyPromise) return qrReadyPromise;
 
-    gen.innerHTML = '';
-    new QRCode(gen, {
-        text: qrTargetUrl,
-        width:  500,
-        height: 500,
-        colorDark:  '#000000',
-        colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.H
-    });
-
-    // Extract data URL after QRCode.js finishes (it has an internal async step)
-    // Immediately wipe innerHTML after extraction so the canvas never leaks into view.
-    function extractDataUrl() {
-        if (qrDataUrl) { gen.innerHTML = ''; return; } // already done
-
-        var canvas = gen.querySelector('canvas');
-        if (canvas) {
-            try {
-                qrDataUrl = canvas.toDataURL('image/png');
-                gen.innerHTML = ''; // ← destroy immediately
-                return;
-            } catch (e) {}
-        }
-        var img = gen.querySelector('img');
-        if (img && img.src && img.src.indexOf('data:') === 0) {
-            qrDataUrl = img.src;
-            gen.innerHTML = ''; // ← destroy immediately
-        }
+    if (typeof QRCode === 'undefined') {
+        return new Promise(function(resolve, reject) {
+            setTimeout(function() { initHiddenQr().then(resolve, reject); }, 100);
+        });
     }
-    // QRCode.js converts canvas → img asynchronously — try at 80ms and 500ms
-    setTimeout(extractDataUrl, 80);
-    setTimeout(extractDataUrl, 500);
+
+    qrReadyPromise = new Promise(function(resolve, reject) {
+        var gen = document.getElementById('qrHiddenGen');
+        if (!gen) { reject(new Error('QR generator not found.')); return; }
+
+        gen.innerHTML = '';
+        new QRCode(gen, {
+            text: qrTargetUrl,
+            width: 500,
+            height: 500,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H
+        });
+
+        var attempts = 0;
+        function finish(dataUrl) {
+            qrDataUrl = dataUrl;
+            gen.innerHTML = '';
+            var visibleQr = document.getElementById('qrImage');
+            if (visibleQr) visibleQr.src = dataUrl;
+            resolve(dataUrl);
+        }
+        function extractDataUrl() {
+            if (qrDataUrl) { resolve(qrDataUrl); return; }
+            var canvas = gen.querySelector('canvas');
+            if (canvas) {
+                try { finish(canvas.toDataURL('image/png')); return; } catch (e) {}
+            }
+            var img = gen.querySelector('img');
+            if (img && img.src && img.src.indexOf('data:') === 0) { finish(img.src); return; }
+            attempts += 1;
+            if (attempts < 20) { setTimeout(extractDataUrl, 50); }
+            else { qrReadyPromise = null; reject(new Error('QR code could not be generated.')); }
+        }
+        extractDataUrl();
+    });
+    return qrReadyPromise;
 }
 
 document.addEventListener('DOMContentLoaded', initHiddenQr);
@@ -779,29 +794,17 @@ document.addEventListener('click', function(e) {
     if (btn && !btn.contains(e.target)) { closeDlMenu(); }
 });
 
-// ─── Paint QR data URL onto canvas over the blank QR slot ────────────────────
-function compositeQr(targetCanvas, qrSrc, cardEl, qrEl) {
-    return new Promise(function(resolve) {
-        if (!qrSrc) { resolve(targetCanvas); return; }
-        var scale    = targetCanvas.width / cardEl.getBoundingClientRect().width;
-        var cardRect = cardEl.getBoundingClientRect();
-        var qrRect   = qrEl.getBoundingClientRect();
-        var x = (qrRect.left - cardRect.left) * scale;
-        var y = (qrRect.top  - cardRect.top)  * scale;
-        var w = qrRect.width  * scale;
-        var h = qrRect.height * scale;
-
-        var img = new Image();
-        img.onload = function() {
-            // White background behind QR (in case card is dark)
-            var ctx = targetCanvas.getContext('2d');
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(x, y, w, h);
-            ctx.drawImage(img, x, y, w, h);
-            resolve(targetCanvas);
-        };
-        img.onerror = function() { resolve(targetCanvas); }; // graceful
-        img.src = qrSrc;
+// ─── Ensure the visible QR is local before html2canvas captures the card ─────
+function prepareQrForCapture() {
+    return initHiddenQr().then(function(dataUrl) {
+        var visibleQr = document.getElementById('qrImage');
+        if (!visibleQr) throw new Error('Visible QR image not found.');
+        if (visibleQr.complete && visibleQr.naturalWidth > 0 && visibleQr.src === dataUrl) return;
+        return new Promise(function(resolve, reject) {
+            visibleQr.onload = function() { resolve(); };
+            visibleQr.onerror = function() { reject(new Error('QR image could not load.')); };
+            visibleQr.src = dataUrl;
+        });
     });
 }
 
@@ -809,25 +812,20 @@ function compositeQr(targetCanvas, qrSrc, cardEl, qrEl) {
 function downloadFullDesign() {
     closeDlMenu();
     var card  = document.getElementById('standCard');
-    var qrImg = document.getElementById('qrImage');
     if (!card) { alert('Stand card not found.'); return; }
 
     var mainBtn  = document.querySelector('.dl-split-main');
     var origText = mainBtn ? mainBtn.innerHTML : '';
     if (mainBtn) { mainBtn.innerHTML = '⏳ Capturing…'; mainBtn.disabled = true; }
 
-    html2canvas(card, {
+    prepareQrForCapture().then(function() {
+        return html2canvas(card, {
         scale: 2,
-        useCORS: true,
-        allowTaint: true,
+        useCORS: false,
+        allowTaint: false,
         backgroundColor: null,
         logging: false
-    }).then(function(canvas) {
-        // Paint local QR data URL over the blank spot left by CORS-blocked img
-        if (qrDataUrl && qrImg) {
-            return compositeQr(canvas, qrDataUrl, card, qrImg);
-        }
-        return canvas;
+        });
     }).then(function(canvas) {
         var link = document.createElement('a');
         link.download = 'stand-card-<?php echo preg_replace('/[^a-z0-9]/i', '-', strtolower($brand_name)); ?>.png';
@@ -879,96 +877,32 @@ function onSizeChange(val) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  handlePrint: open a blank popup containing ONLY the card
-//  so the admin-shell layout never interferes with printing
+//  handlePrint: open qr_print.php in a new tab with current
+//  customization state passed as URL params
 // ─────────────────────────────────────────────────────────────
 function handlePrint() {
     var selectedSize = document.getElementById('printSize').value;
-    var config = printSizeConfigs[selectedSize] || printSizeConfigs['a5'];
+    var theme = document.getElementById('standCard').className.match(/theme-\w+/);
+    theme = theme ? theme[0] : 'theme-dark';
+    var headline = document.getElementById('headlineText') ? document.getElementById('headlineText').textContent.trim() : '';
+    var subtext  = document.getElementById('subheadlineText') ? document.getElementById('subheadlineText').textContent.trim() : '';
 
-    // Resolve @page size string
-    var pageSize = config.pageSize;
+    var params = new URLSearchParams({
+        size:  selectedSize,
+        theme: theme,
+        headline: headline,
+        subtext:  subtext
+    });
+
+    // Custom size params
     if (selectedSize === 'custom') {
-        var w    = parseFloat(document.getElementById('customW').value)    || 14.8;
-        var h    = parseFloat(document.getElementById('customH').value)    || 21;
-        var unit = document.getElementById('customUnit').value             || 'cm';
-        pageSize = w + unit + ' ' + h + unit + ' portrait';
+        params.set('customW',    document.getElementById('customW')    ? document.getElementById('customW').value    : '14.8');
+        params.set('customH',    document.getElementById('customH')    ? document.getElementById('customH').value    : '21');
+        params.set('customUnit', document.getElementById('customUnit') ? document.getElementById('customUnit').value : 'cm');
     }
 
-    // Clone the live card (captures current theme / text / visibility tweaks)
-    var cardHtml = document.getElementById('standCard').outerHTML;
-
-    // Self-contained HTML document for the popup (all CSS inlined)
-    var popupHtml =
-        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print Stand Card</title>' +
-        '<style>' +
-        '@page { size: ' + pageSize + '; margin: 10mm; }' +
-        'html,body{margin:0;padding:0;background:#fff;font-family:system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}' +
-        'body{display:flex;justify-content:center;align-items:flex-start;}' +
-        /* Card */
-        '.table-tent-card{border-radius:20px;padding:32px 28px;text-align:center;position:relative;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;page-break-inside:avoid;}' +
-        /* Dark theme */
-        '.table-tent-card.theme-dark{background:#091a27!important;border:2px solid #1a354b;color:#f8fafc;}' +
-        '.table-tent-card.theme-dark .stand-brand-name{color:#fff;}' +
-        '.table-tent-card.theme-dark .stand-headline{color:#c2f542;}' +
-        '.table-tent-card.theme-dark .stand-subtext{color:#94a3b8;}' +
-        '.table-tent-card.theme-dark .stand-stars-banner{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);}' +
-        '.table-tent-card.theme-dark .stand-qr-box{background:#fff;}' +
-        '.table-tent-card.theme-dark .stand-whatsapp-pill{background:rgba(37,211,102,0.12);color:#86efac;border:1px solid rgba(37,211,102,0.25);}' +
-        '.table-tent-card.theme-dark .stand-footer{color:#64748b;border-top-color:rgba(255,255,255,0.08);}' +
-        /* Light theme */
-        '.table-tent-card.theme-light{background:#fff!important;border:2px solid #0f172a;color:#0f172a;}' +
-        '.table-tent-card.theme-light .stand-brand-name{color:#0f172a;}' +
-        '.table-tent-card.theme-light .stand-headline{color:#0f172a;}' +
-        '.table-tent-card.theme-light .stand-subtext{color:#475569;}' +
-        '.table-tent-card.theme-light .stand-badge{background:#e2e8f0;color:#0f172a;}' +
-        '.table-tent-card.theme-light .stand-stars-banner{background:#f8fafc;border:1px solid #e2e8f0;color:#0f172a;}' +
-        '.table-tent-card.theme-light .stand-qr-box{background:#f8fafc;border:2px solid #e2e8f0;}' +
-        '.table-tent-card.theme-light .stand-step{background:#f1f5f9;color:#334155;}' +
-        '.table-tent-card.theme-light .stand-step-num{background:#0f172a;color:#fff;}' +
-        '.table-tent-card.theme-light .stand-whatsapp-pill{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}' +
-        '.table-tent-card.theme-light .stand-footer{color:#64748b;border-top-color:#e2e8f0;}' +
-        /* Elements */
-        '.stand-header{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:16px;}' +
-        '.stand-logo{width:44px;height:44px;border-radius:12px;object-fit:cover;background:#fff;}' +
-        '.stand-avatar{width:44px;height:44px;border-radius:12px;background:#c2f542;color:#091a27;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center;}' +
-        '.stand-brand-meta{text-align:left;}' +
-        '.stand-brand-name{margin:0;font-size:17px;font-weight:800;line-height:1.2;}' +
-        '.stand-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:rgba(194,245,66,0.18);color:#c2f542;margin-top:3px;}' +
-        '.stand-stars-banner{border-radius:12px;padding:8px 14px;display:inline-flex;align-items:center;gap:8px;margin-bottom:18px;}' +
-        '.stand-stars{color:#fbbf24;font-size:16px;letter-spacing:1px;}' +
-        '.stand-score{font-weight:800;font-size:14px;}' +
-        '.stand-review-count{font-size:11.5px;opacity:.8;}' +
-        '.stand-cta-box{margin-bottom:20px;}' +
-        '.stand-headline{margin:0 0 6px;font-size:20px;font-weight:800;letter-spacing:-.5px;}' +
-        '.stand-subtext{margin:0;font-size:12.5px;line-height:1.4;}' +
-        '.stand-qr-box{border-radius:16px;padding:16px;display:inline-block;margin-bottom:18px;}' +
-        '.stand-qr-container{display:flex;justify-content:center;align-items:center;width:200px;height:200px;margin:0 auto;overflow:hidden;flex-shrink:0;}' +
-        '.stand-qr-container img,.stand-qr-container canvas{width:200px!important;height:200px!important;max-width:200px!important;max-height:200px!important;min-width:unset!important;min-height:unset!important;display:block!important;flex-shrink:0!important;object-fit:contain;}' +
-        '.stand-qr-scan-badge{margin-top:8px;background:#0f172a;color:#c2f542;padding:4px 10px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:1px;display:inline-block;}' +
-        '.stand-steps-row{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:16px;font-size:11px;font-weight:700;}' +
-        '.stand-step{background:rgba(255,255,255,0.06);padding:5px 10px;border-radius:99px;display:flex;align-items:center;gap:5px;}' +
-        '.stand-step-num{width:15px;height:15px;border-radius:50%;background:#c2f542;color:#091a27;font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:900;}' +
-        '.stand-step-arrow{opacity:.4;font-size:12px;}' +
-        '.stand-whatsapp-pill{font-size:11px;line-height:1.4;padding:8px 12px;border-radius:10px;display:flex;align-items:center;gap:8px;text-align:left;margin-bottom:16px;}' +
-        '.stand-whatsapp-pill svg{width:16px;height:16px;fill:currentColor;flex-shrink:0;}' +
-        '.stand-footer{font-size:10px;padding-top:12px;border-top:1px solid #e2e8f0;display:flex;flex-direction:column;gap:3px;}' +
-        '.stand-url-hint{font-family:monospace;font-size:9px;opacity:.7;word-break:break-all;}' +
-        '.stand-fold-guide{display:block!important;font-size:9px;text-align:center;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-bottom:16px;padding-bottom:8px;border-bottom:1px dashed #cbd5e1;}' +
-        '.no-screen{display:block!important;}' +
-        '</style></head><body>' +
-        cardHtml +
-        '<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>' +
-        '</body></html>';
-
-    var popup = window.open('', '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
-    if (!popup) {
-        alert('Pop-up blocked! Please allow pop-ups for this site and try again.');
-        return;
-    }
-    popup.document.open();
-    popup.document.write(popupHtml);
-    popup.document.close();
+    var url = 'qr_print.php?' + params.toString();
+    window.open(url, '_blank');
 }
 
 // ─────────────────────────────────────────────────────────────

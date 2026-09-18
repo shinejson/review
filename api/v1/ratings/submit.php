@@ -55,6 +55,16 @@ $googleStoreUrl  = function_exists('cleanGoogleReviewUrl')
     ? cleanGoogleReviewUrl($company['google_store_url'] ?? '') 
     : trim((string)($company['google_store_url'] ?? ''));
 
+// 3b. Verify Company Monthly Rating Quota
+if (function_exists('getTenantMonthlyRatingUsage')) {
+    $companyUsage = getTenantMonthlyRatingUsage($conn, $tenantId);
+    if (!empty($companyUsage['is_reached'])) {
+        api_send_error('This business has reached its monthly verified review capacity for this billing period.', 403, [
+            'code' => 'monthly_quota_exceeded'
+        ]);
+    }
+}
+
 // Sanitize review text
 $customerName  = trim(strip_tags((string)($input['customer_name'] ?? '')));
 if (empty($customerName)) {
@@ -69,6 +79,15 @@ if (!empty($customerEmail)) {
         api_send_error('Validation error: Invalid email format.', 422, ['customer_email' => 'Please provide a valid email address.']);
     }
     $customerEmail = mb_substr($customerEmail, 0, 100);
+
+    // 3c. Verify Customer Monthly Cooldown (1 review per company per month)
+    if (function_exists('hasCustomerReviewedThisMonth')) {
+        if (hasCustomerReviewedThisMonth($conn, $companyId, $customerEmail)) {
+            api_send_error('You have already submitted a review for this business this month. Thank you for your feedback!', 409, [
+                'code' => 'customer_monthly_limit_reached'
+            ]);
+        }
+    }
 }
 
 $comment = trim((string)($input['comment'] ?? ''));

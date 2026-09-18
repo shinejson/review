@@ -1365,7 +1365,7 @@ if ($cat_res) {
                 <a href="index.php#how-it-works">How It Works</a>
             </nav>
             <div class="nav-actions">
-                <a href="admin/login.php" class="btn-signin">Sign In</a>
+                <a href="<?php echo admin_url('login.php'); ?>" class="btn-signin">Sign In</a>
                 <button type="button" class="btn-quote" onclick="openModal()">
                     <span>Get Started</span> <i class="fa-solid fa-arrow-right"></i>
                 </button>
@@ -1406,7 +1406,7 @@ if ($cat_res) {
                 <div class="mobile-nav-divider"></div>
 
                 <div class="mobile-nav-buttons">
-                    <a href="admin/login.php" class="mobile-btn-signin">
+                    <a href="<?php echo admin_url('login.php'); ?>" class="mobile-btn-signin">
                         <i class="fa-solid fa-arrow-right-to-bracket"></i>
                         <span>Sign In to Portal</span>
                     </a>
@@ -1926,7 +1926,7 @@ if ($cat_res) {
             <div>
                 <h4 class="footer-col-title">Workspace</h4>
                 <ul class="footer-links-list">
-                    <li><a href="admin/login.php">Business Admin Login</a></li>
+                    <li><a href="<?php echo admin_url('login.php'); ?>">Business Admin Login</a></li>
                     <li><a href="superadmin/login.php">Control Center</a></li>
                     <li><a href="#" onclick="openModal(); return false;">Request Custom Quote</a></li>
                 </ul>
@@ -1940,7 +1940,7 @@ if ($cat_res) {
             <div style="display:flex;gap:20px">
                 <a href="pricing.php" style="color:#94a3b8;text-decoration:none">Pricing</a>
                 <a href="features.php" style="color:#94a3b8;text-decoration:none">Features</a>
-                <a href="admin/login.php" style="color:#94a3b8;text-decoration:none">Sign In</a>
+                <a href="<?php echo admin_url('login.php'); ?>" style="color:#94a3b8;text-decoration:none">Sign In</a>
             </div>
         </div>
     </footer>

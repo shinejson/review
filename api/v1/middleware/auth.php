@@ -64,16 +64,17 @@ function api_authenticate_bearer(mysqli $conn): array {
         $cStmt->close();
     }
 
-    $authContext = [
+        $authContext = [
         'tenant_id'           => (int)$tenant['id'],
         'public_id'           => (string)$tenant['public_id'],
         'company_name'        => (string)$tenant['company_name'],
         'email'               => (string)$tenant['email'],
         'username'            => (string)$tenant['username'],
-        'role'                => 'tenant_admin',
+        'role'                => isset($payload['role']) ? (string)$payload['role'] : 'tenant_admin',
         'subscription_status' => (string)$tenant['subscription_status'],
         'plan_id'             => (int)$tenant['plan_id'],
         'company_id'          => $companyId,
+        'team_member_id'      => isset($payload['team_member_id']) ? (int)$payload['team_member_id'] : 0,
         'token_claims'        => $payload
     ];
 

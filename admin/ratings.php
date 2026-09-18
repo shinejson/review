@@ -28,6 +28,9 @@ ensureRatingQuestionsCompanyColumn($conn);
 // POST Request Handlers (CRUD Operations)
 // ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    if (!sa_csrf_ok()) {
+        $error = "Your session expired. Please refresh the page and try again.";
+    } else {
     $action = $_POST['action'];
 
     // 1. CREATE RATING & REVIEW
@@ -121,8 +124,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             if ($valid) {
                 $new_val = $current_val ? 0 : 1;
-                $stmt = $conn->prepare("UPDATE ratings SET is_verified = ? WHERE id = ?");
-                $stmt->bind_param("ii", $new_val, $rating_id);
+                // When approving a pending claim, stamp a real approved type so
+                // pending markers never display as verified. When unmarking,
+                // clear the type as well.
+                if ($new_val === 1) {
+                    $stmt = $conn->prepare("UPDATE ratings SET is_verified = 1, verification_type = CASE WHEN verification_type LIKE '%pending%' OR verification_type IS NULL OR verification_type = '' THEN 'manual' ELSE verification_type END WHERE id = ?");
+                    $stmt->bind_param("i", $rating_id);
+                } else {
+                    $stmt = $conn->prepare("UPDATE ratings SET is_verified = 0, verification_type = NULL WHERE id = ?");
+                    $stmt->bind_param("i", $rating_id);
+                }
                 if ($stmt->execute()) {
                     $success = $new_val ? "Review #$rating_id marked as Verified Customer (Badge active)!" : "Review #$rating_id unmarked as verified.";
                     admin_log_activity($conn, 'review_verify', $new_val ? 'Marked a review as a verified customer' : 'Removed the verified badge from a review', 'rating', $rating_id);
@@ -331,6 +342,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
         }
     }
+    } // end CSRF-validated POST block
 }
 
 // ============================================================
@@ -671,6 +683,7 @@ include __DIR__ . '/_shell.php';
         </div>
 
         <form method="POST" action="ratings.php" id="ratingForm">
+            <?php echo sa_csrf_field(); ?>
             <input type="hidden" name="action" id="formAction" value="create_rating">
             <input type="hidden" name="rating_id" id="formRatingId" value="0">
             <input type="hidden" name="rating" id="formRatingScore" value="5">
@@ -949,6 +962,7 @@ include __DIR__ . '/_shell.php';
                                     <div class="actions-dropdown-menu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#ffffff;border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);min-width:180px;z-index:1000;">
                                         <?php if (!empty($r['is_escalated'])): ?>
                                             <form method="POST" action="ratings.php" style="margin:0;">
+                                                <?php echo sa_csrf_field(); ?>
                                                 <input type="hidden" name="action" value="toggle_escalation">
                                                 <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
                                                 <button type="submit" class="dropdown-action-btn" style="<?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? 'color:#15803d;' : 'color:#b45309;'; ?>">
@@ -958,7 +972,8 @@ include __DIR__ . '/_shell.php';
                                         <?php endif; ?>
                                         
                                         <form method="POST" action="ratings.php" style="margin:0;">
-                                            <input type="hidden" name="action" value="toggle_verification">
+                                            <?php echo sa_csrf_field(); ?>
+                                                <input type="hidden" name="action" value="toggle_verification">
                                             <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
                                             <button type="submit" class="dropdown-action-btn" style="<?php echo !empty($r['is_verified']) ? 'color:#16a34a;' : 'color:#64748b;'; ?>">
                                                 <?php echo !empty($r['is_verified']) ? '✓ Remove Verification' : '○ Mark as Verified'; ?>
@@ -1209,7 +1224,8 @@ include __DIR__ . '/_shell.php';
                     <!-- Reply Form (Collapsible) -->
                     <div id="reply-form-<?php echo (int)$r['id']; ?>" style="display:none;margin-top:14px;padding:14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);">
                         <form method="POST" action="ratings.php">
-                            <input type="hidden" name="action" value="reply_rating">
+                            <?php echo sa_csrf_field(); ?>
+                                                <input type="hidden" name="action" value="reply_rating">
                             <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
                             <label style="display:block;font-size:12.5px;font-weight:700;margin-bottom:6px;color:var(--ink);">
                                 <?php echo $has_reply ? 'Edit Your Response:' : 'Write a Response to ' . htmlspecialchars($r['customer_name']) . ':'; ?>
@@ -1229,7 +1245,8 @@ include __DIR__ . '/_shell.php';
                             </button>
 
                             <form method="POST" action="ratings.php" style="display:inline;margin:0;">
-                                <input type="hidden" name="action" value="toggle_verification">
+                                <?php echo sa_csrf_field(); ?>
+                                                <input type="hidden" name="action" value="toggle_verification">
                                 <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
                                 <button type="submit" class="btn btn-secondary" style="padding:6px 14px;font-size:12px;<?php echo !empty($r['is_verified']) ? 'color:#16a34a;' : ''; ?>" title="<?php echo !empty($r['is_verified']) ? 'Remove Verified Badge' : 'Mark as Verified Customer'; ?>">
                                     <?php echo !empty($r['is_verified']) ? '✓ Verified (Unverify)' : '○ Verify Customer'; ?>
@@ -1238,7 +1255,8 @@ include __DIR__ . '/_shell.php';
 
                             <?php if (!empty($r['is_escalated'])): ?>
                                 <form method="POST" action="ratings.php" style="display:inline;margin:0;">
-                                    <input type="hidden" name="action" value="toggle_escalation">
+                                    <?php echo sa_csrf_field(); ?>
+                                                <input type="hidden" name="action" value="toggle_escalation">
                                     <input type="hidden" name="rating_id" value="<?php echo (int)$r['id']; ?>">
                                     <button type="submit" class="btn btn-secondary" style="padding:6px 14px;font-size:12px;<?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? 'color:#15803d;border-color:rgba(21,128,61,0.4);' : 'color:#b45309;border-color:rgba(217,119,6,0.4);background:#fffbeb;'; ?>" title="<?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? 'Reopen as pending complaint' : 'Mark issue as resolved'; ?>">
                                         <?php echo (($r['escalation_status'] ?? 'pending') === 'resolved') ? '↺ Reopen Issue' : '✓ Mark Resolved'; ?>
@@ -1303,6 +1321,7 @@ include __DIR__ . '/_shell.php';
         <form method="POST" action="ratings.php" id="questionForm">
             <input type="hidden" name="action" id="questionFormAction" value="create_question">
             <input type="hidden" name="question_id" id="questionFormId" value="0">
+            <?php echo sa_csrf_field(); ?>
             <input type="hidden" name="tenant_id" id="questionTenantId" value="<?php echo (int)$current_tenant_id; ?>">
 
             <div class="form-group">
@@ -1375,7 +1394,8 @@ include __DIR__ . '/_shell.php';
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 6.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"></path><line x1="12" y1="12" x2="18" y2="6"></line></svg>
                                 </button>
                                 <form method="POST" action="ratings.php" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this rating question?');">
-                                    <input type="hidden" name="action" value="delete_question">
+                                    <?php echo sa_csrf_field(); ?>
+                                                <input type="hidden" name="action" value="delete_question">
                                     <input type="hidden" name="question_id" value="<?php echo $q['id']; ?>">
                                     <button type="submit" class="btn-icon btn-icon-delete" title="Delete Question" style="background:#ef4444;color:#ffffff;border:none;border-radius:6px;width:32px;height:32px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:14px;">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>

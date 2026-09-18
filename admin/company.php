@@ -98,6 +98,11 @@ $error   = '';
 // POST — save company profile
 // ============================================================
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['action'] ?? '') === 'update_profile') {
+    if (!sa_csrf_ok()) {
+        $_SESSION['error'] = 'Your session expired. Please refresh the page and try again.';
+        header('Location: company.php');
+        exit;
+    }
     $company_name  = trim($_POST['company_name'] ?? '');
     $email         = trim($_POST['email'] ?? '');
     $phone         = trim($_POST['phone'] ?? '');
@@ -419,6 +424,7 @@ include __DIR__ . '/_shell.php';
         </div>
 
         <form method="POST" action="company.php">
+            <?php echo sa_csrf_field(); ?>
             <input type="hidden" name="action" value="update_profile">
             <input type="hidden" name="company_id" value="<?php echo (int)($company_profile['id'] ?? 0); ?>">
             <div class="form-grid">

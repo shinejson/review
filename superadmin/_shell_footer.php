@@ -1,21 +1,25 @@
         </main>
 
         <footer class="sa-foot" role="contentinfo">
-            <div class="sa-foot-brand">
+
+            <!-- Left: Status + branding -->
+            <div class="sa-foot-left">
                 <div class="sa-foot-status" title="Platform systems are running normally">
                     <span class="sa-pulse-dot" aria-hidden="true"></span>
                     <span>All Systems Operational</span>
                 </div>
-                <span class="sa-foot-sep">&bull;</span>
+                <span class="sa-foot-sep" aria-hidden="true"></span>
                 <span class="sa-foot-copy">&copy; <?php echo date('Y'); ?> <?php echo sa_e(sa_setting($conn, 'site_name', 'Optibiz')); ?> Control Center</span>
                 <span class="sa-foot-badge">v2.4 Enterprise</span>
             </div>
-            <div class="sa-foot-actions">
+
+            <!-- Right: Quick nav + back to top -->
+            <div class="sa-foot-right">
                 <nav class="sa-foot-nav" aria-label="Quick navigation links">
                     <a href="<?php echo $sa_base; ?>index.php" target="_blank" rel="noopener" title="Open public site">
                         <?php echo sa_icon('globe'); ?> <span>Public site</span>
                     </a>
-                    <a href="<?php echo $sa_base; ?>admin/index.php" title="Open tenant admin portal">
+                    <a href="<?php echo sa_e($BASE . admin_url('index.php')); ?>" title="Open tenant admin portal">
                         <?php echo sa_icon('building'); ?> <span>Tenant portal</span>
                     </a>
                     <a href="<?php echo $sa_base; ?>superadmin/finance.php" title="Financial operations and ledger">
@@ -29,6 +33,7 @@
                     <?php echo sa_icon('chevron-up'); ?> <span>Back to top</span>
                 </a>
             </div>
+
         </footer>
     </div>
 </div>

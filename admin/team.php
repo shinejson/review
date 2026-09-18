@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/logging_helpers.php';
+require_once dirname(__DIR__) . '/includes/login_attempts.php';
 requireLogin();
 ensureTeamSchema($conn);
 
@@ -53,6 +54,11 @@ $own_member_id = (int)($_SESSION['team_member_id'] ?? 0);
 // POST — create / update / toggle / delete team members
 // ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $is_tenant) {
+    if (!sa_csrf_ok()) {
+        $_SESSION['error'] = 'Your session expired. Please refresh the page and try again.';
+        header('Location: team.php');
+        exit;
+    }
     $action    = $_POST['action'] ?? '';
     $member_id = (int)($_POST['member_id'] ?? 0);
 
@@ -159,6 +165,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $is_tenant) {
             $_SESSION['success'] = 'Team member removed.';
             admin_log_activity($conn, 'team_delete', 'Removed the team member "' . (string) ($member['full_name'] ?? ('#' . $member_id)) . '"', 'team_member', $member_id);
         }
+    } elseif ($action === 'unlock' && $member) {
+        // Unlock a locked account
+        if (unlockUserAccount($conn, 'team_members', $member_id)) {
+            $_SESSION['success'] = 'Account "' . htmlspecialchars($member['full_name']) . '" has been unlocked. They can sign in again.';
+            admin_log_activity($conn, 'team_unlock', 'Unlocked the team member account "' . $member['full_name'] . '"', 'team_member', $member_id);
+        } else {
+            $_SESSION['error'] = 'Could not unlock the account.';
+        }
     }
 
     header('Location: team.php');
@@ -173,6 +187,7 @@ if (isset($_SESSION['error']))   { $error   = $_SESSION['error'];   unset($_SESS
 $team_members = [];
 $total_active = 0;
 $total_managers = 0;
+$total_locked = 0;
 if ($is_tenant && $tenant_id) {
     $tm = $conn->prepare("SELECT * FROM team_members WHERE tenant_id = ? ORDER BY is_active DESC, full_name ASC");
     $tm->bind_param("i", $tenant_id);
@@ -182,6 +197,9 @@ if ($is_tenant && $tenant_id) {
         $team_members[] = $row_tm;
         if ((int)$row_tm['is_active'] === 1) $total_active++;
         if ($row_tm['role'] === 'manager') $total_managers++;
+        // Check if account is locked
+        $lock_status = getUserLockStatus($conn, 'team_members', (int)$row_tm['id']);
+        if ($lock_status['is_locked']) $total_locked++;
     }
     $tm->close();
 }
@@ -260,6 +278,12 @@ if (!$is_tenant) {
         <strong><?php echo max(0, count($team_members) - $total_active); ?></strong>
         <small>Accounts currently blocked</small>
     </div>
+    <div class="metric-card">
+        <div class="metric-icon red">🔒</div>
+        <span>Locked</span>
+        <strong><?php echo $total_locked; ?></strong>
+        <small>Due to failed login attempts</small>
+    </div>
 </div>
 <!-- ============ Add / Edit Member Card ============ -->
 <div class="form-card" id="addMember" style="padding:26px;margin-bottom:24px;">
@@ -276,7 +300,8 @@ if (!$is_tenant) {
     </div>
 
     <form method="POST" action="team.php">
-        <input type="hidden" name="action" value="<?php echo $edit_member ? 'update' : 'create'; ?>">
+        <?php echo sa_csrf_field(); ?>
+                        <input type="hidden" name="action" value="<?php echo $edit_member ? 'update' : 'create'; ?>">
         <?php if ($edit_member): ?>
         <input type="hidden" name="member_id" value="<?php echo (int)$edit_member['id']; ?>">
         <?php endif; ?>
@@ -371,6 +396,7 @@ if (!$is_tenant) {
                 <th style="padding:8px 10px;">Access</th>
                 <th style="padding:8px 10px;">Status</th>
                 <th style="padding:8px 10px;">Last login</th>
+                <th style="padding:8px 10px;">Lock Status</th>
                 <th style="padding:8px 10px;text-align:right;">Actions</th>
             </tr>
         </thead>
@@ -410,10 +436,32 @@ if (!$is_tenant) {
                 <td style="padding:10px;color:#64748b;font-size:12px;">
                     <?php echo !empty($tm_row['last_login_at']) ? date('M j, Y g:ia', strtotime($tm_row['last_login_at'])) : 'Never'; ?>
                 </td>
+                <td style="padding:10px;">
+                    <?php 
+                    $lock_status = getUserLockStatus($conn, 'team_members', (int)$tm_row['id']);
+                    if ($lock_status['is_locked']): ?>
+                    <span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;background:rgba(239,68,68,0.18);color:#991b1b;">
+                        🔒 Locked
+                    </span>
+                    <?php else: ?>
+                    <span style="font-size:11px;color:#888;">—</span>
+                    <?php endif; ?>
+                </td>
                 <td style="padding:10px;text-align:right;white-space:nowrap;">
                     <a href="team.php?edit=<?php echo (int)$tm_row['id']; ?>" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;font-size:12px;text-decoration:none;">Edit</a>
+                    <?php if ($lock_status['is_locked']): ?>
+                    <form method="POST" action="team.php" style="display:inline-block;margin-left:4px;">
+                        <?php echo sa_csrf_field(); ?>
+                        <input type="hidden" name="action" value="unlock">
+                        <input type="hidden" name="member_id" value="<?php echo (int)$tm_row['id']; ?>">
+                        <button type="submit" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;cursor:pointer;background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.2);color:#991b1b;">
+                            Unlock
+                        </button>
+                    </form>
+                    <?php endif; ?>
                     <?php if ((int)$tm_row['id'] !== $own_member_id): ?>
                     <form method="POST" action="team.php" style="display:inline-block;margin-left:4px;">
+                        <?php echo sa_csrf_field(); ?>
                         <input type="hidden" name="action" value="toggle">
                         <input type="hidden" name="member_id" value="<?php echo (int)$tm_row['id']; ?>">
                         <button type="submit" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;cursor:pointer;">
@@ -421,6 +469,7 @@ if (!$is_tenant) {
                         </button>
                     </form>
                     <form method="POST" action="team.php" style="display:inline-block;margin-left:4px;" onsubmit="return confirm('Remove <?php echo htmlspecialchars(addslashes($tm_row['full_name'])); ?> from the team?');">
+                        <?php echo sa_csrf_field(); ?>
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="member_id" value="<?php echo (int)$tm_row['id']; ?>">
                         <button type="submit" class="btn" style="padding:6px 12px;font-size:12px;background:transparent;border:1px solid #fecaca;color:#b91c1c;border-radius:6px;cursor:pointer;">Delete</button>

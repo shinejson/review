@@ -634,3 +634,16 @@ CREATE TABLE IF NOT EXISTS notifications (
     INDEX idx_notif_type (type),
     INDEX idx_notif_entity (entity_type, entity_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================================
+-- LOGIN ATTEMPT TRACKING (Security: Block after 3 failed tries)
+-- ============================================================
+-- Alter team_members to add login attempt tracking
+ALTER TABLE IF EXISTS team_members ADD COLUMN IF NOT EXISTS failed_login_attempts INT NOT NULL DEFAULT 0;
+ALTER TABLE IF EXISTS team_members ADD COLUMN IF NOT EXISTS last_failed_attempt_at DATETIME NULL;
+ALTER TABLE IF EXISTS team_members ADD COLUMN IF NOT EXISTS account_locked_until DATETIME NULL;
+
+-- Alter tenants to add login attempt tracking
+ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS failed_login_attempts INT NOT NULL DEFAULT 0;
+ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS last_failed_attempt_at DATETIME NULL;
+ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS account_locked_until DATETIME NULL;

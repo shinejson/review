@@ -2,6 +2,26 @@
 RewriteEngine On
 RewriteBase /rate/
 
+# ============================================================
+# Admin panel path aliasing
+# ============================================================
+# The tenant workspace is served under a non-guessable alias
+# (/rate/p7xk2mqw9vrt4zhn/...) and direct browser requests to the
+# real /admin/ path are refused with 403.
+#
+# IMPORTANT: keep the slug below in sync with ADMIN_PATH_ALIAS in
+# config/database.php (or set the OPTIBIZ_ADMIN_PATH_ALIAS env var and
+# update the RewriteRule here to match). Internal rewrites never change
+# THE_REQUEST, so the aliased requests are not blocked by the rule above.
+# NOTE: the pattern must contain NO literal spaces — Apache's tokenizer
+# splits directive arguments on any unescaped space ("bad flag delimiters").
+# \s/\S shorthand keeps it a single argument.
+RewriteCond %{THE_REQUEST} ^[A-Z]+\s\S*/admin/ [NC]
+RewriteRule ^ - [F,L]
+
+RewriteRule ^p7xk2mqw9vrt4zhn/?$ admin/index.php [L,QSA]
+RewriteRule ^p7xk2mqw9vrt4zhn/(.*)$ admin/$1 [L,QSA]
+
 # Allow direct access to real existing files and directories
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d

@@ -618,7 +618,7 @@ include __DIR__ . '/_shell.php';
                 • Generates Real Tenant ID (e.g. OPT-8K2F9Q1A) not database ID<br>
                 • Creates login username from company name<br>
                 • Sends email with secure link to set password (valid 48h)<br>
-                • Tenant can then sign in at /admin/login.php
+                • Tenant can then sign in at /<?php echo function_exists('admin_path_alias') ? admin_path_alias() : 'admin'; ?>/login.php
             </div>
             <div class="sa-form-grid">
                 <div class="sa-field">

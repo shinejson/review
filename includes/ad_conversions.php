@@ -271,7 +271,7 @@ if (!defined('OPTIBIZ_AD_CONVERSIONS_LOADED')) {
             $userData = [
                 'client_ip_address' => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1',
                 'client_user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'Optibiz-Ads-Test/1.0',
-                'event_source_url'  => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . "/rate/admin/ads.php"
+                'event_source_url'  => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . "://" . ($_SERVER['HTTP_HOST'] ?? 'localhost') . "/rate/" . (function_exists('admin_path_alias') ? admin_path_alias() : 'admin') . "/ads.php"
             ];
             return dispatchMetaCapiEvent($cfg, 'test_event', $testData, $userData);
         }

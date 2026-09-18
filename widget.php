@@ -74,6 +74,11 @@ $brand_name     = !empty($tenant_info['company_name']) ? $tenant_info['company_n
 $brand_logo     = !empty($tenant_info['logo']) ? $tenant_info['logo'] : ($company['logo'] ?? '');
 $brand_initials = strtoupper(substr($brand_name, 0, 2));
 
+// Company name used for the public rating URL (slug fallback for companies that
+// have no UUID yet). Mirrors admin/social_card.php and admin/whatsapp_sender.php:
+// the company name is preferred, with the resolved brand name as the fallback.
+$target_name    = !empty($company['company_name']) ? $company['company_name'] : $brand_name;
+
 // Review & Score Stats
 $actual_company_id = $company ? (int)$company['id'] : 0;
 $avg_rating        = $actual_company_id > 0 ? getAverageRating($actual_company_id, $conn) : 5.0;

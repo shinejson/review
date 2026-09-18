@@ -16,6 +16,11 @@ $error   = '';
 
 // Handle Profile Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_profile') {
+    if (!sa_csrf_ok()) {
+        $_SESSION['error'] = "Your session expired. Please refresh the page and try again.";
+        header('Location: settings.php');
+        exit;
+    }
     $company_name = sanitize($_POST['company_name'] ?? '');
     $email = sanitize($_POST['email'] ?? '');
     $phone = sanitize($_POST['phone'] ?? '');
@@ -29,12 +34,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if (!isset($_FILES[$field]) || $_FILES[$field]['error'] === UPLOAD_ERR_NO_FILE) {
                 return null;
             }
-            $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+            if (!is_uploaded_file($_FILES[$field]['tmp_name'])) {
+                return null;
+            }
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             $mime = finfo_file($finfo, $_FILES[$field]['tmp_name']);
             finfo_close($finfo);
 
-            if (!in_array($mime, $allowed_types) || $_FILES[$field]['size'] > 2 * 1024 * 1024) {
+            $mime_to_ext = [
+                'image/jpeg' => 'jpg',
+                'image/png'  => 'png',
+                'image/gif'  => 'gif',
+                'image/webp' => 'webp',
+            ];
+
+            if (!isset($mime_to_ext[$mime]) || $_FILES[$field]['size'] > 2 * 1024 * 1024) {
                 $_SESSION['error'] = "Invalid file type or file too large. Only JPG, PNG, GIF, WEBP allowed (max 2MB).";
                 return false;
             }
@@ -43,8 +57,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if (!is_dir($upload_dir)) {
                 mkdir($upload_dir, 0755, true);
             }
-            $ext = pathinfo($_FILES[$field]['name'], PATHINFO_EXTENSION);
-            $filename = $prefix . '_' . $tenant_id . '_' . time() . '.' . $ext;
+            $ext = $mime_to_ext[$mime];
+            // Belt-and-suspenders: confirm valid image header
+            $img_info = @getimagesize($_FILES[$field]['tmp_name']);
+            if ($img_info === false) {
+                $_SESSION['error'] = "The uploaded file is not a valid image.";
+                return false;
+            }
+            try {
+                $random = bin2hex(random_bytes(16));
+            } catch (Exception $e) {
+                $random = uniqid('', true);
+            }
+            $filename = $prefix . '_' . $tenant_id . '_' . $random . '.' . $ext;
             $target_file = $upload_dir . $filename;
 
             if (move_uploaded_file($_FILES[$field]['tmp_name'], $target_file)) {
@@ -141,6 +166,9 @@ if (isset($_SESSION['error'])) {
 
 // Handle Password Change
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_password') {
+    if (!sa_csrf_ok()) {
+        $error = "Your session expired. Please refresh the page and try again.";
+    } else {
     $current_password = $_POST['current_password'] ?? '';
     $new_password = $_POST['new_password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
@@ -195,6 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
         }
     }
+    } // end CSRF-validated password block
 }
 
 // Sign out of every other browser (this one stays signed in)
@@ -214,6 +243,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // Handle Public Page Customisation Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_public_customization') {
+    if (!sa_csrf_ok()) {
+        $_SESSION['error'] = "Your session expired. Please refresh the page and try again.";
+        header('Location: settings.php#tab=customization');
+        exit;
+    }
     $target_tenant_id = $is_tenant ? (int)$tenant_id : 0;
 
     $custom_settings = [
@@ -254,6 +288,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // Handle Reset Public Page Customisation
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'reset_public_customization') {
+    if (!sa_csrf_ok()) {
+        $_SESSION['error'] = "Your session expired. Please refresh the page and try again.";
+        header('Location: settings.php#tab=customization');
+        exit;
+    }
     $target_tenant_id = $is_tenant ? (int)$tenant_id : 0;
     $defaults = getDefaultPublicPageSettings();
     if (saveTenantPublicPageSettings($conn, $target_tenant_id, $defaults)) {
@@ -448,7 +487,8 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
             </div>
 
                         <form method="POST" action="settings.php" enctype="multipart/form-data">
-                <input type="hidden" name="action" value="update_profile">
+                <?php echo sa_csrf_field(); ?>
+                        <input type="hidden" name="action" value="update_profile">
 
                 <div class="form-grid" style="grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:18px;margin-bottom:18px;">
                     <div class="form-group">
@@ -809,7 +849,8 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
             </div>
 
             <form method="POST" action="settings.php">
-                <input type="hidden" name="action" value="change_password">
+                <?php echo sa_csrf_field(); ?>
+                        <input type="hidden" name="action" value="change_password">
 
                 <div class="form-group" style="margin-bottom:16px;">
                     <label for="p_current">Current Password</label>
@@ -897,6 +938,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
                     <strong style="font-size:13px;color:var(--ink);">Signed-in sessions</strong>
                     <form method="POST" action="settings.php" style="margin:0;">
+                        <?php echo sa_csrf_field(); ?>
                         <input type="hidden" name="action" value="logout_other_sessions">
                         <input type="hidden" name="logout_token" value="<?php echo htmlspecialchars(auth_logout_token()); ?>">
                         <button type="submit" class="btn btn-secondary" style="padding:8px 16px;font-size:12.5px;"
@@ -1523,7 +1565,8 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
             </a>
             <?php endif; ?>
             <form method="POST" action="settings.php" onsubmit="return confirm('Reset all layout and color customisations back to system defaults?');" style="margin:0;">
-                <input type="hidden" name="action" value="reset_public_customization">
+                <?php echo sa_csrf_field(); ?>
+                        <input type="hidden" name="action" value="reset_public_customization">
                 <button type="submit" class="btn btn-secondary" style="padding:9px 13px;font-size:12.5px;color:#ef4444;" title="Revert to original theme defaults">
                     ↺ Reset Defaults
                 </button>
@@ -1535,7 +1578,8 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
     <div class="customizer-grid" id="publicCustomizerGrid">
         <!-- Left: Customizer Form -->
         <form method="POST" action="settings.php" id="publicCustomizerForm">
-            <input type="hidden" name="action" value="update_public_customization">
+            <?php echo sa_csrf_field(); ?>
+                        <input type="hidden" name="action" value="update_public_customization">
 
             <!-- Card 1: 1-Click Color Presets -->
             <div class="collapsible-card customizer-card is-collapsed">

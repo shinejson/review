@@ -263,7 +263,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $_SESSION['user_type'] = 'tenant';
         $_SESSION['admin_username'] = $tenant['username'];
 
-        redirect('../admin/index.php');
+        redirect('../' . admin_url('index.php'));
     }
 }
 
@@ -635,7 +635,7 @@ include __DIR__ . '/_shell.php';
         <div class="sa-dialog-head">
             <div>
                 <h3 id="tenantCreateDialogTitle">Create a tenant — Real ID + Email</h3>
-                <p>Generates OPT-XXXXXXXX ID and emails password setup link. Login at <span class="sa-mono">/admin/login.php</span>.</p>
+                <p>Generates OPT-XXXXXXXX ID and emails password setup link. Login at <span class="sa-mono">/<?php echo admin_path_alias(); ?>/login.php</span>.</p>
             </div>
             <button type="button" class="sa-dialog-close" data-sa-close-dialog aria-label="Close"><?php echo sa_icon('x'); ?></button>
         </div>

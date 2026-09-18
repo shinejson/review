@@ -102,8 +102,16 @@ $tokenClaims = [
     'role'         => $userRole,
 ];
 
-$accessToken  = JWT::generate($tokenClaims, API_JWT_ACCESS_EXPIRY, 'access');
-$refreshToken = JWT::generate(['sub' => (int)$authenticatedUser['id'], 'tenant_id' => (int)$authenticatedUser['id']], API_JWT_REFRESH_EXPIRY, 'refresh');
+ $accessToken  = JWT::generate($tokenClaims, API_JWT_ACCESS_EXPIRY, 'access');
+// Include role + team_member_id in the refresh token so we can re-issue
+// correct access tokens and verify the staff member is still active.
+$refreshClaims = [
+    'sub'             => (int)$authenticatedUser['id'],
+    'tenant_id'       => (int)$authenticatedUser['id'],
+    'role'            => $userRole,
+    'team_member_id'  => isset($authenticatedUser['team_member_id']) ? (int)$authenticatedUser['team_member_id'] : 0,
+];
+$refreshToken = JWT::generate($refreshClaims, API_JWT_REFRESH_EXPIRY, 'refresh');
 
 api_send_success([
     'user' => [

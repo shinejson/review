@@ -259,6 +259,19 @@ for ($i = 5; $i >= 1; $i--) {
 
 // Fetch active rating questions created for this branch or tenant
 $tenant_id = (int)($company['tenant_id'] ?? 0);
+
+// Check company plan monthly rating quota
+$company_monthly_usage = function_exists('getTenantMonthlyRatingUsage') 
+    ? getTenantMonthlyRatingUsage($conn, $tenant_id) 
+    : ['is_reached' => false, 'used' => 0, 'limit' => 0, 'is_unlimited' => true];
+$is_quota_reached = !empty($company_monthly_usage['is_reached']);
+
+// Check customer monthly review cooldown if email is prefilled
+$has_customer_reviewed_this_month = false;
+if (!empty($prefill_email) && function_exists('hasCustomerReviewedThisMonth')) {
+    $has_customer_reviewed_this_month = hasCustomerReviewedThisMonth($conn, $company_id, $prefill_email);
+}
+
 $questions = [];
 if ($tenant_id > 0) {
     ensureRatingQuestionsCompanyColumn($conn);
@@ -2875,6 +2888,28 @@ if ($total_ratings > 0) {
             <h2>Submit Your Review</h2>
             <p class="rt-subtext">General customer rating for <?php echo htmlspecialchars($brand_name); ?></p>
 
+            <?php if ($is_quota_reached): ?>
+                <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:14px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:flex-start;gap:12px;">
+                    <span style="font-size:22px;line-height:1;flex-shrink:0;">🛡️</span>
+                    <div>
+                        <strong style="font-size:14px;color:#92400e;display:block;margin-bottom:3px;">Monthly Review Capacity Reached</strong>
+                        <span style="font-size:13px;color:#b45309;line-height:1.5;display:block;">
+                            This business has reached its verified review limit for this billing period. Feedback submissions will automatically reopen on the 1st of next month.
+                        </span>
+                    </div>
+                </div>
+            <?php elseif ($has_customer_reviewed_this_month): ?>
+                <div style="background:#ecfdf5;border:1.5px solid #a7f3d0;border-radius:14px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:flex-start;gap:12px;">
+                    <span style="font-size:22px;line-height:1;flex-shrink:0;">⭐</span>
+                    <div>
+                        <strong style="font-size:14px;color:#065f46;display:block;margin-bottom:3px;">You've already shared a review this month!</strong>
+                        <span style="font-size:13px;color:#047857;line-height:1.5;display:block;">
+                            Thank you for being a valued customer of <?php echo htmlspecialchars($brand_name); ?>. To ensure authentic customer feedback, reviews are limited to once per calendar month.
+                        </span>
+                    </div>
+                </div>
+            <?php endif; ?>
+
             <form id="generalRatingForm" action="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/api/submit_rating.php'); ?>" method="POST" enctype="multipart/form-data" onsubmit="return validateGeneralForm()">
                 <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
                 <input type="hidden" name="question_id" value="">
@@ -2884,15 +2919,15 @@ if ($total_ratings > 0) {
                     <span id="ratingSentimentHint" class="rt-rating-sentiment-hint" style="color:#64748b;font-size:12px;font-weight:600;"></span>
                 </div>
                 <div class="rt-star-rating-input">
-                    <input type="radio" name="rating" value="5" id="gen_star5" onchange="updateRatingHint(5)">
+                    <input type="radio" name="rating" value="5" id="gen_star5" onchange="updateRatingHint(5)" <?php echo ($is_quota_reached || $has_customer_reviewed_this_month) ? 'disabled' : ''; ?>>
                     <label for="gen_star5" title="5 Stars" onmouseover="updateRatingHint(5)">★</label>
-                    <input type="radio" name="rating" value="4" id="gen_star4" onchange="updateRatingHint(4)">
+                    <input type="radio" name="rating" value="4" id="gen_star4" onchange="updateRatingHint(4)" <?php echo ($is_quota_reached || $has_customer_reviewed_this_month) ? 'disabled' : ''; ?>>
                     <label for="gen_star4" title="4 Stars" onmouseover="updateRatingHint(4)">★</label>
-                    <input type="radio" name="rating" value="3" id="gen_star3" onchange="updateRatingHint(3)">
+                    <input type="radio" name="rating" value="3" id="gen_star3" onchange="updateRatingHint(3)" <?php echo ($is_quota_reached || $has_customer_reviewed_this_month) ? 'disabled' : ''; ?>>
                     <label for="gen_star3" title="3 Stars" onmouseover="updateRatingHint(3)">★</label>
-                    <input type="radio" name="rating" value="2" id="gen_star2" onchange="updateRatingHint(2)">
+                    <input type="radio" name="rating" value="2" id="gen_star2" onchange="updateRatingHint(2)" <?php echo ($is_quota_reached || $has_customer_reviewed_this_month) ? 'disabled' : ''; ?>>
                     <label for="gen_star2" title="2 Stars" onmouseover="updateRatingHint(2)">★</label>
-                    <input type="radio" name="rating" value="1" id="gen_star1" onchange="updateRatingHint(1)">
+                    <input type="radio" name="rating" value="1" id="gen_star1" onchange="updateRatingHint(1)" <?php echo ($is_quota_reached || $has_customer_reviewed_this_month) ? 'disabled' : ''; ?>>
                     <label for="gen_star1" title="1 Star" onmouseover="updateRatingHint(1)">★</label>
                 </div>
                 
@@ -2909,22 +2944,22 @@ if ($total_ratings > 0) {
                                 Verified recipient: <?php echo htmlspecialchars($prefill_name); ?> (Locked)
                             </span>
                         <?php else: ?>
-                            <input type="text" name="customer_name" class="rt-form-input" placeholder="e.g. John Doe" required value="">
+                            <input type="text" name="customer_name" class="rt-form-input" placeholder="e.g. John Doe" required value="" <?php echo ($is_quota_reached || $has_customer_reviewed_this_month) ? 'disabled' : ''; ?>>
                         <?php endif; ?>
                     </div>
                     <div>
                         <label class="rt-review-form-label">Email Address *</label>
-                        <input type="email" name="customer_email" class="rt-form-input" placeholder="mail@example.com" required value="<?php echo htmlspecialchars($prefill_email); ?>">
+                        <input type="email" name="customer_email" class="rt-form-input" placeholder="mail@example.com" required value="<?php echo htmlspecialchars($prefill_email); ?>" <?php echo ($is_quota_reached || $has_customer_reviewed_this_month) ? 'disabled' : ''; ?>>
                     </div>
                 </div>
                 
                 <div style="margin-bottom:16px;">
                     <label class="rt-review-form-label">Phone / WhatsApp <span style="color:#94a3b8;font-weight:500;">(optional — so <?php echo htmlspecialchars($brand_name); ?> can reach you for offers)</span></label>
-                    <input type="tel" name="customer_phone" class="rt-form-input" placeholder="e.g. 024 123 4567" value="">
+                    <input type="tel" name="customer_phone" class="rt-form-input" placeholder="e.g. 024 123 4567" value="" <?php echo ($is_quota_reached || $has_customer_reviewed_this_month) ? 'disabled' : ''; ?>>
                 </div>
 
                 <label class="rt-review-form-label">Write Your Review *</label>
-                <textarea name="comment" class="rt-form-textarea" placeholder="Share your experience working with <?php echo htmlspecialchars($brand_name); ?>..." required></textarea>
+                <textarea name="comment" class="rt-form-textarea" placeholder="Share your experience working with <?php echo htmlspecialchars($brand_name); ?>..." required <?php echo ($is_quota_reached || $has_customer_reviewed_this_month) ? 'disabled' : ''; ?>></textarea>
 
                 <!-- Optional Verification: MoMo Ref or Receipt Photo -->
                 <div class="rt-verification-box">
@@ -2939,11 +2974,11 @@ if ($total_ratings > 0) {
                     <div class="rt-input-row" style="margin-bottom:0;">
                         <div>
                             <label class="rt-sub-label">MoMo Transaction ID / Reference</label>
-                            <input type="text" name="momo_ref" id="inputMomoRef" class="rt-form-input" style="font-size:13px;padding:9px 12px;" placeholder="e.g. 24819284918" value="<?php echo htmlspecialchars($prefill_ref_code); ?>" oninput="updateVerifiedPreview()">
+                            <input type="text" name="momo_ref" id="inputMomoRef" class="rt-form-input" style="font-size:13px;padding:9px 12px;" placeholder="e.g. 24819284918" value="<?php echo htmlspecialchars($prefill_ref_code); ?>" oninput="updateVerifiedPreview()" <?php echo ($is_quota_reached || $has_customer_reviewed_this_month) ? 'disabled' : ''; ?>>
                         </div>
                         <div>
                             <label class="rt-sub-label">Receipt / Invoice Screenshot</label>
-                            <input type="file" name="receipt_photo" id="inputReceiptPhoto" accept="image/jpeg,image/png,image/webp,image/jpg" class="rt-form-input" style="font-size:12px;padding:7px 10px;background:#fff;" onchange="updateVerifiedPreview()">
+                            <input type="file" name="receipt_photo" id="inputReceiptPhoto" accept="image/jpeg,image/png,image/webp,image/jpg" class="rt-form-input" style="font-size:12px;padding:7px 10px;background:#fff;" onchange="updateVerifiedPreview()" <?php echo ($is_quota_reached || $has_customer_reviewed_this_month) ? 'disabled' : ''; ?>>
                         </div>
                     </div>
                     <div id="verifiedBadgePreview" style="<?php echo !empty($prefill_ref_code) ? 'display:flex;' : 'display:none;'; ?>align-items:center;gap:6px;margin-top:10px;padding:8px 12px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;font-size:12px;color:#15803d;font-weight:700;">
@@ -2951,8 +2986,14 @@ if ($total_ratings > 0) {
                     </div>
                 </div>
                 
-                <button type="submit" class="rt-submit-btn">
-                    Submit Your Review <i class="fa-solid fa-paper-plane" style="margin-left:6px;"></i>
+                <button type="submit" class="rt-submit-btn" <?php if ($is_quota_reached || $has_customer_reviewed_this_month): ?>disabled style="opacity:0.5;cursor:not-allowed;" title="<?php echo $is_quota_reached ? 'Monthly review limit reached' : 'You have already submitted a review this month'; ?>"<?php endif; ?>>
+                    <?php if ($is_quota_reached): ?>
+                        Monthly Review Limit Reached
+                    <?php elseif ($has_customer_reviewed_this_month): ?>
+                        Already Reviewed This Month ✓
+                    <?php else: ?>
+                        Submit Your Review <i class="fa-solid fa-paper-plane" style="margin-left:6px;"></i>
+                    <?php endif; ?>
                 </button>
             </form>
         </div>
@@ -2997,10 +3038,17 @@ if ($total_ratings > 0) {
                 </div>
                 <div class="rt-service-meta"><?php echo number_format($svc_count); ?> review<?php echo $svc_count === 1 ? '' : 's'; ?></div>
 
+                <?php if ($is_quota_reached): ?>
+                <button type="button" class="rt-service-comment-btn" disabled style="opacity:0.5;cursor:not-allowed;" title="Monthly review capacity reached">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    Monthly limit reached
+                </button>
+                <?php else: ?>
                 <button type="button" class="rt-service-comment-btn" onclick="toggleServiceForm(<?php echo $svc_id; ?>, this)" aria-expanded="false" title="Write a review for this service">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                     Write a review
                 </button>
+                <?php endif; ?>
 
                 <form class="rt-service-review-form" action="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/api/submit_rating.php'); ?>" method="POST" onsubmit="return validateServiceReview(<?php echo $svc_id; ?>)">
                     <input type="hidden" name="service_id" value="<?php echo $svc_id; ?>">
@@ -3060,6 +3108,12 @@ if ($total_ratings > 0) {
             </div>
 
             <?php if (!empty($questions)): ?>
+                <?php if ($is_quota_reached): ?>
+                    <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:14px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;gap:10px;">
+                        <span style="font-size:20px;">🛡️</span>
+                        <span style="font-size:13px;color:#92400e;font-weight:600;">This business has reached its verified review limit for this billing period. Feedback submissions will reopen on the 1st of next month.</span>
+                    </div>
+                <?php endif; ?>
                 <form action="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/api/submit_rating.php'); ?>" method="POST" id="specificReviewsForm" onsubmit="return validateReviewsForm(this)">
                 <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
                 <div class="rt-question-list">
@@ -3082,13 +3136,13 @@ if ($total_ratings > 0) {
                                     <label class="rt-review-form-label" style="margin:0;">Rate this specific review</label>
                                     <div class="rt-q-star-picker" style="margin-bottom:0;">
                                         <?php for ($st = 5; $st >= 1; $st--): ?>
-                                            <input type="radio" name="rating[<?php echo $q_id; ?>]" value="<?php echo $st; ?>" id="q_<?php echo $q_id; ?>_star<?php echo $st; ?>">
+                                            <input type="radio" name="rating[<?php echo $q_id; ?>]" value="<?php echo $st; ?>" id="q_<?php echo $q_id; ?>_star<?php echo $st; ?>" <?php echo $is_quota_reached ? 'disabled' : ''; ?>>
                                             <label for="q_<?php echo $q_id; ?>_star<?php echo $st; ?>" title="<?php echo $st; ?> Stars">★</label>
                                         <?php endfor; ?>
                                     </div>
                                 </div>
 
-                                <textarea name="comment[<?php echo $q_id; ?>]" class="rt-form-textarea" rows="2" placeholder="Write your review for this... (optional)" style="min-height:60px;margin-bottom:0;padding:9px 12px;font-size:13px;"></textarea>
+                                <textarea name="comment[<?php echo $q_id; ?>]" class="rt-form-textarea" rows="2" placeholder="Write your review for this... (optional)" style="min-height:60px;margin-bottom:0;padding:9px 12px;font-size:13px;" <?php echo $is_quota_reached ? 'disabled' : ''; ?>></textarea>
                             </div>
 
                             <!-- Existing Answers to this Question -->
@@ -3127,8 +3181,8 @@ if ($total_ratings > 0) {
 
                 <!-- ONE general submit button for all review items -->
                 <div style="display:flex;justify-content:flex-end;margin-top:14px;">
-                    <button type="submit" class="rt-submit-btn" style="width:auto;padding:11px 30px;font-size:14px;">
-                        Submit Review Response
+                    <button type="submit" class="rt-submit-btn" style="width:auto;padding:11px 30px;font-size:14px;" <?php if ($is_quota_reached): ?>disabled style="opacity:0.5;cursor:not-allowed;" title="Monthly review capacity reached"<?php endif; ?>>
+                        <?php echo $is_quota_reached ? 'Monthly Review Limit Reached' : 'Submit Review Response'; ?>
                     </button>
                 </div>
                 </form>
@@ -3233,7 +3287,7 @@ if ($total_ratings > 0) {
                                         </button>
 
                                         <?php if ((int)$rv['rating'] >= 4): ?>
-                                            <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/admin/social_card.php?rating_id=' . (int)$rv['id']); ?>" target="_blank" rel="noopener noreferrer" class="rt-review-card-btn" title="Open Social Proof Card Studio for this review">
+                                            <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/' . admin_url('social_card.php') . '?rating_id=' . (int)$rv['id']); ?>" target="_blank" rel="noopener noreferrer" class="rt-review-card-btn" title="Open Social Proof Card Studio for this review">
                                                 <span>🎨</span> Story Graphic ↗
                                             </a>
                                         <?php endif; ?>
@@ -3395,7 +3449,7 @@ if ($total_ratings > 0) {
                                         </button>
 
                                         <?php if ((int)$rv['rating'] >= 4): ?>
-                                            <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/admin/social_card.php?rating_id=' . (int)$rv['id']); ?>" target="_blank" rel="noopener noreferrer" class="rt-review-card-btn" title="Open Social Proof Card Studio for this review">
+                                            <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/' . admin_url('social_card.php') . '?rating_id=' . (int)$rv['id']); ?>" target="_blank" rel="noopener noreferrer" class="rt-review-card-btn" title="Open Social Proof Card Studio for this review">
                                                 <span>🎨</span> Story Graphic ↗
                                             </a>
                                         <?php endif; ?>
@@ -4098,6 +4152,14 @@ function reportReviewModal(ratingId) {
 }
 
 function validateGeneralForm() {
+    <?php if ($is_quota_reached): ?>
+    alert('This business has reached its verified review capacity for this billing period. Feedback submissions will reopen next month.');
+    return false;
+    <?php endif; ?>
+    <?php if ($has_customer_reviewed_this_month): ?>
+    alert('You have already submitted a review for this business this month. Thank you for your feedback!');
+    return false;
+    <?php endif; ?>
     var ratingSelected = document.querySelector('input[name="rating"]:checked');
     if (!ratingSelected) {
         alert('Please select a star rating (1 to 5 stars) before submitting.');
@@ -4110,6 +4172,10 @@ function validateGeneralForm() {
 }
 
 function validateReviewsForm(form) {
+    <?php if ($is_quota_reached): ?>
+    alert('This business has reached its verified review capacity for this billing period. Feedback submissions will reopen next month.');
+    return false;
+    <?php endif; ?>
     var anyRated = form.querySelector('input[name^="rating"]:checked');
     if (!anyRated) {
         alert('Please select a star rating for at least one review before submitting.');
@@ -4184,6 +4250,10 @@ function toggleServiceForm(serviceId, btn) {
 }
 
 function validateServiceReview(serviceId) {
+    <?php if ($is_quota_reached): ?>
+    alert('This business has reached its verified review capacity for this billing period. Feedback submissions will reopen next month.');
+    return false;
+    <?php endif; ?>
     var card = document.getElementById('service-' + serviceId);
     if (!card) return false;
     

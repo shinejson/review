@@ -2,6 +2,7 @@
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/login_attempts.php';
 
 ensureRealIdSchema($conn);
 
@@ -29,21 +30,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($resTenant && $resTenant->num_rows === 1) {
             $tenant = $resTenant->fetch_assoc();
             
-            if (password_verify($password, $tenant['password'])) {
+            // Check if account is locked
+            if (isAccountLocked($conn, 'tenants', (int)$tenant['id'])) {
+                $error = 'This account is temporarily locked. Please try again in 30 minutes or contact support to unlock it.';
+            } elseif (password_verify($password, $tenant['password'])) {
+                // Reset failed attempts on successful login
+                resetFailedLoginAttempts($conn, 'tenants', (int)$tenant['id']);
+                
                 // Store tenant session data
                 $_SESSION['tenant_id'] = (int)$tenant['id'];
                 $_SESSION['tenant_name'] = $tenant['company_name'];
                 $_SESSION['tenant_logo'] = $tenant['logo'] ?? '';
                 $_SESSION['tenant_username'] = $tenant['username'];
+                $_SESSION['admin_username'] = $tenant['username'];
                 $_SESSION['tenant_email'] = $tenant['email'];
                 $_SESSION['tenant_plan_id'] = $tenant['plan_id'];
                 $_SESSION['tenant_status'] = $tenant['subscription_status'];
                 $_SESSION['tenant_subscription_end'] = $tenant['subscription_end_date'] ?? null;
                 $_SESSION['user_type'] = 'tenant';
-                auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['company_name'], 'tenant');
+                auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['username'] ?: $tenant['company_name'], 'tenant');
                 redirect('index.php');
             } else {
-                $error = 'Invalid credentials. Please verify your password.';
+                // Record failed attempt
+                $attempt_result = recordFailedLoginAttempt($conn, 'tenants', (int)$tenant['id']);
+                $error = $attempt_result['message'];
             }
         } else {
             // 1.5. Team member (staff account created by a workspace owner)
@@ -59,9 +69,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $member = $resT->fetch_assoc();
                     if ((int)$member['is_active'] !== 1) {
                         $error = 'This team account is disabled. Contact your workspace owner.';
+                    } elseif (isAccountLocked($conn, 'team_members', (int)$member['id'])) {
+                        $error = 'This account is temporarily locked. Please try again in 30 minutes or contact your workspace owner to unlock it.';
                     } elseif (!password_verify($password, (string)$member['password'])) {
-                        $error = 'Invalid credentials. Please verify your password.';
+                        // Record failed attempt
+                        $attempt_result = recordFailedLoginAttempt($conn, 'team_members', (int)$member['id']);
+                        $error = $attempt_result['message'];
                     } else {
+                        // Reset failed attempts on successful login
+                        resetFailedLoginAttempts($conn, 'team_members', (int)$member['id']);
+                        
                         $_SESSION['tenant_id'] = (int)$member['tenant_id'];
                         $_SESSION['tenant_name'] = $member['company_name'];
                         $_SESSION['tenant_logo'] = $member['logo'] ?? '';

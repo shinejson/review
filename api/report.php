@@ -12,6 +12,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+// Slow down mass-report abuse: a handful of reports per hour per IP.
+if (function_exists('public_rate_limit')) {
+    $retry_after = public_rate_limit('report_review', 10, 3600);
+    if ($retry_after > 0) {
+        public_rate_limit_respond($retry_after);
+    }
+}
+
 $rating_id = (int)($_POST['rating_id'] ?? 0);
 $reason = sanitize($_POST['reason'] ?? '');
 

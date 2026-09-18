@@ -56,7 +56,7 @@ class JWT {
      * @param string|null $expectedType 'access', 'refresh', or null
      * @return array|false Returns decoded payload array or false on failure
      */
-    public static function verify(string $token, ?string $expectedType = null) {
+        public static function verify(string $token, ?string $expectedType = null) {
         $parts = explode('.', trim($token));
         if (count($parts) !== 3) {
             return false;
@@ -87,6 +87,20 @@ class JWT {
         // Check not-before
         if (isset($payload['nbf']) && $now < $payload['nbf']) {
             return false; // Token not yet active
+        }
+
+        // Validate issuer — prevents tokens minted by a different deployment
+        if (isset($payload['iss']) && !empty(API_JWT_ISSUER)
+            && !hash_equals((string) API_JWT_ISSUER, (string) $payload['iss'])
+        ) {
+            return false;
+        }
+
+        // Validate audience — prevents tokens issued for a different client
+        if (isset($payload['aud']) && !empty(API_JWT_AUDIENCE)
+            && !hash_equals((string) API_JWT_AUDIENCE, (string) $payload['aud'])
+        ) {
+            return false;
         }
 
         // Check token type if specified

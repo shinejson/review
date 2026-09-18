@@ -14,6 +14,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     exit;
 }
 
+// Slow down reply spam on the public thread.
+if (function_exists('public_rate_limit')) {
+    $retry_after = public_rate_limit('submit_reply', 10, 600);
+    if ($retry_after > 0) {
+        public_rate_limit_respond($retry_after);
+    }
+}
+
 $rating_id  = (int)($_POST['rating_id'] ?? 0);
 $company_id = (int)($_POST['company_id'] ?? 0);
 $user_name  = trim(sanitize($_POST['user_name'] ?? ''));
@@ -52,13 +60,25 @@ if (!$r_res) {
 }
 $company_id = (int)$r_res['company_id'];
 
-// Check if official response from logged in tenant or admin
+// Check if official response from the tenant that actually owns this review.
+// A reply is only "official" when the signed-in tenant owns the company that
+// the review was written for. Any other session can only post a public reply.
 if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
     @session_start();
 }
 $is_official = 0;
-if (!empty($_SESSION['tenant_id']) || !empty($_SESSION['admin_id']) || !empty($_SESSION['super_admin_id'])) {
-    $is_official = 1;
+$session_tenant_id = (int)($_SESSION['tenant_id'] ?? 0);
+if ($session_tenant_id > 0) {
+    $owner_chk = $conn->prepare("SELECT tenant_id FROM customers WHERE id = ? LIMIT 1");
+    if ($owner_chk) {
+        $owner_chk->bind_param("i", $company_id);
+        $owner_chk->execute();
+        $owner_row = $owner_chk->get_result()->fetch_assoc();
+        $owner_chk->close();
+        if ($owner_row && (int)$owner_row['tenant_id'] === $session_tenant_id) {
+            $is_official = 1;
+        }
+    }
 }
 
 // Ensure table exists

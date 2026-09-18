@@ -99,28 +99,36 @@ Open your browser and navigate to:
 - **Public Site**: `http://localhost/company-rating-saas/`
 - **Companies**: `http://localhost/company-rating-saas/companies.php`
 - **Super Admin**: `http://localhost/company-rating-saas/superadmin/login.php`
-- **Tenant Admin**: `http://localhost/company-rating-saas/admin/login.php`
+- **Tenant Admin**: `http://localhost/company-rating-saas/p7xk2mqw9vrt4zhn/login.php`
+
+> **Tenant admin path aliasing:** the workspace panel is served under a
+> non-guessable alias instead of `/admin/`. Direct requests to
+> `/admin/...` are refused (403). The slug lives in two places that must
+> stay in sync — the `RewriteRule` in `.htaccess` and `ADMIN_PATH_ALIAS`
+> in `config/database.php` (override via the `OPTIBIZ_ADMIN_PATH_ALIAS`
+> env var). Pick a fresh random slug for every deployment, e.g.
+> `php -r "echo bin2hex(random_bytes(8));"`.
 
 ## Default Login Credentials
 
+> **Security note:** the values below are local-development seeds only.
+> Change them during installation (or remove this file from the web root)
+> before deploying anywhere public. Never reuse these passwords in
+> production.
+
 ### Super Admin
 - **URL**: `/superadmin/login.php`
-- **Username**: `superadmin`
-- **Password**: `superadmin123`
+- **Username**: change during installation (see `database.sql` seed)
+- **Password**: change during installation (set a strong password on first run)
 
 ### Sample Tenant Admin
-- **URL**: `/admin/login.php`
-- **Username**: `admin`
-- **Password**: `admin123`
+- **URL**: `/p7xk2mqw9vrt4zhn/login.php` (aliased workspace path — see §8)
+- **Username**: change during installation
+- **Password**: change during installation
 
 ### Sample Tenants
-1. **ABC Corporation**
-   - Username: `abc_corporation`
-   - Password: `admin123`
-
-2. **XYZ Industries**
-   - Username: `xyz_industries`
-   - Password: `admin123`
+Create these during installation with unique credentials; the seeds below
+are placeholders, not real logins.
 
 ## Workspace pages (tenant admin)
 
