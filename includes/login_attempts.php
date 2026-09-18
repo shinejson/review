@@ -8,6 +8,52 @@
  */
 
 /**
+ * Ensure the login attempts columns exist on tenants and team_members
+ * @param object $conn Database connection
+ */
+function ensureLoginAttemptsSchema($conn) {
+    static $done = false;
+    if ($done || !is_object($conn) || !method_exists($conn, 'query')) {
+        return;
+    }
+    $done = true;
+
+    // Check tenants
+    $tenantCols = [];
+    $res = @$conn->query("SHOW COLUMNS FROM tenants");
+    if ($res) {
+        while ($r = $res->fetch_assoc()) { $tenantCols[] = $r['Field']; }
+        $res->close();
+    }
+    if (!in_array('failed_login_attempts', $tenantCols, true)) {
+        @$conn->query("ALTER TABLE tenants ADD COLUMN failed_login_attempts INT NOT NULL DEFAULT 0");
+    }
+    if (!in_array('last_failed_attempt_at', $tenantCols, true)) {
+        @$conn->query("ALTER TABLE tenants ADD COLUMN last_failed_attempt_at DATETIME NULL");
+    }
+    if (!in_array('account_locked_until', $tenantCols, true)) {
+        @$conn->query("ALTER TABLE tenants ADD COLUMN account_locked_until DATETIME NULL");
+    }
+
+    // Check team_members
+    $teamCols = [];
+    $resT = @$conn->query("SHOW COLUMNS FROM team_members");
+    if ($resT) {
+        while ($r = $resT->fetch_assoc()) { $teamCols[] = $r['Field']; }
+        $resT->close();
+    }
+    if (!in_array('failed_login_attempts', $teamCols, true)) {
+        @$conn->query("ALTER TABLE team_members ADD COLUMN failed_login_attempts INT NOT NULL DEFAULT 0");
+    }
+    if (!in_array('last_failed_attempt_at', $teamCols, true)) {
+        @$conn->query("ALTER TABLE team_members ADD COLUMN last_failed_attempt_at DATETIME NULL");
+    }
+    if (!in_array('account_locked_until', $teamCols, true)) {
+        @$conn->query("ALTER TABLE team_members ADD COLUMN account_locked_until DATETIME NULL");
+    }
+}
+
+/**
  * Check if an account is currently locked
  * @param object $conn Database connection
  * @param string $table Table name ('team_members' or 'tenants')
@@ -18,8 +64,12 @@ function isAccountLocked($conn, $table, $user_id) {
     if (!in_array($table, ['team_members', 'tenants'])) {
         return false;
     }
+    ensureLoginAttemptsSchema($conn);
     
     $stmt = $conn->prepare("SELECT account_locked_until FROM $table WHERE id = ? LIMIT 1");
+    if (!$stmt) {
+        return false;
+    }
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
     $res = $stmt->get_result();
@@ -49,9 +99,13 @@ function recordFailedLoginAttempt($conn, $table, $user_id) {
     if (!in_array($table, ['team_members', 'tenants'])) {
         return ['locked' => false, 'attempts' => 0, 'message' => 'Invalid table'];
     }
+    ensureLoginAttemptsSchema($conn);
     
     // Get current attempt count
     $stmt = $conn->prepare("SELECT failed_login_attempts FROM $table WHERE id = ? LIMIT 1");
+    if (!$stmt) {
+        return ['locked' => false, 'attempts' => 0, 'message' => 'Query error'];
+    }
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
     $res = $stmt->get_result();
@@ -75,14 +129,19 @@ function recordFailedLoginAttempt($conn, $table, $user_id) {
     // Update the record
     if ($is_locked) {
         $upd = $conn->prepare("UPDATE $table SET failed_login_attempts = ?, last_failed_attempt_at = NOW(), account_locked_until = ? WHERE id = ?");
-        $upd->bind_param("isi", $attempts, $lock_until, $user_id);
+        if ($upd) {
+            $upd->bind_param("isi", $attempts, $lock_until, $user_id);
+            $upd->execute();
+            $upd->close();
+        }
     } else {
         $upd = $conn->prepare("UPDATE $table SET failed_login_attempts = ?, last_failed_attempt_at = NOW() WHERE id = ?");
-        $upd->bind_param("ii", $attempts, $user_id);
+        if ($upd) {
+            $upd->bind_param("ii", $attempts, $user_id);
+            $upd->execute();
+            $upd->close();
+        }
     }
-    
-    $upd->execute();
-    $upd->close();
     
     return [
         'locked' => $is_locked,
@@ -101,11 +160,14 @@ function resetFailedLoginAttempts($conn, $table, $user_id) {
     if (!in_array($table, ['team_members', 'tenants'])) {
         return;
     }
+    ensureLoginAttemptsSchema($conn);
     
     $rst = $conn->prepare("UPDATE $table SET failed_login_attempts = 0, last_failed_attempt_at = NULL, account_locked_until = NULL WHERE id = ?");
-    $rst->bind_param("i", $user_id);
-    $rst->execute();
-    $rst->close();
+    if ($rst) {
+        $rst->bind_param("i", $user_id);
+        $rst->execute();
+        $rst->close();
+    }
 }
 
 /**
@@ -119,8 +181,12 @@ function unlockUserAccount($conn, $table, $user_id) {
     if (!in_array($table, ['team_members', 'tenants'])) {
         return false;
     }
+    ensureLoginAttemptsSchema($conn);
     
     $unl = $conn->prepare("UPDATE $table SET failed_login_attempts = 0, last_failed_attempt_at = NULL, account_locked_until = NULL WHERE id = ?");
+    if (!$unl) {
+        return false;
+    }
     $unl->bind_param("i", $user_id);
     $result = $unl->execute();
     $unl->close();
