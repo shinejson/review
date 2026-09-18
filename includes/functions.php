@@ -3402,6 +3402,7 @@ if (!function_exists('teamPermissionLabels')) {
             'services'     => 'Services',
             'ads'          => 'Ads & Funnels',
             'subscription' => 'Subscription',
+            'support'      => 'Platform Support',
             'settings'     => 'Workspace Settings',
             'team'         => 'Team Management',
             'backups'      => 'Workspace Backups',
@@ -3416,10 +3417,10 @@ if (!function_exists('teamRolePresets')) {
         $all = array_keys(teamPermissionLabels());
         return [
             'manager' => $all,
-            'reviews' => ['company', 'qr_stand', 'whatsapp', 'ratings', 'customers'],
-            'social'  => ['company', 'social_card', 'social', 'qa'],
-            'analyst' => ['analysis', 'ratings'],
-            'staff'   => [],
+            'reviews' => ['company', 'qr_stand', 'whatsapp', 'ratings', 'customers', 'support'],
+            'social'  => ['company', 'social_card', 'social', 'qa', 'support'],
+            'analyst' => ['analysis', 'ratings', 'support'],
+            'staff'   => ['support'],
         ];
     }
 }

@@ -170,9 +170,17 @@ $activeNav = $activeNav ?? 'dashboard';
       <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span><span class="nav-label">Subscription</span>
     </a>
     <?php endif; ?>
+    <?php if (teamHasAccess('support')):
+    // Count tickets with unread platform replies for badge
+    $support_unread = 0;
+    if (isset($conn) && $is_tenant && $tenant_id) {
+        $support_unread = (int) @$conn->query("SELECT COUNT(*) FROM platform_feedback WHERE tenant_id = " . (int)$tenant_id . " AND status IN ('open','in_progress','resolved') AND last_reply_by = 'superadmin'")->fetch_assoc()['COUNT(*)'] ?? 0;
+    }
+    ?>
     <a <?php echo $activeNav === 'support' ? 'class="active"' : ''; ?> href="support.php" title="Platform Support & Feedback">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><span class="nav-label">Platform Support</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><span class="nav-label">Platform Support</span><?php if ($support_unread > 0): ?><span class="admin-nav-count"><?php echo $support_unread > 99 ? '99+' : (int)$support_unread; ?></span><?php endif; ?>
     </a>
+    <?php endif; ?>
     <?php if (teamHasAccess('backups')): ?>
     <a <?php echo $activeNav === 'backups' ? 'class="active"' : ''; ?> href="backups.php" title="Workspace Backups">
       <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span><span class="nav-label">Backups</span>

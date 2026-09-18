@@ -119,12 +119,17 @@ if (isset($_SESSION['super_admin_id'])) {
 if (function_exists('sa_ensure_payments_schema') && isset($conn)) {
     sa_ensure_payments_schema($conn);
 }
+/* Ensure support ticket schema for the badge query */
+if (function_exists('sa_ensure_platform_feedback_schema') && isset($conn)) {
+    sa_ensure_platform_feedback_schema($conn);
+}
 
 /* Nav badge counts (cheap queries, degrade to null when unavailable) */
 $sa_badges = [
     'tenants' => (int) sa_scalar($conn, "SELECT COUNT(*) FROM tenants", 0, 'tenants'),
     'quotes'  => (int) sa_scalar($conn, "SELECT COUNT(*) FROM quote_requests WHERE status = 'pending'", 0, 'quote_requests'),
     'support' => (int) sa_scalar($conn, "SELECT (SELECT COUNT(*) FROM platform_feedback WHERE status = 'open') + (SELECT COUNT(*) FROM ratings WHERE reported = 1)", 0, 'platform_feedback'),
+    'tickets' => (int) sa_scalar($conn, "SELECT COUNT(*) FROM platform_feedback WHERE status IN ('open','in_progress') AND (last_reply_by = 'tenant' OR last_reply_by IS NULL)", 0, 'platform_feedback'),
     'subs'    => (int) sa_scalar(
         $conn,
         "SELECT COUNT(*) FROM tenants
@@ -166,6 +171,7 @@ $sa_nav = [
     ['key' => 'plans',         'label' => 'Plans',          'href' => 'plans.php',            'icon' => 'layers'],
     ['key' => 'quotes',        'label' => 'Quote Requests', 'href' => 'quote_requests.php',   'icon' => 'inbox',    'badge' => 'quotes', 'alert' => true],
     ['section' => 'Directory'],
+    ['key' => 'support_tickets', 'label' => 'Support Tickets', 'href' => 'support.php',         'icon' => 'message',  'badge' => 'tickets', 'alert' => true],
     ['key' => 'reviews',       'label' => 'Support & Disputes', 'href' => 'reviews.php',          'icon' => 'inbox',    'badge' => 'support', 'alert' => true],
     ['key' => 'customers',     'label' => 'Tenant Companies', 'href' => 'customers.php',        'icon' => 'building'],
     ['key' => 'categories',    'label' => 'Categories',     'href' => 'categories.php',       'icon' => 'list'],
