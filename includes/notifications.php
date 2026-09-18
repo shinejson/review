@@ -138,8 +138,10 @@ if (!function_exists('notifications_type_catalog')) {
             'subscription_expiring'=> ['label' => 'Renewal due',           'icon' => 'calendar',  'tone' => 'warning', 'audiences' => ['platform', 'tenant'],                  'sa' => 'subscriptions', 'team' => 'subscription'],
             'subscription_expired' => ['label' => 'Subscription ended',    'icon' => 'alert',     'tone' => 'danger',  'audiences' => ['platform', 'tenant'],                  'sa' => 'subscriptions', 'team' => 'subscription'],
             'review_reported'      => ['label' => 'Reported review',       'icon' => 'flag',      'tone' => 'danger',  'audiences' => ['platform'],                            'sa' => 'reviews',    'team' => null],
-            'tenant_new'           => ['label' => 'New workspace',         'icon' => 'building',  'tone' => 'info',    'audiences' => ['platform'],                            'sa' => 'tenants',    'team' => null],
-            'tenant_setup_pending' => ['label' => 'Setup not finished',    'icon' => 'mail',      'tone' => 'warning', 'audiences' => ['platform'],                            'sa' => 'tenants',    'team' => null],
+            'tenant_new'           => ['label' => 'New workspace',         'icon' => 'building',  'tone' => 'info',    'audiences' => ['platform'],                            'sa' => 'tenants',         'team' => null],
+            'tenant_setup_pending' => ['label' => 'Setup not finished',    'icon' => 'mail',      'tone' => 'warning', 'audiences' => ['platform'],                            'sa' => 'tenants',         'team' => null],
+            'support_ticket_new'   => ['label' => 'New support ticket',    'icon' => 'message',   'tone' => 'warning', 'audiences' => ['platform'],                            'sa' => 'support_tickets', 'team' => null],
+            'support_ticket_reply' => ['label' => 'Support reply',         'icon' => 'message',   'tone' => 'info',    'audiences' => ['tenant'],                              'sa' => null,              'team' => 'support'],
         ];
     }
 }
@@ -604,7 +606,39 @@ if (!function_exists('notifications_sync_platform')) {
             }
         }
 
-        /* 6 — reviews a customer reported */
+        /* 6 — support tickets a tenant filed that still need attention */
+        if (sa_table_exists($conn, 'platform_feedback')) {
+            $rows = sa_query($conn,
+                "SELECT f.id, f.subject, f.priority, f.created_at, f.status, f.last_reply_at,
+                        t.company_name AS tname, t.id AS tid
+                   FROM platform_feedback f
+                   JOIN tenants t ON t.id = f.tenant_id
+                  WHERE f.status IN ('open','in_progress')
+                    AND (f.last_reply_by = 'tenant' OR f.last_reply_by IS NULL)
+                    AND f.created_at >= {$window}
+                  ORDER BY FIELD(f.priority,'urgent','high','medium','low'), f.created_at ASC
+                  LIMIT 25",
+                'platform_feedback');
+            foreach ($rows as $f) {
+                if (empty($f['id'])) continue;
+                $f += ['subject' => '', 'priority' => 'medium', 'created_at' => '', 'tname' => '', 'tid' => 0, 'last_reply_at' => null];
+                $made += notifications_add($conn, [
+                    'audience'   => 'platform',
+                    'type'       => 'support_ticket_new',
+                    'title'      => 'Support ticket #T-' . (int)$f['id'] . ' awaits reply',
+                    'message'    => ($f['tname'] !== '' ? $f['tname'] . ' — ' : '')
+                        . mb_substr_safe((string)$f['subject'], 120),
+                    'link'       => 'support.php?id=' . (int)$f['id'],
+                    'tenant_id'  => (int)$f['tid'],
+                    'entity'     => ['platform_feedback', (int)$f['id']],
+                    'dedupe_key' => 'p:support_ticket:' . (int)$f['id'] . ':' . (string)($f['last_reply_at'] ?? $f['created_at']),
+                    'tone'       => in_array((string)$f['priority'], ['urgent','high'], true) ? 'danger' : 'warning',
+                    'created_at' => isset($f['created_at']) ? $f['created_at'] : '',
+                ]) ? 1 : 0;
+            }
+        }
+
+        /* 7 — reviews a customer reported */
         if (sa_table_exists($conn, 'ratings') && notifications_has_column($conn, 'ratings', 'reported')) {
             $rows = sa_query($conn,
                 "SELECT r.id, r.rating, r.customer_name, r.created_at, c.company_name, c.tenant_id
@@ -863,7 +897,36 @@ if (!function_exists('notifications_sync_tenant')) {
             }
         }
 
-        /* 6 — the workspace's own renewal date */
+        /* 6 — platform replies to the workspace's support tickets */
+        if (sa_table_exists($conn, 'platform_feedback')) {
+            $rows = sa_query($conn,
+                "SELECT id, subject, priority, replied_at, last_reply_at, last_reply_by, status
+                   FROM platform_feedback
+                  WHERE tenant_id = {$tenant_id}
+                    AND last_reply_by = 'superadmin'
+                    AND last_reply_at IS NOT NULL
+                    AND last_reply_at >= " . notifications_lookback(NOTIFICATIONS_LOOKBACK_DAYS) . "
+                  ORDER BY last_reply_at DESC LIMIT 10",
+                'platform_feedback');
+            foreach ($rows as $f) {
+                if (empty($f['id'])) continue;
+                $f += ['subject' => '', 'priority' => 'medium', 'replied_at' => null, 'last_reply_at' => null];
+                $reply_time = !empty($f['last_reply_at']) ? $f['last_reply_at'] : $f['replied_at'];
+                $made += notifications_add($conn, [
+                    'audience'   => 'tenant',
+                    'tenant_id'  => $tenant_id,
+                    'type'       => 'support_ticket_reply',
+                    'title'      => 'Platform replied to ticket #T-' . (int)$f['id'],
+                    'message'    => mb_substr_safe((string)$f['subject'], 180),
+                    'link'       => 'support.php?id=' . (int)$f['id'],
+                    'entity'     => ['platform_feedback', (int)$f['id']],
+                    'dedupe_key' => $prefix . 'support_reply:' . (int)$f['id'] . ':' . (string)$reply_time,
+                    'created_at' => $reply_time ?: '',
+                ]) ? 1 : 0;
+            }
+        }
+
+        /* 7 — the workspace's own renewal date */
         if (sa_table_exists($conn, 'tenants')) {
             $t = sa_one($conn,
                 "SELECT id, subscription_status, subscription_end_date
@@ -949,6 +1012,7 @@ if (!function_exists('notifications_reap')) {
                 'subscription_expiring'=> ['tenants', "SELECT 1 FROM tenants t WHERE t.id = n.entity_id AND t.subscription_status IN ('active','trial') AND t.subscription_end_date IS NOT NULL AND t.subscription_end_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)"],
                 'subscription_expired' => ['tenants', "SELECT 1 FROM tenants t WHERE t.id = n.entity_id AND t.subscription_end_date IS NOT NULL AND t.subscription_end_date < CURDATE()"],
                 'tenant_setup_pending' => ['tenants', "SELECT 1 FROM tenants t WHERE t.id = n.entity_id AND t.email_verified_at IS NULL"],
+                'support_ticket_new'   => ['platform_feedback', "SELECT 1 FROM platform_feedback f WHERE f.id = n.entity_id AND f.status IN ('open','in_progress') AND (f.last_reply_by = 'tenant' OR f.last_reply_by IS NULL)"],
             ];
         } else {
             $checks = [
@@ -959,6 +1023,7 @@ if (!function_exists('notifications_reap')) {
                 'payment_pending'   => ['subscription_payments', "SELECT 1 FROM subscription_payments p WHERE p.id = n.entity_id AND p.status = 'pending'"],
                 'invoice_open'      => ['payment_invoices', "SELECT 1 FROM payment_invoices i WHERE i.id = n.entity_id AND i.status IN ('open','processing','overdue')"],
                 'invoice_overdue'   => ['payment_invoices', "SELECT 1 FROM payment_invoices i WHERE i.id = n.entity_id AND i.status IN ('open','processing','overdue')"],
+                'support_ticket_reply' => ['platform_feedback', "SELECT 1 FROM platform_feedback f WHERE f.id = n.entity_id AND f.last_reply_by = 'superadmin'"],
                 'subscription_expiring' => ['tenants', "SELECT 1 FROM tenants t WHERE t.id = n.tenant_id AND t.subscription_status IN ('active','trial') AND t.subscription_end_date >= CURDATE() AND t.subscription_end_date <= DATE_ADD(CURDATE(), INTERVAL 14 DAY)"],
                 'subscription_expired'  => ['tenants', "SELECT 1 FROM tenants t WHERE t.id = n.tenant_id AND t.subscription_end_date < CURDATE()"],
             ];

@@ -1478,14 +1478,28 @@ if (!function_exists('sa_ensure_payments_schema')) {
     }
 }
 
+if (!function_exists('mb_substr_safe')) {
+    /** Trim to a length, with or without the mbstring extension (local fallback). */
+    function mb_substr_safe($text, $length) {
+        $text = (string)$text;
+        if (function_exists('mb_substr') && function_exists('mb_strlen') && mb_strlen($text) > $length) {
+            return mb_substr($text, 0, $length - 1) . '…';
+        }
+        if (strlen($text) > $length) {
+            return substr($text, 0, $length - 1) . '…';
+        }
+        return $text;
+    }
+}
+
 if (!function_exists('sa_ensure_platform_feedback_schema')) {
-    /** Auto-ensure the platform_feedback table exists for tenant tickets & platform communication. */
+    /** Auto-ensure the platform_feedback table + replies table exist for tenant tickets & platform communication. */
     function sa_ensure_platform_feedback_schema($conn)
     {
         static $done = false;
         if ($done || !$conn) return;
 
-        $conn->query(
+        @$conn->query(
             "CREATE TABLE IF NOT EXISTS platform_feedback (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 tenant_id INT NOT NULL,
@@ -1495,18 +1509,205 @@ if (!function_exists('sa_ensure_platform_feedback_schema')) {
                 subject VARCHAR(255) NOT NULL,
                 message TEXT NOT NULL,
                 status ENUM('open', 'in_progress', 'resolved', 'closed') DEFAULT 'open',
-                admin_notes TEXT NULL,
-                admin_reply TEXT NULL,
-                replied_at DATETIME NULL,
+                submitted_by_kind VARCHAR(20) NOT NULL DEFAULT 'tenant' COMMENT 'tenant|team|superadmin',
+                submitted_by_id INT NULL,
+                submitted_by_name VARCHAR(120) NULL,
+                assigned_to INT NULL COMMENT 'super_admin id handling the ticket',
+                assigned_name VARCHAR(120) NULL,
+                last_reply_by ENUM('tenant','team','superadmin') NULL COMMENT 'who replied last',
+                last_reply_at DATETIME NULL,
                 resolved_at DATETIME NULL,
+                closed_at DATETIME NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 INDEX idx_tenant (tenant_id),
                 INDEX idx_status (status),
-                INDEX idx_created (created_at)
+                INDEX idx_created (created_at),
+                INDEX idx_priority (priority),
+                INDEX idx_assigned (assigned_to)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         );
+
+        // Self-healing: add columns added after initial install
+        $cols = [];
+        $cr = @$conn->query("SHOW COLUMNS FROM platform_feedback");
+        if ($cr) {
+            while ($r = $cr->fetch_assoc()) { $cols[] = $r['Field']; }
+            $cr->close();
+        }
+        $alters = [];
+        if (!in_array('submitted_by_kind', $cols, true)) $alters[] = "ADD COLUMN submitted_by_kind VARCHAR(20) NOT NULL DEFAULT 'tenant' AFTER status";
+        if (!in_array('submitted_by_id', $cols, true))   $alters[] = "ADD COLUMN submitted_by_id INT NULL AFTER submitted_by_kind";
+        if (!in_array('submitted_by_name', $cols, true)) $alters[] = "ADD COLUMN submitted_by_name VARCHAR(120) NULL AFTER submitted_by_id";
+        if (!in_array('assigned_to', $cols, true))       $alters[] = "ADD COLUMN assigned_to INT NULL AFTER submitted_by_name";
+        if (!in_array('assigned_name', $cols, true))     $alters[] = "ADD COLUMN assigned_name VARCHAR(120) NULL AFTER assigned_to";
+        if (!in_array('last_reply_by', $cols, true))     $alters[] = "ADD COLUMN last_reply_by ENUM('tenant','team','superadmin') NULL AFTER assigned_name";
+        if (!in_array('last_reply_at', $cols, true))     $alters[] = "ADD COLUMN last_reply_at DATETIME NULL AFTER last_reply_by";
+        if (!in_array('closed_at', $cols, true))         $alters[] = "ADD COLUMN closed_at DATETIME NULL AFTER resolved_at";
+        // admin_notes / admin_reply / replied_at were added later in life; ensure they exist
+        if (!in_array('admin_notes', $cols, true))       $alters[] = "ADD COLUMN admin_notes TEXT NULL";
+        if (!in_array('admin_reply', $cols, true))       $alters[] = "ADD COLUMN admin_reply TEXT NULL";
+        if (!in_array('replied_at', $cols, true))        $alters[] = "ADD COLUMN replied_at DATETIME NULL";
+        if ($alters) {
+            @$conn->query("ALTER TABLE platform_feedback " . implode(', ', $alters));
+        }
+
+        // Threaded replies table — stores every message in the conversation
+        @$conn->query(
+            "CREATE TABLE IF NOT EXISTS platform_feedback_replies (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                ticket_id INT NOT NULL,
+                author_kind VARCHAR(20) NOT NULL COMMENT 'tenant|team|superadmin',
+                author_id INT NULL,
+                author_name VARCHAR(120) NOT NULL,
+                message TEXT NOT NULL,
+                is_internal_note TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = private admin note (hidden from tenant)',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ticket (ticket_id, created_at),
+                INDEX idx_author (author_kind, author_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
+        );
+
         $done = true;
+    }
+}
+
+if (!function_exists('support_fetch_ticket')) {
+    /** Fetch one ticket with tenant/company info (for both panels). */
+    function support_fetch_ticket($conn, $id) {
+        $id = (int)$id;
+        if ($id <= 0) return [];
+        $row = sa_one($conn,
+            "SELECT f.*, t.company_name AS tenant_name, t.email AS tenant_email, t.public_id AS tenant_public_id,
+                    c.company_name AS branch_name,
+                    sa.username AS assigned_username
+               FROM platform_feedback f
+               LEFT JOIN tenants t ON t.id = f.tenant_id
+               LEFT JOIN customers c ON c.id = f.company_id
+               LEFT JOIN super_admins sa ON sa.id = f.assigned_to
+              WHERE f.id = {$id}
+              LIMIT 1",
+            'platform_feedback');
+        return $row ?: [];
+    }
+}
+
+if (!function_exists('support_fetch_replies')) {
+    /** Fetch the full reply thread for a ticket (optionally hiding internal notes from tenants). */
+    function support_fetch_replies($conn, $ticket_id, $include_internal = true) {
+        $ticket_id = (int)$ticket_id;
+        if ($ticket_id <= 0) return [];
+        $sql = "SELECT * FROM platform_feedback_replies WHERE ticket_id = {$ticket_id}";
+        if (!$include_internal) {
+            $sql .= " AND (is_internal_note = 0 OR is_internal_note IS NULL)";
+        }
+        $sql .= " ORDER BY created_at ASC, id ASC";
+        return sa_query($conn, $sql, 'platform_feedback_replies');
+    }
+}
+
+if (!function_exists('support_add_reply')) {
+    /**
+     * Append a message to a ticket and update its metadata.
+     * @param 'tenant'|'team'|'superadmin' $author_kind
+     */
+    function support_add_reply($conn, $ticket_id, $author_kind, $author_id, $author_name, $message, $internal_note = false, $new_status = null) {
+        $ticket_id = (int)$ticket_id;
+        $message = trim((string)$message);
+        if ($ticket_id <= 0 || $message === '' || !$conn) return false;
+        $author_kind = in_array($author_kind, ['tenant','team','superadmin'], true) ? $author_kind : 'tenant';
+        $author_id = (int)$author_id;
+        $author_name = trim((string)$author_name) ?: 'Support';
+        $internal = $internal_note ? 1 : 0;
+        $now = date('Y-m-d H:i:s');
+
+        $stmt = $conn->prepare("INSERT INTO platform_feedback_replies (ticket_id, author_kind, author_id, author_name, message, is_internal_note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        if (!$stmt) return false;
+        $stmt->bind_param("isissis", $ticket_id, $author_kind, $author_id, $author_name, $message, $internal, $now);
+        $ok = $stmt->execute();
+        $stmt->close();
+        if (!$ok) return false;
+
+        // Update the parent ticket metadata
+        $updates = ["last_reply_by = '" . $conn->real_escape_string($author_kind) . "'",
+                    "last_reply_at = '" . $conn->real_escape_string($now) . "'"];
+
+        if ($author_kind === 'superadmin') {
+            $updates[] = "admin_reply = '" . $conn->real_escape_string(mb_substr_safe($message, 500)) . "'";
+            $updates[] = "replied_at = '" . $conn->real_escape_string($now) . "'";
+            if ($new_status === null) {
+                // Auto-move to in_progress on first admin response unless already resolved
+                $t = support_fetch_ticket($conn, $ticket_id);
+                if ($t && in_array(($t['status'] ?? ''), ['open'], true)) {
+                    $updates[] = "status = 'in_progress'";
+                }
+            }
+        } elseif (!$internal) {
+            // Tenant/team replying reopens ticket if it was resolved/closed
+            $t = support_fetch_ticket($conn, $ticket_id);
+            if ($t && in_array(($t['status'] ?? ''), ['resolved','closed'], true)) {
+                $updates[] = "status = 'open'";
+                $updates[] = "resolved_at = NULL";
+                $updates[] = "closed_at = NULL";
+            }
+        }
+
+        if ($new_status && in_array($new_status, ['open','in_progress','resolved','closed'], true)) {
+            $updates[] = "status = '" . $conn->real_escape_string($new_status) . "'";
+            if ($new_status === 'resolved') {
+                $updates[] = "resolved_at = '" . $conn->real_escape_string($now) . "'";
+            } elseif ($new_status === 'closed') {
+                $updates[] = "closed_at = '" . $conn->real_escape_string($now) . "'";
+            } else {
+                $updates[] = "resolved_at = NULL";
+                $updates[] = "closed_at = NULL";
+            }
+        }
+
+        @$conn->query("UPDATE platform_feedback SET " . implode(', ', $updates) . " WHERE id = {$ticket_id}");
+        return true;
+    }
+}
+
+if (!function_exists('support_count_open')) {
+    /** Fast count of open/awaiting-review tickets for badges. */
+    function support_count_open($conn) {
+        return (int) sa_scalar($conn,
+            "SELECT COUNT(*) FROM platform_feedback WHERE status IN ('open','in_progress')",
+            0, 'platform_feedback');
+    }
+}
+
+if (!function_exists('support_current_actor')) {
+    /** Describe who is writing a reply in the currently signed-in panel. */
+    function support_current_actor($panel = 'admin') {
+        if ($panel === 'superadmin') {
+            $id = (int)($_SESSION['super_admin_id'] ?? 0);
+            if ($id > 0) {
+                $name = 'Platform Support';
+                // Prefer username if reachable
+                global $conn;
+                if (isset($conn) && is_object($conn)) {
+                    $row = @sa_one($conn, "SELECT username FROM super_admins WHERE id = {$id} LIMIT 1", 'super_admins');
+                    if ($row && !empty($row['username'])) $name = $row['username'];
+                }
+                return ['kind' => 'superadmin', 'id' => $id, 'name' => $name];
+            }
+            return ['kind' => 'superadmin', 'id' => 0, 'name' => 'Platform Support'];
+        }
+        // Tenant panel — tenant owner or team member
+        if (!empty($_SESSION['team_member_id'])) {
+            return [
+                'kind' => 'team',
+                'id'   => (int)$_SESSION['team_member_id'],
+                'name' => (string)($_SESSION['team_member_name'] ?? $_SESSION['admin_username'] ?? 'Staff'),
+            ];
+        }
+        return [
+            'kind' => 'tenant',
+            'id'   => (int)($_SESSION['tenant_id'] ?? 0),
+            'name' => (string)(getCurrentUserName() ?: 'Workspace Owner'),
+        ];
     }
 }
 
