@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/config.php';
 require_once dirname(__DIR__) . '/helpers/response.php';
 require_once dirname(__DIR__) . '/helpers/jwt.php';
 require_once RATE_ROOT_PATH . '/config/database.php';
+require_once RATE_ROOT_PATH . '/includes/functions.php';
 
 function api_authenticate_bearer(mysqli $conn): array {
     $authHeader = '';
@@ -30,6 +31,10 @@ function api_authenticate_bearer(mysqli $conn): array {
         api_send_error('Unauthorized: Invalid or expired access token.', 401);
     }
 
+    if (JWT::isRevoked($conn, $token)) {
+        api_send_error('Unauthorized: Access token has been revoked. Please sign in again.', 401);
+    }
+
     $tenantId = (int)($payload['tenant_id'] ?? $payload['sub'] ?? 0);
     if ($tenantId <= 0) {
         api_send_error('Unauthorized: Invalid token subject.', 401);
@@ -51,6 +56,37 @@ function api_authenticate_bearer(mysqli $conn): array {
         api_send_error('Forbidden: Your workspace subscription has been cancelled.', 403);
     }
 
+    // Verify tenant plan grants REST API access (Enterprise tier or explicit plan entitlement)
+    if (function_exists('tenantHasFeature') && !tenantHasFeature($conn, $tenantId, 'api_access')) {
+        api_send_error('Forbidden: REST API access requires an Enterprise subscription. Please upgrade your plan in the workspace dashboard.', 403);
+    }
+
+    // Check if authenticated as a team member and verify active status
+    $userRole = isset($payload['role']) ? (string)$payload['role'] : 'tenant_admin';
+    $teamMemberId = isset($payload['team_member_id']) ? (int)$payload['team_member_id'] : 0;
+    $teamPermissions = [];
+
+    if ($userRole === 'team_member' && $teamMemberId > 0) {
+        if (function_exists('ensureTeamSchema')) {
+            ensureTeamSchema($conn);
+        }
+        $tmStmt = $conn->prepare("SELECT id, permissions, is_active FROM team_members WHERE id = ? AND tenant_id = ? LIMIT 1");
+        if ($tmStmt) {
+            $tmStmt->bind_param("ii", $teamMemberId, $tenantId);
+            $tmStmt->execute();
+            $tm = $tmStmt->get_result()->fetch_assoc();
+            $tmStmt->close();
+            if (!$tm || (int)$tm['is_active'] !== 1) {
+                api_send_error('Forbidden: This staff account has been deactivated or removed.', 403);
+            }
+            if (function_exists('teamMemberParsePerms')) {
+                $teamPermissions = teamMemberParsePerms($tm['permissions'] ?? '');
+            } else {
+                $teamPermissions = array_filter(array_map('trim', explode(',', (string)($tm['permissions'] ?? ''))));
+            }
+        }
+    }
+
     // Find company profile ID in customers table linked to this tenant
     $companyId = 0;
     $cStmt = $conn->prepare("SELECT id, company_name, google_store_url, booster_enabled, booster_min_stars FROM customers WHERE tenant_id = ? LIMIT 1");
@@ -64,19 +100,34 @@ function api_authenticate_bearer(mysqli $conn): array {
         $cStmt->close();
     }
 
-        $authContext = [
+    $authContext = [
         'tenant_id'           => (int)$tenant['id'],
         'public_id'           => (string)$tenant['public_id'],
         'company_name'        => (string)$tenant['company_name'],
         'email'               => (string)$tenant['email'],
         'username'            => (string)$tenant['username'],
-        'role'                => isset($payload['role']) ? (string)$payload['role'] : 'tenant_admin',
+        'role'                => $userRole,
+        'team_member_id'      => $teamMemberId,
+        'permissions'         => $teamPermissions,
         'subscription_status' => (string)$tenant['subscription_status'],
         'plan_id'             => (int)$tenant['plan_id'],
         'company_id'          => $companyId,
-        'team_member_id'      => isset($payload['team_member_id']) ? (int)$payload['team_member_id'] : 0,
         'token_claims'        => $payload
     ];
 
     return $authContext;
+}
+
+/**
+ * Enforce role-based or permission-based access for an API endpoint.
+ * Workspace owners (tenant_admin) pass all permission checks.
+ */
+function api_require_permission(array $authContext, string $permission): void {
+    if (($authContext['role'] ?? '') !== 'team_member') {
+        return;
+    }
+    $perms = $authContext['permissions'] ?? [];
+    if (!in_array($permission, $perms, true)) {
+        api_send_error("Forbidden: Your account does not have permission to access '{$permission}'.", 403);
+    }
 }

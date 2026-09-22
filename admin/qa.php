@@ -43,7 +43,10 @@ $error   = '';
 // POST Request Handlers
 // ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    $action = $_POST['action'];
+    if (!sa_csrf_ok()) {
+        $error = 'Your session expired. Please refresh the page and try again.';
+    } else {
+        $action = $_POST['action'];
 
     // 1. Answer or Edit Answer to a Customer Question
     if ($action === 'answer_question') {
@@ -111,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             exit;
         }
     }
+}
 }
 
 // Flash message banners
@@ -456,6 +460,7 @@ include __DIR__ . '/_shell.php';
     </div>
 
     <form method="POST" action="qa.php">
+        <?php if (function_exists('sa_csrf_input')) echo sa_csrf_input(); ?>
         <input type="hidden" name="action" value="create_faq">
         <div style="margin-bottom:14px;">
             <label class="form-label" style="font-weight:700;font-size:13px;color:var(--ink);display:block;margin-bottom:6px;">Question <span style="color:#ef4444;">*</span></label>
@@ -604,6 +609,7 @@ include __DIR__ . '/_shell.php';
                 <!-- Response Composer Form (Shown when unanswered, or toggleable if editing) -->
                 <div id="replyBox-<?php echo $qid; ?>" style="<?php echo $has_answer ? 'display:none;' : 'display:block;'; ?>margin-top:14px;padding-top:14px;border-top:1px dashed var(--line);">
                     <form method="POST" action="qa.php">
+                        <?php if (function_exists('sa_csrf_input')) echo sa_csrf_input(); ?>
                         <input type="hidden" name="action" value="answer_question">
                         <input type="hidden" name="question_id" value="<?php echo $qid; ?>">
                         <div style="margin-bottom:10px;">
@@ -640,6 +646,7 @@ include __DIR__ . '/_shell.php';
 
                         <!-- Toggle Pin Form -->
                         <form method="POST" action="qa.php" style="display:inline;">
+                            <?php if (function_exists('sa_csrf_input')) echo sa_csrf_input(); ?>
                             <input type="hidden" name="action" value="toggle_pin">
                             <input type="hidden" name="question_id" value="<?php echo $qid; ?>">
                             <button type="submit" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">
@@ -658,6 +665,7 @@ include __DIR__ . '/_shell.php';
                     <div>
                         <!-- Delete Question Form -->
                         <form method="POST" action="qa.php" style="display:inline;" onsubmit="return confirm('Are you sure you want to permanently delete this question?')">
+                            <?php if (function_exists('sa_csrf_input')) echo sa_csrf_input(); ?>
                             <input type="hidden" name="action" value="delete_question">
                             <input type="hidden" name="question_id" value="<?php echo $qid; ?>">
                             <button type="submit" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:4px 8px;border-radius:6px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color=''">

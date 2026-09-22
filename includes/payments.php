@@ -564,9 +564,33 @@ if (!function_exists('pay_public_base_url')) {
             return rtrim($configured, '/');
         }
 
+        if (defined('APP_BASE_URL') && APP_BASE_URL !== '') {
+            return rtrim(APP_BASE_URL, '/');
+        }
+        if (function_exists('getPlatformBaseUrl')) {
+            $pb = getPlatformBaseUrl();
+            if ($pb !== '') {
+                return rtrim($pb, '/');
+            }
+        }
+
         $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
         if ($host === '') {
             return 'https://your-domain.example';
+        }
+
+        $allowedHosts = [];
+        $envHosts = getenv('OPTIBIZ_ALLOWED_HOSTS');
+        if ($envHosts) {
+            $allowedHosts = array_map('trim', explode(',', (string)$envHosts));
+            $allowedHosts = array_filter($allowedHosts);
+        }
+        if (empty($allowedHosts)) {
+            $allowedHosts = ['localhost', '127.0.0.1'];
+        }
+        $hostName = preg_replace('/:\d+$/', '', $host);
+        if (!in_array($hostName, $allowedHosts, true)) {
+            $host = 'localhost';
         }
         $https  = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
             || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
@@ -2107,6 +2131,10 @@ if (!function_exists('pay_invoice_where')) {
         $tenant = (int) (isset($filters['tenant_id']) ? $filters['tenant_id'] : 0);
         if ($tenant) {
             $where[] = 'i.tenant_id = ' . $tenant;
+        }
+        $plan = (int) (isset($filters['plan_id']) ? $filters['plan_id'] : 0);
+        if ($plan) {
+            $where[] = 'i.plan_id = ' . $plan;
         }
         $q = isset($filters['q']) ? trim((string) $filters['q']) : '';
         if ($q !== '') {

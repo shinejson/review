@@ -15,6 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 // Enforce Bearer Token Authentication
 $auth = api_authenticate_bearer($conn);
+api_require_permission($auth, 'analysis');
 $tenantId  = $auth['tenant_id'];
 $companyId = $auth['company_id'];
 

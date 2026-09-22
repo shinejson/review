@@ -13,6 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 $auth = api_authenticate_bearer($conn);
+api_require_permission($auth, 'ratings');
 $companyId = $auth['company_id'];
 
 if ($companyId <= 0) {

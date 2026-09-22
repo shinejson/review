@@ -1845,7 +1845,8 @@ function markCustomerEngagement($conn, $rating_id, $company_id, $type, $platform
 
         // Propagate onto the linked review (never overwrite an approved badge;
         // pending MoMo/receipt claims stay pending until the tenant approves).
-        $r = $conn->prepare("UPDATE ratings SET is_verified = 1, verification_type = 'follow_like' WHERE id = ? AND (is_verified = 0 OR is_verified IS NULL)");
+        // Nullify engage_token so this post-review action token is strictly one-time.
+        $r = $conn->prepare("UPDATE ratings SET is_verified = 1, verification_type = 'follow_like', engage_token = NULL WHERE id = ? AND (is_verified = 0 OR is_verified IS NULL)");
         if ($r) {
             $r->bind_param("i", $rating_id);
             $r->execute();
@@ -2636,10 +2637,31 @@ if (!function_exists('getAppWebRoot')) {
 if (!function_exists('getAppBaseUrl')) {
     /**
      * Get the full base URL of the application including scheme and host (e.g. 'http://localhost/rate').
+     * Prioritizes configured canonical APP_BASE_URL via getPlatformBaseUrl(), validating host against allowlist.
      */
     function getAppBaseUrl() {
+        if (function_exists('getPlatformBaseUrl')) {
+            $platformBase = getPlatformBaseUrl();
+            if (!empty($platformBase)) {
+                return $platformBase;
+            }
+        }
+
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-        $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $rawHost = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+        $hostName = preg_replace('/:\d+$/', '', $rawHost);
+
+        $allowedHosts = [];
+        $envHosts = getenv('OPTIBIZ_ALLOWED_HOSTS');
+        if ($envHosts) {
+            $allowedHosts = array_map('trim', explode(',', (string)$envHosts));
+            $allowedHosts = array_filter($allowedHosts);
+        }
+        if (empty($allowedHosts)) {
+            $allowedHosts = ['localhost', '127.0.0.1'];
+        }
+
+        $host = in_array($hostName, $allowedHosts, true) ? $rawHost : 'localhost';
         return $scheme . '://' . $host . getAppWebRoot();
     }
 }
@@ -3611,6 +3633,197 @@ if (!function_exists('hasCustomerReviewedThisMonth')) {
         $stmt->close();
 
         return $has_reviewed;
+    }
+}
+
+if (!function_exists('tenantGetPlan')) {
+    /**
+     * Get active plan data and tier classification for a tenant.
+     * Caches per-request statically to avoid multiple DB lookups.
+     *
+     * @param mysqli|null $conn
+     * @param int $tenant_id
+     * @return array
+     */
+    function tenantGetPlan($conn = null, $tenant_id = 0) {
+        if ($conn === null && isset($GLOBALS['conn'])) {
+            $conn = $GLOBALS['conn'];
+        }
+        $tenant_id = (int)$tenant_id;
+        if ($tenant_id <= 0 && function_exists('getTenantId')) {
+            $tenant_id = (int)getTenantId();
+        }
+        if ($tenant_id <= 0 || !is_object($conn)) {
+            return [
+                'id'            => 0,
+                'plan_name'     => 'Free Trial',
+                'tier'          => 'starter',
+                'price'         => 0.0,
+                'max_ratings'   => 100,
+                'max_customers' => 10,
+                'features'      => '',
+                'features_list' => [],
+            ];
+        }
+
+        static $plan_cache = [];
+        if (isset($plan_cache[$tenant_id])) {
+            return $plan_cache[$tenant_id];
+        }
+
+        $stmt = $conn->prepare("
+            SELECT t.plan_id, t.subscription_status, t.subscription_price,
+                   p.plan_name, p.price AS catalog_price, p.max_ratings, p.max_customers, p.features
+              FROM tenants t
+         LEFT JOIN subscription_plans p ON p.id = t.plan_id
+             WHERE t.id = ?
+             LIMIT 1
+        ");
+        $data = null;
+        if ($stmt) {
+            $stmt->bind_param('i', $tenant_id);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            $data = $res->fetch_assoc();
+            $stmt->close();
+        }
+
+        $plan_name = (string)($data['plan_name'] ?? '');
+        $price = (float)($data['subscription_price'] ?? ($data['catalog_price'] ?? 0));
+        $features_raw = (string)($data['features'] ?? '');
+        $features_list = array_values(array_filter(array_map('trim', preg_split('/[\r\n,]+/', strtolower($features_raw)))));
+
+        // Determine normalized tier
+        $tier = 'starter';
+        if (stripos($plan_name, 'enter') !== false || $price >= 150.0) {
+            $tier = 'enterprise';
+        } elseif (stripos($plan_name, 'pro') !== false || $price >= 60.0) {
+            $tier = 'pro';
+        }
+
+        $plan_cache[$tenant_id] = [
+            'id'            => (int)($data['plan_id'] ?? 0),
+            'plan_name'     => $plan_name ?: 'Starter',
+            'tier'          => $tier,
+            'price'         => $price,
+            'max_ratings'   => (int)($data['max_ratings'] ?? 100),
+            'max_customers' => (int)($data['max_customers'] ?? 10),
+            'features'      => $features_raw,
+            'features_list' => $features_list,
+        ];
+
+        return $plan_cache[$tenant_id];
+    }
+}
+
+if (!function_exists('tenantHasFeature')) {
+    /**
+     * Check if a tenant has access to a specific subscription feature.
+     *
+     * Supported features:
+     *  - 'ads_pixel': Meta Pixel, CAPI, Google Tag Manager (Pro & Enterprise)
+     *  - 'api_access': REST API Bearer token access (Enterprise)
+     *  - 'unlimited_themes': Unlimited social card themes & custom styles (Pro & Enterprise)
+     *  - 'custom_branding': Custom colors / white labeling (Pro & Enterprise)
+     *  - 'advanced_analytics': Deep keyword & sentiment analytics (Pro & Enterprise)
+     *
+     * @param mysqli|null $conn
+     * @param int $tenant_id
+     * @param string $feature_key
+     * @return bool
+     */
+    function tenantHasFeature($conn = null, $tenant_id = 0, $feature_key = '') {
+        $plan = tenantGetPlan($conn, $tenant_id);
+        $tier = $plan['tier'];
+        $feature_key = strtolower(trim((string)$feature_key));
+
+        switch ($feature_key) {
+            case 'api_access':
+            case 'rest_api':
+                // Enterprise only, or plans that explicitly list 'api' in features
+                if ($tier === 'enterprise') return true;
+                foreach ($plan['features_list'] as $f) {
+                    if (strpos($f, 'api') !== false) return true;
+                }
+                return false;
+
+            case 'ads_pixel':
+            case 'ads':
+            case 'pixels':
+                // Pro & Enterprise, or plans that list 'pixel' / 'ad' in features
+                if ($tier === 'pro' || $tier === 'enterprise') return true;
+                foreach ($plan['features_list'] as $f) {
+                    if (strpos($f, 'pixel') !== false || strpos($f, 'ad ') !== false || strpos($f, 'retargeting') !== false) return true;
+                }
+                return false;
+
+            case 'unlimited_themes':
+            case 'premium_themes':
+                // Pro & Enterprise, or plans with 'custom theme'
+                if ($tier === 'pro' || $tier === 'enterprise') return true;
+                foreach ($plan['features_list'] as $f) {
+                    if (strpos($f, 'theme') !== false) return true;
+                }
+                return false;
+
+            case 'custom_branding':
+            case 'white_label':
+                if ($tier === 'enterprise') return true;
+                if ($tier === 'pro') return true;
+                foreach ($plan['features_list'] as $f) {
+                    if (strpos($f, 'white') !== false || strpos($f, 'brand') !== false) return true;
+                }
+                return false;
+
+            case 'advanced_analytics':
+                if ($tier === 'pro' || $tier === 'enterprise') return true;
+                foreach ($plan['features_list'] as $f) {
+                    if (strpos($f, 'analytics') !== false) return true;
+                }
+                return false;
+
+            default:
+                return true;
+        }
+    }
+}
+
+if (!function_exists('tenantTeamSeatLimit')) {
+    /**
+     * Get the maximum number of team member accounts allowed for a tenant.
+     *
+     * Starter: 2 seats
+     * Pro: 10 seats
+     * Enterprise: 999 (Unlimited)
+     *
+     * @param mysqli|null $conn
+     * @param int $tenant_id
+     * @return int
+     */
+    function tenantTeamSeatLimit($conn = null, $tenant_id = 0) {
+        $plan = tenantGetPlan($conn, $tenant_id);
+        $tier = $plan['tier'];
+
+        if ($tier === 'enterprise') {
+            return 999;
+        }
+        if ($tier === 'pro') {
+            return 10;
+        }
+        return 2; // Starter default
+    }
+}
+
+if (!function_exists('tenantUpgradeUrl')) {
+    /**
+     * Helper to generate a direct upgrade link to the subscription page.
+     *
+     * @param string $target_tier Optional tier or feature hint ('pro', 'enterprise', 'ads', etc.)
+     * @return string
+     */
+    function tenantUpgradeUrl($target_tier = '') {
+        $param = $target_tier ? '?upgrade=' . urlencode($target_tier) : '';
+        return 'subscription.php' . $param . '#plans';
     }
 }
 ?>

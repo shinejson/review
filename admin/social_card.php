@@ -26,6 +26,8 @@ if ($tenant_id) {
     $t->close();
 }
 
+$has_unlimited_themes = function_exists('tenantHasFeature') ? tenantHasFeature($conn, $tenant_id, 'unlimited_themes') : true;
+
 // Multi-branch: Load the active company profile
 $company_profile = null;
 if ($tenant_id) {
@@ -231,17 +233,20 @@ include __DIR__ . '/_shell.php';
                     <span style="width:12px;height:12px;border-radius:50%;background:#f59e0b;display:inline-block;margin-right:6px;"></span>
                     Sunset
                 </button>
-                <button type="button" class="theme-pill" data-theme="royal" onclick="setTheme('royal')" style="background:#1e1b4b;color:#fff;border-color:#a855f7;">
+                <button type="button" class="theme-pill" data-theme="royal" onclick="setTheme('royal')" style="background:#1e1b4b;color:#fff;border-color:#a855f7;<?php echo !$has_unlimited_themes ? 'opacity:0.85;' : ''; ?>" <?php echo !$has_unlimited_themes ? 'title="Professional plan theme"' : ''; ?>>
                     <span style="width:12px;height:12px;border-radius:50%;background:#a855f7;display:inline-block;margin-right:6px;"></span>
                     Royal
+                    <?php if (!$has_unlimited_themes): ?><span style="font-size:9px;padding:1px 5px;border-radius:4px;background:var(--lime,#c2f542);color:#091a27;font-weight:800;margin-left:auto;">PRO</span><?php endif; ?>
                 </button>
-                <button type="button" class="theme-pill" data-theme="editorial" onclick="setTheme('editorial')" style="background:var(--card);color:var(--ink);border:1px solid var(--line);">
+                <button type="button" class="theme-pill" data-theme="editorial" onclick="setTheme('editorial')" style="background:var(--card);color:var(--ink);border:1px solid var(--line);<?php echo !$has_unlimited_themes ? 'opacity:0.85;' : ''; ?>" <?php echo !$has_unlimited_themes ? 'title="Professional plan theme"' : ''; ?>>
                     <span style="width:12px;height:12px;border-radius:50%;background:#091a27;display:inline-block;margin-right:6px;"></span>
                     Editorial
+                    <?php if (!$has_unlimited_themes): ?><span style="font-size:9px;padding:1px 5px;border-radius:4px;background:var(--lime,#c2f542);color:#091a27;font-weight:800;margin-left:auto;">PRO</span><?php endif; ?>
                 </button>
-                <button type="button" class="theme-pill" data-theme="gold" onclick="setTheme('gold')" style="background:#1c1917;color:#fff;border-color:#eab308;">
+                <button type="button" class="theme-pill" data-theme="gold" onclick="setTheme('gold')" style="background:#1c1917;color:#fff;border-color:#eab308;<?php echo !$has_unlimited_themes ? 'opacity:0.85;' : ''; ?>" <?php echo !$has_unlimited_themes ? 'title="Professional plan theme"' : ''; ?>>
                     <span style="width:12px;height:12px;border-radius:50%;background:#eab308;display:inline-block;margin-right:6px;"></span>
                     Ghana Gold
+                    <?php if (!$has_unlimited_themes): ?><span style="font-size:9px;padding:1px 5px;border-radius:4px;background:var(--lime,#c2f542);color:#091a27;font-weight:800;margin-left:auto;">PRO</span><?php endif; ?>
                 </button>
             </div>
         </div>
@@ -495,7 +500,17 @@ function setAspectRatio(ratio) {
     renderCard();
 }
 
+var hasUnlimitedThemes = <?php echo $has_unlimited_themes ? 'true' : 'false'; ?>;
+var premiumThemes = ['royal', 'editorial', 'gold'];
+
 function setTheme(themeKey) {
+    if (!hasUnlimitedThemes && premiumThemes.indexOf(themeKey) !== -1) {
+        var themeName = themeKey === 'gold' ? 'Ghana Gold' : (themeKey.charAt(0).toUpperCase() + themeKey.slice(1));
+        if (confirm(themeName + ' is a Professional studio theme.\n\nYour current plan includes the 3 standard themes (Midnight, Emerald, and Sunset).\n\nWould you like to upgrade to Professional to unlock all themes and custom branding?')) {
+            window.location.href = '<?php echo function_exists('tenantUpgradeUrl') ? tenantUpgradeUrl('pro') : 'subscription.php#plans'; ?>';
+        }
+        return;
+    }
     currentTheme = themeKey;
     document.querySelectorAll('#themeGroup .theme-pill').forEach(function(p) {
         p.classList.toggle('active', p.getAttribute('data-theme') === themeKey);

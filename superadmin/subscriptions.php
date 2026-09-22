@@ -12,6 +12,7 @@ require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/sa_helpers.php';
 require_once dirname(__DIR__) . '/includes/admin_helpers.php';
+require_once dirname(__DIR__) . '/includes/subscription_chart_component.php';
 
 requireSuperAdminLogin();
 require_sa_permission('subscriptions');
@@ -728,6 +729,27 @@ foreach ($chips as $key => $chip): ?>
 <?php endif; ?>
             </tbody>
         </table>
+    </div>
+</section>
+
+<!-- ============ SUBSCRIPTION PLANS & ACCESS ENTITLEMENTS ============ -->
+<section class="sa-card sa-mt" id="subscription-access-chart">
+    <div class="sa-card-head">
+        <div>
+            <h3>Subscription packages &amp; access chart</h3>
+            <p>Side-by-side breakdown of features, limits, and access controls for all subscription plans.</p>
+        </div>
+        <div class="sa-card-head-actions">
+            <a href="plans.php" class="sa-btn sa-btn-sm sa-btn-primary">
+                <?php echo sa_icon('layers'); ?> Edit catalog plans
+            </a>
+        </div>
+    </div>
+    <div style="padding: 10px 18px 24px;">
+        <?php echo render_subscription_access_chart($conn, 'superadmin_plans', [
+            'title' => 'SUBSCRIPTION PLANS PACKAGES PRICING TABLE',
+            'subtitle' => 'Capability matrix for active subscription packages in the platform catalog.'
+        ]); ?>
     </div>
 </section>
 

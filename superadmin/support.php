@@ -180,13 +180,17 @@ $counts = [
 // Super-admins list for the assignment dropdown
 $sa_admins = sa_query($conn, "SELECT id, username FROM super_admins ORDER BY username ASC", 'super_admins');
 
+$robots = 'noindex, nofollow';
 $pageTitle = 'Support Tickets';
 $pageHeading = 'Support Inbox';
 $pageSubtitle = 'Help workspaces, triage bugs and review feature requests.';
 $activePage = 'support_tickets';
 $searchPlaceholder = 'Search tickets, tenants, subjects...';
 $BASE = '../';
+$extraCss = ['assets/css/superadmin.css'];
+$bodyClass = 'sa-body';
 
+include dirname(__DIR__) . '/includes/header.php';
 include __DIR__ . '/_shell.php';
 ?>
 
@@ -540,6 +544,7 @@ include __DIR__ . '/_shell.php';
       </div>
     </form>
   </div>
+</div>
 
 <?php else: /* inbox list view */ ?>
 

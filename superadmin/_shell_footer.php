@@ -53,10 +53,13 @@
         <p id="saLogoutModalDesc" class="sa-logout-desc">Are you sure you want to sign out? Your administrative session will be terminated and you will need to sign in again to access Optibiz Control Center.</p>
         <div class="sa-logout-actions">
             <button type="button" class="sa-btn sa-btn-ghost" data-sa-close-dialog>Stay Signed In</button>
-            <a href="<?php echo sa_e(auth_logout_url()); ?>" class="sa-btn sa-btn-danger sa-logout-btn-confirm">
-                <?php echo sa_icon('logout'); ?>
-                <span>Yes, Sign Out</span>
-            </a>
+            <form method="POST" action="<?php echo $sa_base; ?>superadmin/logout.php" class="sa-logout-form">
+                <input type="hidden" name="logout_token" value="<?php echo htmlspecialchars(auth_logout_token()); ?>">
+                <button type="submit" class="sa-btn sa-btn-danger sa-logout-btn-confirm">
+                    <?php echo sa_icon('logout'); ?>
+                    <span>Yes, Sign Out</span>
+                </button>
+            </form>
         </div>
     </div>
 </dialog>

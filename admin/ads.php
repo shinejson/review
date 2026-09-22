@@ -52,11 +52,17 @@ if (!$valid_company && count($companies_list) > 0) {
 }
 
 $ad_config = getTenantAdConfig($conn, $tenant_id, $company_id);
+$has_ads_access = function_exists('tenantHasFeature') ? tenantHasFeature($conn, $tenant_id, 'ads_pixel') : true;
 
 /* ---------- POST Handlers ---------- */
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!sa_csrf_ok()) {
         sa_flash('error', 'Your session expired. Please try again.');
+        redirect("ads.php?tab={$active_tab}&company_id={$company_id}&days={$days}");
+    }
+
+    if (!$has_ads_access) {
+        sa_flash('error', 'Ad tracking pixels & Conversions API integration requires a Professional or Enterprise plan. Please upgrade your subscription.');
         redirect("ads.php?tab={$active_tab}&company_id={$company_id}&days={$days}");
     }
 
@@ -243,6 +249,26 @@ include __DIR__ . '/_shell.php';
         </select>
     </form>
 </div>
+
+<?php if (!$has_ads_access): ?>
+<div style="margin-bottom:24px;padding:18px 22px;background:linear-gradient(135deg,rgba(15,36,56,0.06),rgba(15,36,56,0.02));border:1px solid rgba(15,36,56,0.12);border-left:4px solid var(--lime,#84cc16);border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+    <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:280px;">
+        <div style="width:42px;height:42px;border-radius:10px;background:rgba(194,245,66,0.22);color:var(--ink);display:grid;place-items:center;font-size:20px;flex-shrink:0;">
+            🔒
+        </div>
+        <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <h3 style="margin:0;font-size:15.5px;font-weight:800;color:var(--ink);">Ad Retargeting &amp; Pixels is a Professional Feature</h3>
+                <span style="font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:6px;background:var(--navy,#0f2438);color:var(--lime,#c2f542);">PRO / ENTERPRISE</span>
+            </div>
+            <p style="margin:4px 0 0;color:var(--muted);font-size:13px;line-height:1.45;">Your current plan does not include Meta Pixel, CAPI server-side event dispatching, or Google Tag Manager integration. Upgrade to <strong>Professional</strong> to track review conversions and retarget happy customers with automated social proof.</p>
+        </div>
+    </div>
+    <a href="<?php echo function_exists('tenantUpgradeUrl') ? tenantUpgradeUrl('pro') : 'subscription.php#plans'; ?>" class="btn btn-primary" style="font-weight:700;padding:10px 18px;text-decoration:none;white-space:nowrap;">
+        Upgrade to Professional
+    </a>
+</div>
+<?php endif; ?>
 
 <!-- Navigation Tabs -->
 <div style="display:flex;gap:8px;margin-bottom:24px;border-bottom:1px solid var(--line);padding-bottom:12px;overflow-x:auto;white-space:nowrap;">
@@ -527,9 +553,15 @@ include __DIR__ . '/_shell.php';
                 </div>
             </div>
 
+            <?php if ($has_ads_access): ?>
             <button type="submit" class="btn" style="background:var(--navy);color:var(--lime);padding:12px 24px;border-radius:8px;font-size:13px;font-weight:800;border:none;cursor:pointer;">
                 Save Tracking Configuration
             </button>
+            <?php else: ?>
+            <a href="<?php echo function_exists('tenantUpgradeUrl') ? tenantUpgradeUrl('pro') : 'subscription.php#plans'; ?>" class="btn btn-primary" style="display:inline-block;padding:12px 24px;border-radius:8px;font-size:13px;font-weight:800;text-decoration:none;">
+                🔒 Upgrade to Professional to Save &amp; Activate
+            </a>
+            <?php endif; ?>
         </form>
         </div>
     </div>

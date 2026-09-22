@@ -9,10 +9,17 @@ $success = '';
 $email_input = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email_input = trim($_POST['email'] ?? '');
-    if ($email_input === '' || !filter_var($email_input, FILTER_VALIDATE_EMAIL)) {
-        $error = 'Please enter a valid email address.';
-    } else {
+    if (function_exists('public_rate_limit')) {
+        $retry = public_rate_limit('forgot_password', 5, 900);
+        if ($retry > 0) {
+            $error = 'Too many password reset requests from your IP. Please try again in ' . ceil($retry / 60) . ' minutes.';
+        }
+    }
+    if ($error === '') {
+        $email_input = trim($_POST['email'] ?? '');
+        if ($email_input === '' || !filter_var($email_input, FILTER_VALIDATE_EMAIL)) {
+            $error = 'Please enter a valid email address.';
+        } else {
         $stmt = $conn->prepare("SELECT id, public_id, company_name, email FROM tenants WHERE email = ? LIMIT 1");
         if ($stmt) {
             $stmt->bind_param("s", $email_input);
@@ -54,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+}
 }
 
 $robots = 'noindex, nofollow';

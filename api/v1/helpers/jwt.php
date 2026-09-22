@@ -110,4 +110,52 @@ class JWT {
 
         return $payload;
     }
+
+    /**
+     * Auto-ensure revoked tokens table exists
+     */
+    public static function ensureRevocationSchema(mysqli $conn): void {
+        static $ensured = false;
+        if ($ensured) return;
+        $ensured = true;
+        $conn->query("CREATE TABLE IF NOT EXISTS api_revoked_tokens (
+            token_hash VARCHAR(64) PRIMARY KEY,
+            token_type VARCHAR(16) NOT NULL DEFAULT 'refresh',
+            tenant_id INT NOT NULL DEFAULT 0,
+            revoked_at DATETIME NOT NULL,
+            expires_at INT NOT NULL DEFAULT 0,
+            INDEX idx_revoked_exp (expires_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    }
+
+    /**
+     * Check if a token has been explicitly revoked
+     */
+    public static function isRevoked(mysqli $conn, string $token): bool {
+        self::ensureRevocationSchema($conn);
+        $hash = hash('sha256', trim($token));
+        $stmt = $conn->prepare("SELECT token_hash FROM api_revoked_tokens WHERE token_hash = ? LIMIT 1");
+        if (!$stmt) return false;
+        $stmt->bind_param("s", $hash);
+        $stmt->execute();
+        $stmt->store_result();
+        $isRevoked = ($stmt->num_rows > 0);
+        $stmt->close();
+        return $isRevoked;
+    }
+
+    /**
+     * Revoke a token (e.g. on logout or rotation)
+     */
+    public static function revoke(mysqli $conn, string $token, string $type = 'refresh', int $tenantId = 0, int $expiresAt = 0): bool {
+        self::ensureRevocationSchema($conn);
+        $hash = hash('sha256', trim($token));
+        $now = date('Y-m-d H:i:s');
+        $stmt = $conn->prepare("INSERT IGNORE INTO api_revoked_tokens (token_hash, token_type, tenant_id, revoked_at, expires_at) VALUES (?, ?, ?, ?, ?)");
+        if (!$stmt) return false;
+        $stmt->bind_param("ssisi", $hash, $type, $tenantId, $now, $expiresAt);
+        $ok = $stmt->execute();
+        $stmt->close();
+        return $ok;
+    }
 }

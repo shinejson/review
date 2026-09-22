@@ -156,8 +156,12 @@ $activeNav = $activeNav ?? 'dashboard';
     </a>
     <?php endif; ?>
     <?php if (teamHasAccess('ads')): ?>
+    <?php $shell_has_ads = function_exists('tenantHasFeature') ? tenantHasFeature($conn ?? null, $tenant_id, 'ads_pixel') : true; ?>
     <a <?php echo $activeNav === 'ads' ? 'class="active"' : ''; ?> href="ads.php" title="Ads &amp; Funnels">
       <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><span class="nav-label">Ads &amp; Funnel</span>
+      <?php if (!$shell_has_ads): ?>
+      <span style="font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:4px;background:rgba(194,245,66,0.18);color:var(--lime,#c2f542);margin-left:auto;">PRO</span>
+      <?php endif; ?>
     </a>
     <?php endif; ?>
   </nav>

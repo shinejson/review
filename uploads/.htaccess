@@ -1,16 +1,31 @@
 # Block script execution in the uploads directory.
-# Uploaded files are user content and must never be executed as scripts.
-<FilesMatch "\.(php|php3|php4|php5|php7|phps|phtml|pht|cgi|pl|py|sh|asp|aspx|jsp)$">
-    Order allow,deny
-    Deny from all
+# Uploaded files are strictly static user images and must never be executed as scripts.
+
+# 1. Deny execution of any script or dangerous file type
+<FilesMatch "\.(php|php[0-9]|phtml|pht|phps|phar|cgi|pl|py|sh|bash|asp|aspx|jsp|svg|html|htm|shtml|inc|htaccess|exe)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
 </FilesMatch>
 
-# Additionally, if PHP is registered as a handler for other extensions,
-# neutralise it so that a renamed file cannot execute.
-<FilesMatch "\.(gif|jpe?|png|webp)$">
-    php_flag engine off
+# 2. Neutralize execution handlers for image files
+<FilesMatch "\.(gif|jpe?g|png|webp|ico|pdf)$">
+    SetHandler default-handler
+    <IfModule mod_php.c>
+        php_flag engine off
+    </IfModule>
+    <IfModule mod_php7.c>
+        php_flag engine off
+    </IfModule>
+    <IfModule mod_php8.c>
+        php_flag engine off
+    </IfModule>
     RemoveHandler .php .phtml .phar
 </FilesMatch>
 
-# Prevent directory listing
-Options -Indexes
+# 3. Prevent directory listing
+Options -Indexes -ExecCGI

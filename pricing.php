@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/subscription_chart_component.php';
 
 // Fetch currency settings
 $currency_symbol = '$';
@@ -1610,6 +1611,16 @@ if ($cat_res) {
             <div class="t-badge"><i class="fa-solid fa-clock-rotate-left"></i> Cancel or Switch Anytime</div>
             <div class="t-badge"><i class="fa-solid fa-headset"></i> Dedicated Onboarding Support</div>
         </div>
+    </div>
+
+    <!-- Subscription Plans Packages Pricing Table / Access Matrix -->
+    <div style="padding: 0 5%; max-width: 1280px; margin: 0 auto;">
+        <?php echo render_subscription_access_chart($conn, 'public', [
+            'currency_symbol' => $currency_symbol,
+            'currency_position' => $currency_position,
+            'title' => 'SUBSCRIPTION PLANS PACKAGES PRICING TABLE',
+            'subtitle' => 'Detailed side-by-side breakdown of access limits, marketing tools, and capabilities across all plans.'
+        ]); ?>
     </div>
 
     <!-- Interactive Review ROI Calculator -->

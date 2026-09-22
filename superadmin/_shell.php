@@ -194,6 +194,10 @@ foreach ($sa_nav as $sa_item) {
     if ($sa_pending_section !== null) { $sa_nav_visible[] = $sa_pending_section; $sa_pending_section = null; }
     $sa_nav_visible[] = $sa_item;
 }
+
+if (!defined('SA_HEADER_INCLUDED')) {
+    include dirname(__DIR__) . '/includes/header.php';
+}
 ?>
 <a class="sa-skip" href="#saContent">Skip to content</a>
 

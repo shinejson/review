@@ -14,6 +14,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/admin_helpers.php';
+require_once dirname(__DIR__) . '/includes/subscription_chart_component.php';
 
 requireLogin();
 requireTeamAccess('subscription');
@@ -762,6 +763,15 @@ include __DIR__ . '/_shell.php';
                 <?php endif; ?>
             </div>
         </div>
+
+        <!-- Subscription Plans & Access Comparison Matrix -->
+        <?php echo render_subscription_access_chart($conn, 'tenant', [
+            'current_plan_id' => $current_plan_id,
+            'pending_request' => !empty($pending_request),
+            'tenant_id' => $tenant_id,
+            'title' => 'SUBSCRIPTION PLANS PACKAGES ACCESS CHART',
+            'subtitle' => 'Detailed side-by-side feature comparison. Easily switch or upgrade your plan to unlock more capabilities.'
+        ]); ?>
 
         <!-- Request history -->
         <div class="data-table-card">

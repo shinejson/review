@@ -15,6 +15,10 @@
  *   $extraHead  string    raw markup appended to <head>
  */
 
+if (!defined('SA_HEADER_INCLUDED')) {
+    define('SA_HEADER_INCLUDED', true);
+}
+
 if (!isset($BASE)) {
     // Work out how deep the running script sits below the app root, so
     // assets resolve correctly for index.php, superadmin/x.php, etc.

@@ -49,13 +49,20 @@ if ($token === '') {
 
 // Handle password submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tenant && !$expired && $error === '') {
-    $password = (string)($_POST['password'] ?? '');
-    $confirm = (string)($_POST['confirm_password'] ?? '');
-    $tokenPost = trim($_POST['token'] ?? '');
+    if (function_exists('public_rate_limit')) {
+        $retry = public_rate_limit('setup_password', 10, 900);
+        if ($retry > 0) {
+            $error = 'Too many password setup attempts from your IP. Please try again in ' . ceil($retry / 60) . ' minutes.';
+        }
+    }
+    if ($error === '') {
+        $password = (string)($_POST['password'] ?? '');
+        $confirm = (string)($_POST['confirm_password'] ?? '');
+        $tokenPost = trim($_POST['token'] ?? '');
 
-    // Re-validate token from POST to prevent tampering
-    if ($tokenPost !== $token) {
-        $error = 'Security token mismatch. Please use the link from your email.';
+        // Re-validate token from POST to prevent tampering
+        if ($tokenPost !== $token) {
+            $error = 'Security token mismatch. Please use the link from your email.';
     } elseif (strlen($password) < 8) {
         $error = 'Password must be at least 8 characters long.';
     } elseif ($password !== $confirm) {
@@ -103,6 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tenant && !$expired && $error === 
             $error = 'Could not update password. Please try again or contact support.';
         }
     }
+}
 }
 
 $robots = 'noindex, nofollow';

@@ -222,6 +222,9 @@
                     closeAll(wrap);
                 });
                 panel.addEventListener('click', function (e) {
+                    if (e.target.closest && e.target.closest('[data-sa-logout-trigger], [data-sa-open-dialog], [data-sa-confirm]')) {
+                        return;
+                    }
                     e.stopPropagation();
                 });
             })(wraps[i]);
@@ -715,21 +718,48 @@
         var modal = document.getElementById('saLogoutModal');
         if (!modal) return;
 
-        // Open modal on click of any logout trigger
-        document.addEventListener('click', function (e) {
-            var trigger = e.target.closest ? e.target.closest('[data-sa-logout-trigger]') : null;
-            if (!trigger) return;
-
+        function triggerLogout(e, trigger) {
             e.preventDefault();
             e.stopPropagation();
 
             var href = trigger.getAttribute('href');
             var confirmBtn = modal.querySelector('.sa-logout-btn-confirm');
-            if (href && confirmBtn) {
+            var form = modal.querySelector('.sa-logout-form');
+            if (href && confirmBtn && confirmBtn.tagName === 'A') {
                 confirmBtn.setAttribute('href', href);
+            }
+            if (href && form) {
+                form.setAttribute('action', href);
+            }
+
+            // Close any open menus
+            var openPanels = document.querySelectorAll('.sa-menu.is-open');
+            for (var p = 0; p < openPanels.length; p++) {
+                openPanels[p].classList.remove('is-open');
+            }
+            var menuTriggers = document.querySelectorAll('[data-sa-menu-trigger][aria-expanded="true"]');
+            for (var mt = 0; mt < menuTriggers.length; mt++) {
+                menuTriggers[mt].setAttribute('aria-expanded', 'false');
             }
 
             openDialog(modal);
+        }
+
+        // Direct binding to all present triggers (e.g. sidebar and topnav dropdown)
+        var triggers = document.querySelectorAll('[data-sa-logout-trigger]');
+        for (var t = 0; t < triggers.length; t++) {
+            (function(trig) {
+                trig.addEventListener('click', function(e) {
+                    triggerLogout(e, trig);
+                });
+            })(triggers[t]);
+        }
+
+        // Delegated binding as fallback
+        document.addEventListener('click', function (e) {
+            var trigger = e.target.closest ? e.target.closest('[data-sa-logout-trigger]') : null;
+            if (!trigger) return;
+            triggerLogout(e, trigger);
         });
 
         // Close on cancel buttons
@@ -740,6 +770,20 @@
                 closeDialog(modal);
             });
         }
+
+        // Backdrop click
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) {
+                closeDialog(modal);
+            }
+        });
+
+        // Escape key
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && (modal.hasAttribute('open') || modal.open)) {
+                closeDialog(modal);
+            }
+        });
     }
 
     /* ---------- Back to top ---------- */

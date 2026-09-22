@@ -79,6 +79,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $is_tenant) {
     $perm_str  = implode(',', $perms);
 
     if ($action === 'create') {
+        $seat_limit = function_exists('tenantTeamSeatLimit') ? tenantTeamSeatLimit($conn, $tenant_id) : 2;
+        $current_member_count = (int)admin_scalar($conn, "SELECT COUNT(*) FROM team_members WHERE tenant_id = " . (int)$tenant_id, 0);
+        if ($seat_limit < 999 && $current_member_count >= $seat_limit) {
+            $plan_info = function_exists('tenantGetPlan') ? tenantGetPlan($conn, $tenant_id) : ['plan_name' => 'Starter'];
+            $_SESSION['error'] = 'Your "' . htmlspecialchars($plan_info['plan_name']) . '" plan allows up to ' . $seat_limit . ' team member seats (' . $current_member_count . ' in use). Please upgrade your subscription to add more staff.';
+            header('Location: team.php');
+            exit;
+        }
+
         $password = (string)($_POST['password'] ?? '');
         if ($full_name === '' || $username === '' || $email === '' || $password === '') {
             $_SESSION['error'] = 'All fields are required to add a team member.';
@@ -233,6 +242,11 @@ if (!$is_tenant) {
     return;
 }
 ?>
+<?php
+$seat_limit = function_exists('tenantTeamSeatLimit') ? tenantTeamSeatLimit($conn, $tenant_id) : 2;
+$plan_info  = function_exists('tenantGetPlan') ? tenantGetPlan($conn, $tenant_id) : ['plan_name' => 'Starter'];
+$is_at_seat_limit = ($seat_limit < 999 && count($team_members) >= $seat_limit);
+?>
 <!-- Page Header -->
 <div class="welcome-row" style="margin-bottom:22px;">
     <div>
@@ -240,9 +254,17 @@ if (!$is_tenant) {
         <h1 style="margin:0;">Team Members</h1>
         <p class="muted" style="margin-top:6px;">Create staff accounts and control which modules each person can access.</p>
     </div>
-    <a href="#addMember" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;text-decoration:none;">
-        + Add Team Member
-    </a>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <?php if ($is_at_seat_limit): ?>
+        <a href="<?php echo function_exists('tenantUpgradeUrl') ? tenantUpgradeUrl('pro') : 'subscription.php#plans'; ?>" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:9px 15px;text-decoration:none;font-weight:700;border:1px solid rgba(194,245,66,0.5);">
+            ⚡ Upgrade for More Seats
+        </a>
+        <?php else: ?>
+        <a href="#addMember" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;text-decoration:none;">
+            + Add Team Member
+        </a>
+        <?php endif; ?>
+    </div>
 </div>
 
 <?php if ($success): ?>
@@ -256,9 +278,9 @@ if (!$is_tenant) {
 <div class="metric-grid" style="margin-bottom:24px;">
     <div class="metric-card">
         <div class="metric-icon lime">👥</div>
-        <span>Team Members</span>
-        <strong><?php echo count($team_members); ?></strong>
-        <small>Total accounts in workspace</small>
+        <span>Staff Seats</span>
+        <strong><?php echo count($team_members); ?><?php echo $seat_limit < 999 ? ' / ' . $seat_limit : ' (∞)'; ?></strong>
+        <small><?php echo htmlspecialchars($plan_info['plan_name']); ?> plan allowance</small>
     </div>
     <div class="metric-card">
         <div class="metric-icon green">●</div>

@@ -4700,3 +4700,220 @@ a.sa-list-item:hover {
         justify-content: flex-start;
     }
 }
+
+/* ============================================================
+   Superadmin Logout Confirmation Modal
+   ============================================================ */
+dialog.sa-dialog.sa-logout-dialog {
+    padding: 0;
+    border: none;
+    border-radius: var(--sa-radius, 16px);
+    background: transparent;
+    color: var(--sa-text);
+    max-width: 440px;
+    width: calc(100% - 32px);
+    margin: auto;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--sa-line);
+    overflow: visible;
+    position: fixed;
+    inset: 0;
+}
+
+dialog.sa-dialog.sa-logout-dialog::backdrop {
+    background: rgba(5, 12, 20, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    animation: saBackdropFadeIn 0.22s ease-out;
+}
+
+dialog.sa-dialog.sa-logout-dialog.is-open-fallback {
+    display: block;
+    z-index: 99999;
+}
+
+@keyframes saModalPopIn {
+    from {
+        opacity: 0;
+        transform: scale(0.94) translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes saBackdropFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.sa-logout-card {
+    position: relative;
+    background: var(--sa-surface-solid, #12293d);
+    border: 1px solid var(--sa-line);
+    border-radius: var(--sa-radius, 16px);
+    padding: 32px 28px 28px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+    animation: saModalPopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sa-logout-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--sa-radius-xs, 8px);
+    border: none;
+    background: transparent;
+    color: var(--sa-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    padding: 0;
+}
+
+.sa-logout-close:hover {
+    background: var(--sa-surface-hover);
+    color: var(--sa-heading);
+}
+
+.sa-logout-icon-wrap {
+    margin-bottom: 18px;
+    display: flex;
+    justify-content: center;
+}
+
+.sa-logout-icon {
+    width: 58px;
+    height: 58px;
+    border-radius: var(--sa-radius, 16px);
+    background: var(--sa-danger-soft, rgba(248, 113, 113, 0.13));
+    color: var(--sa-danger, #f87171);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--sa-danger-line, rgba(248, 113, 113, 0.34));
+}
+
+.sa-logout-icon svg {
+    width: 28px;
+    height: 28px;
+    stroke: currentColor;
+}
+
+.sa-logout-title {
+    margin: 0 0 10px;
+    font-size: 20px;
+    font-weight: 750;
+    color: var(--sa-heading);
+    letter-spacing: -0.025em;
+}
+
+.sa-logout-desc {
+    margin: 0 0 26px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--sa-muted);
+    max-width: 360px;
+}
+
+.sa-logout-actions {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+}
+
+.sa-logout-actions form.sa-logout-form {
+    margin: 0;
+    flex: 1;
+    display: flex;
+}
+
+.sa-logout-actions .sa-btn {
+    flex: 1;
+    padding: 12px 18px;
+    font-size: 13.5px;
+    font-weight: 650;
+    border-radius: var(--sa-radius-sm, 11px);
+    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    text-decoration: none;
+    line-height: 1.2;
+}
+
+.sa-logout-actions .sa-btn-ghost {
+    background: var(--sa-surface-2);
+    border: 1px solid var(--sa-line);
+    color: var(--sa-text);
+}
+
+.sa-logout-actions .sa-btn-ghost:hover {
+    background: var(--sa-surface-hover);
+    border-color: var(--sa-line-strong);
+    color: var(--sa-heading);
+}
+
+.sa-logout-actions .sa-btn-danger,
+.sa-logout-btn-confirm {
+    width: 100%;
+    background: #dc2626;
+    border: 1px solid rgba(220, 38, 38, 0.4);
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35);
+}
+
+.sa-logout-actions .sa-btn-danger:hover,
+.sa-logout-btn-confirm:hover {
+    background: #b91c1c;
+    border-color: rgba(185, 28, 28, 0.6);
+    box-shadow: 0 4px 14px rgba(185, 28, 28, 0.45);
+    transform: translateY(-1px);
+    color: #ffffff;
+    text-decoration: none;
+}
+
+/* Light Theme Adjustments */
+:root[data-theme='light'] dialog.sa-dialog.sa-logout-dialog {
+    box-shadow: 0 20px 45px -10px rgba(15, 36, 56, 0.2), 0 0 0 1px var(--sa-line);
+}
+
+:root[data-theme='light'] dialog.sa-dialog.sa-logout-dialog::backdrop {
+    background: rgba(15, 36, 56, 0.55);
+}
+
+:root[data-theme='light'] .sa-logout-card {
+    background: #ffffff;
+    border-color: rgba(15, 36, 56, 0.12);
+}
+
+:root[data-theme='light'] .sa-logout-icon {
+    background: #fee2e2;
+    border-color: rgba(185, 28, 28, 0.2);
+    color: #b91c1c;
+}
+
+:root[data-theme='light'] .sa-logout-actions .sa-btn-ghost {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #334155;
+}
+
+:root[data-theme='light'] .sa-logout-actions .sa-btn-ghost:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+

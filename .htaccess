@@ -25,8 +25,8 @@ RewriteRule ^(.*)$ $1.php [L]
 # Prevent directory browsing
 Options -Indexes
 
-# Protect config and sensitive files (.env, .git, .sql, backups, etc.)
-<FilesMatch "(^\.env|^\.git|^#.*#|\.(bak|config|dist|fla|inc|ini|log|psd|sh|sql|sw[op]|env|gz|tar|zip)|~)$">
+# Protect config, documentation, and sensitive files (.env, .git, .md, .sql, backups, etc.)
+<FilesMatch "(^\.env|^\.git|^\.gitignore|^composer\.(json|lock)|^package(-lock)?\.json|^#.*#|\.(bak|config|dist|fla|inc|ini|log|psd|sh|sql|sw[op]|env|gz|tar|zip|md|markdown|properties|gradle|kts|lock)|~)$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>

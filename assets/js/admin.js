@@ -471,22 +471,44 @@
         var modal = document.getElementById('adminLogoutModal');
         if (!modal) return;
 
-        // Open modal on click of any logout trigger
-        document.addEventListener('click', function (e) {
-            var trigger = e.target.closest ? e.target.closest('[data-admin-logout-trigger]') : null;
-            if (!trigger) return;
-
+        function triggerLogout(e, trigger) {
             e.preventDefault();
             e.stopPropagation();
 
-            // Also copy the href if trigger has custom logout URL
             var href = trigger.getAttribute('href');
             var confirmBtn = modal.querySelector('.btn-logout-confirm');
-            if (href && confirmBtn) {
+            var form = modal.querySelector('.admin-logout-form');
+            if (href && confirmBtn && confirmBtn.tagName === 'A') {
                 confirmBtn.setAttribute('href', href);
+            }
+            if (href && form) {
+                form.setAttribute('action', href);
+            }
+
+            // Close any open menus
+            var openMenus = document.querySelectorAll('.admin-menu-wrap.is-open');
+            for (var m = 0; m < openMenus.length; m++) {
+                openMenus[m].classList.remove('is-open');
             }
 
             openAdminDialog(modal);
+        }
+
+        // Direct binding to all present triggers (sidebar and topnav dropdown)
+        var triggers = document.querySelectorAll('[data-admin-logout-trigger]');
+        for (var t = 0; t < triggers.length; t++) {
+            (function(trig) {
+                trig.addEventListener('click', function(e) {
+                    triggerLogout(e, trig);
+                });
+            })(triggers[t]);
+        }
+
+        // Delegated binding as fallback
+        document.addEventListener('click', function (e) {
+            var trigger = e.target.closest ? e.target.closest('[data-admin-logout-trigger]') : null;
+            if (!trigger) return;
+            triggerLogout(e, trigger);
         });
 
         // Close modal buttons

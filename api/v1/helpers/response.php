@@ -35,10 +35,16 @@ function api_init_cors() {
         ];
     }
 
-    $origin = isset($_SERVER['HTTP_ORIGIN']) ? (string)$_SERVER['HTTP_ORIGIN'] : '';
+    // In CLI or when no Origin header is sent (native mobile apps, server-side calls, curl),
+    // browser CORS policies do not apply.
+    if (PHP_SAPI === 'cli' || !isset($_SERVER['HTTP_ORIGIN']) || trim((string)$_SERVER['HTTP_ORIGIN']) === '') {
+        return;
+    }
+
+    $origin = (string)$_SERVER['HTTP_ORIGIN'];
 
     $allow = false;
-    if (isset($allowedOrigins[$origin]) || (isset($_SERVER['HTTP_ORIGIN']) && in_array($origin, array_keys($allowedOrigins), true))) {
+    if (isset($allowedOrigins[$origin]) || in_array($origin, array_keys($allowedOrigins), true)) {
         $allow = true;
     }
 

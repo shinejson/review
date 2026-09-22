@@ -1,12 +1,26 @@
-# Block script execution in the reviews uploads directory.
-<FilesMatch "\.(php|php3|php4|php5|php7|phps|phtml|pht|cgi|pl|py|sh|asp|aspx|jsp)$">
-    Order allow,deny
-    Deny from all
+# Defense-in-depth: Deny execution of scripts in reviews directory
+<FilesMatch "\.(php|php[0-9]|phtml|pht|phps|phar|cgi|pl|py|sh|bash|asp|aspx|jsp|svg|html|htm|shtml|inc|htaccess|exe)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
 </FilesMatch>
 
-<FilesMatch "\.(gif|jpe?|png|webp)$">
-    php_flag engine off
+<FilesMatch "\.(gif|jpe?g|png|webp|ico|pdf)$">
+    SetHandler default-handler
+    <IfModule mod_php.c>
+        php_flag engine off
+    </IfModule>
+    <IfModule mod_php7.c>
+        php_flag engine off
+    </IfModule>
+    <IfModule mod_php8.c>
+        php_flag engine off
+    </IfModule>
     RemoveHandler .php .phtml .phar
 </FilesMatch>
 
-Options -Indexes
+Options -Indexes -ExecCGI

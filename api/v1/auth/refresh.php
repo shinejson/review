@@ -24,6 +24,10 @@ if (!$payload) {
     api_send_error('Invalid or expired refresh token. Please sign in again.', 401);
 }
 
+if (JWT::isRevoked($conn, $refreshToken)) {
+    api_send_error('Invalid or revoked refresh token. Please sign in again.', 401);
+}
+
 $tenantId = (int)($payload['tenant_id'] ?? $payload['sub'] ?? 0);
 if ($tenantId <= 0) {
     api_send_error('Invalid token payload.', 401);
@@ -85,6 +89,10 @@ $newRefreshToken = JWT::generate([
     'role'           => $userRole,
     'team_member_id' => $teamId,
 ], API_JWT_REFRESH_EXPIRY, 'refresh');
+
+// Revoke previous refresh token to prevent replay/reuse
+$oldExp = isset($payload['exp']) ? (int)$payload['exp'] : (time() + API_JWT_REFRESH_EXPIRY);
+JWT::revoke($conn, $refreshToken, 'refresh', $tenantId, $oldExp);
 
 api_send_success([
     'tokens' => [

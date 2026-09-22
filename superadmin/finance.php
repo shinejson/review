@@ -27,6 +27,7 @@ require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/sa_helpers.php';
 require_once dirname(__DIR__) . '/includes/admin_helpers.php';
 require_once dirname(__DIR__) . '/includes/payments.php';
+require_once dirname(__DIR__) . '/includes/subscription_chart_component.php';
 
 requireSuperAdminLogin();
 require_sa_permission('finance');
@@ -318,8 +319,12 @@ $page     = max(1, (int) ($_GET['page'] ?? 1));
 $per_page = 15;
 $offset   = ($page - 1) * $per_page;
 
+$plan_filter = isset($_GET['f_plan']) ? (int) $_GET['f_plan'] : 0;
 $ledger_filters  = ['status' => $status_filter, 'gateway' => $gateway_filter, 'q' => $query];
 $invoice_filters = ['status' => $invoice_status, 'q' => $query];
+if ($plan_filter > 0) {
+    $invoice_filters['plan_id'] = $plan_filter;
+}
 
 /* A specific invoice to highlight (after issuing one, or from a link) */
 $focus_invoice = isset($_GET['invoice']) ? pay_invoice($conn, (int) $_GET['invoice']) : [];
@@ -848,8 +853,7 @@ echo $method_bars
                 </tbody>
             </table>
         </div>
-    </div>
-</section>
+    </section>
 </div>
 
 <!-- ============ INVOICES ============ -->
@@ -1372,6 +1376,30 @@ echo $method_bars
         </div>
     </section>
 </div>
+
+<!-- ============ SUBSCRIPTION PLANS & ACCESS ENTITLEMENTS ============ -->
+<section class="sa-card sa-mt" id="subscription-access">
+    <div class="sa-card-head">
+        <div>
+            <h3>Subscription packages &amp; access chart</h3>
+            <p>Feature entitlements, limits, and service allowances across active subscription plans.</p>
+        </div>
+        <div class="sa-card-head-actions">
+            <a href="plans.php" class="sa-btn sa-btn-sm sa-btn-ghost">
+                <?php echo sa_icon('layers'); ?> Manage plans catalogue
+            </a>
+            <a href="subscriptions.php" class="sa-btn sa-btn-sm sa-btn-ghost">
+                <?php echo sa_icon('credit-card'); ?> Tenant subscriptions
+            </a>
+        </div>
+    </div>
+    <div style="padding: 10px 18px 24px;">
+        <?php echo render_subscription_access_chart($conn, 'superadmin_finance', [
+            'title' => 'SUBSCRIPTION PLANS PACKAGES PRICING TABLE',
+            'subtitle' => 'Comprehensive feature capabilities and entitlement limits per subscription tier.'
+        ]); ?>
+    </div>
+</section>
 
 <!-- ============================================================
      DIALOGS

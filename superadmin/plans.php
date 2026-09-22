@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/sa_helpers.php';
+require_once dirname(__DIR__) . '/includes/subscription_chart_component.php';
 
 requireSuperAdminLogin();
 require_sa_permission('plans');
@@ -257,6 +258,27 @@ include __DIR__ . '/_shell.php';
 <?php endforeach; ?>
 </div>
 <?php endif; ?>
+
+<!-- ============ SUBSCRIPTION PLANS & ACCESS COMPARISON CHART ============ -->
+<section class="sa-card sa-mt" id="plans-access-chart">
+    <div class="sa-card-head">
+        <div>
+            <h3>Subscription packages &amp; access chart</h3>
+            <p>Side-by-side comparison of capabilities, limits, and service entitlements in the catalog.</p>
+        </div>
+        <div class="sa-card-head-actions">
+            <button type="button" class="sa-btn sa-btn-sm sa-btn-primary" data-sa-open-dialog="#planCreateDialog">
+                <?php echo sa_icon('plus'); ?> New plan
+            </button>
+        </div>
+    </div>
+    <div style="padding: 10px 18px 24px;">
+        <?php echo render_subscription_access_chart($conn, 'superadmin_plans', [
+            'title' => 'SUBSCRIPTION PLANS PACKAGES PRICING TABLE',
+            'subtitle' => 'Capability matrix for active subscription packages in the platform catalog.'
+        ]); ?>
+    </div>
+</section>
 
 <!-- ============ PLAN FORM (create + edit share one dialog) ============ -->
 <dialog class="sa-dialog" id="planCreateDialog">
