@@ -85,7 +85,7 @@ $activeNav = $activeNav ?? 'dashboard';
   </a>
   
   <?php if ($is_tenant && !empty($tenant_all_branches)): ?>
-  <div class="sidebar-branch-info" style="margin: 6px 14px 14px; padding: 9px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;">
+  <div class="sidebar-branch-info" style="margin: 0 4px 10px; padding: 7px 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
       <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;">Active Branch</span>
       <a href="company.php" style="font-size:10px;color:var(--lime,#c2f542);text-decoration:none;font-weight:700;">#<?php echo (int)$active_company_id; ?></a>
@@ -97,122 +97,227 @@ $activeNav = $activeNav ?? 'dashboard';
   </div>
   <?php endif; ?>
   
+  <?php
+  // Permission flags for groups
+  $can_ratings     = teamHasAccess('ratings');
+  $can_whatsapp    = $is_tenant && teamHasAccess('whatsapp');
+  $can_social_card = $is_tenant && teamHasAccess('social_card');
+  $can_qa          = $is_tenant && teamHasAccess('qa');
+  $has_reviews_grp = $can_ratings || $can_whatsapp || $can_social_card || $can_qa;
+  $active_reviews  = in_array($activeNav, ['ratings', 'whatsapp_sender', 'social_card', 'qa'], true);
+
+  $can_qr          = $is_tenant && teamHasAccess('qr_stand');
+  $can_social      = teamHasAccess('social');
+  $can_ads         = teamHasAccess('ads');
+  $has_mktg_grp    = $can_qr || $can_social || $can_ads;
+  $active_mktg     = in_array($activeNav, ['qr_stand', 'social', 'ads'], true);
+  $shell_has_ads   = function_exists('tenantHasFeature') ? tenantHasFeature($conn ?? null, $tenant_id, 'ads_pixel') : true;
+
+  $can_cust        = teamHasAccess('customers');
+  $can_comp        = $is_tenant && teamHasAccess('company');
+  $can_serv        = teamHasAccess('services');
+  $can_anal        = teamHasAccess('analysis');
+  $has_biz_grp     = $can_cust || $can_comp || $can_serv || $can_anal;
+  $active_biz      = in_array($activeNav, ['customers', 'company', 'services', 'analysis'], true);
+
+  $can_team        = teamHasAccess('team');
+  $can_sub         = teamHasAccess('subscription');
+  $can_supp        = teamHasAccess('support');
+  $can_backups     = teamHasAccess('backups');
+  $can_logs        = teamHasAccess('logs');
+  $can_settings    = teamHasAccess('settings');
+  $has_sys_grp     = $can_backups || $can_logs || $can_settings;
+  $active_sys      = in_array($activeNav, ['settings', 'logs', 'backups'], true);
+  $is_customizer   = ($activeNav === 'settings' && (($_GET['tab'] ?? '') === 'customization'));
+  $is_gen_settings = ($activeNav === 'settings' && empty($_GET['tab']));
+
+  // Count tickets with unread platform replies for support badge
+  $support_unread = 0;
+  if ($can_supp && isset($conn) && $is_tenant && $tenant_id) {
+      try {
+          $r = @$conn->query("SELECT COUNT(*) FROM platform_feedback WHERE tenant_id = " . (int)$tenant_id . " AND status IN ('open','in_progress','resolved') AND last_reply_by = 'superadmin'");
+          if ($r) {
+              $support_unread = (int) ($r->fetch_assoc()['COUNT(*)'] ?? 0);
+          }
+      } catch (\Throwable $e) {
+          $support_unread = 0;
+      }
+  }
+  ?>
+
   <div class="nav-caption">Workspace</div>
-  <nav>
+  <nav class="admin-sidebar-nav">
     <a <?php echo $activeNav === 'dashboard' ? 'class="active"' : ''; ?> href="index.php" title="Dashboard">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span><span class="nav-label">Dashboard</span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span><span class="nav-label">Dashboard</span>
     </a>
     <a <?php echo $activeNav === 'notifications' ? 'class="active"' : ''; ?> href="notifications.php" title="Notifications">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span><span class="nav-label">Notifications</span><?php if ($notification_count > 0): ?><span class="admin-nav-count"><?php echo $notification_count > 99 ? '99+' : (int) $notification_count; ?></span><?php endif; ?>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span><span class="nav-label">Notifications</span><?php if ($notification_count > 0): ?><span class="admin-nav-count"><?php echo $notification_count > 99 ? '99+' : (int) $notification_count; ?></span><?php endif; ?>
     </a>
-    <?php if ($is_tenant && teamHasAccess('company')): ?>
-    <a <?php echo $activeNav === 'company' ? 'class="active"' : ''; ?> href="company.php" title="Company Profile">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span class="nav-label">Company Profile</span>
-    </a>
+
+    <?php if ($has_reviews_grp): ?>
+    <!-- Subgroup: Reviews & Feedback -->
+    <div class="nav-group <?php echo $active_reviews ? 'is-open' : ''; ?>" data-nav-group="reviews">
+      <button type="button" class="nav-group-toggle <?php echo $active_reviews ? 'is-active-parent' : ''; ?>" aria-expanded="<?php echo $active_reviews ? 'true' : 'false'; ?>" title="Reviews & Feedback">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
+        <span class="nav-label">Reviews &amp; Feedback</span>
+        <span class="nav-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </button>
+      <div class="nav-group-menu">
+        <div class="nav-group-flyout-title">Reviews &amp; Feedback</div>
+        <?php if ($can_ratings): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'ratings' ? 'active' : ''; ?>" href="ratings.php" title="Ratings & Reviews">
+          <span class="sub-dot"></span>
+          <span class="nav-label">All Reviews</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($can_whatsapp): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'whatsapp_sender' ? 'active' : ''; ?>" href="whatsapp_sender.php" title="Ask for Reviews (WhatsApp)">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Ask for Reviews</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($can_social_card): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'social_card' ? 'active' : ''; ?>" href="social_card.php" title="Social Proof Cards">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Social Cards</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($can_qa): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'qa' ? 'active' : ''; ?>" href="qa.php" title="Community Q&A">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Community Q&amp;A</span>
+        </a>
+        <?php endif; ?>
+      </div>
+    </div>
     <?php endif; ?>
-    <?php if ($is_tenant && teamHasAccess('qr_stand')): ?>
-    <a <?php echo $activeNav === 'qr_stand' ? 'class="active"' : ''; ?> href="qr_stand.php" title="Counter QR Stand">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M6 6h.01M17 6h.01M17 17h.01M6 17h.01"/></svg></span><span class="nav-label">Counter QR Stand</span>
-    </a>
+
+    <?php if ($has_mktg_grp): ?>
+    <!-- Subgroup: Marketing & Growth -->
+    <div class="nav-group <?php echo $active_mktg ? 'is-open' : ''; ?>" data-nav-group="marketing">
+      <button type="button" class="nav-group-toggle <?php echo $active_mktg ? 'is-active-parent' : ''; ?>" aria-expanded="<?php echo $active_mktg ? 'true' : 'false'; ?>" title="Marketing & Growth">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></span>
+        <span class="nav-label">Marketing &amp; Growth</span>
+        <span class="nav-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </button>
+      <div class="nav-group-menu">
+        <div class="nav-group-flyout-title">Marketing &amp; Growth</div>
+        <?php if ($can_qr): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'qr_stand' ? 'active' : ''; ?>" href="qr_stand.php" title="Counter QR Stand">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Counter QR Stand</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($can_social): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'social' ? 'active' : ''; ?>" href="social.php" title="Social Auto-Poster">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Social Auto-Poster</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($can_ads): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'ads' ? 'active' : ''; ?>" href="ads.php" title="Ads & Funnels">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Ads &amp; Funnels</span>
+          <?php if (!$shell_has_ads): ?>
+          <span style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:rgba(194,245,66,0.18);color:var(--lime,#c2f542);margin-left:auto;">PRO</span>
+          <?php endif; ?>
+        </a>
+        <?php endif; ?>
+      </div>
+    </div>
     <?php endif; ?>
-    <?php if (teamHasAccess('ratings')): ?>
-    <a <?php echo $activeNav === 'ratings' ? 'class="active"' : ''; ?> href="ratings.php" title="Ratings & Reviews">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span><span class="nav-label">Ratings &amp; Reviews</span>
-    </a>
-    <?php endif; ?>
-    <?php if (teamHasAccess('customers')): ?>
-    <a <?php echo $activeNav === 'customers' ? 'class="active"' : ''; ?> href="customers.php" title="Customers">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span class="nav-label">Customers</span>
-    </a>
-    <?php endif; ?>
-    <?php if ($is_tenant && teamHasAccess('whatsapp')): ?>
-    <a <?php echo $activeNav === 'whatsapp_sender' ? 'class="active"' : ''; ?> href="whatsapp_sender.php" title="Ask for Reviews (WhatsApp)">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><span class="nav-label">Ask for Reviews</span>
-    </a>
-    <?php endif; ?>
-    <?php if ($is_tenant && teamHasAccess('social_card')): ?>
-    <a <?php echo $activeNav === 'social_card' ? 'class="active"' : ''; ?> href="social_card.php" title="Social Proof Cards">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg></span><span class="nav-label">Social Proof Cards</span>
-    </a>
-    <?php endif; ?>
-    <?php if ($is_tenant && teamHasAccess('qa')): ?>
-    <a <?php echo $activeNav === 'qa' ? 'class="active"' : ''; ?> href="qa.php" title="Community Q&amp;A">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span><span class="nav-label">Community Q&amp;A</span>
-    </a>
-    <?php endif; ?>
-    <?php if (teamHasAccess('analysis')): ?>
-    <a <?php echo $activeNav === 'analysis' ? 'class="active"' : ''; ?> href="analysis.php" title="Analytics">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span><span class="nav-label">Analytics</span>
-    </a>
-    <?php endif; ?>
-    <?php if (teamHasAccess('services')): ?>
-    <a <?php echo $activeNav === 'services' ? 'class="active"' : ''; ?> href="services.php" title="Services">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span><span class="nav-label">Services</span>
-    </a>
-    <?php endif; ?>
-    <?php if (teamHasAccess('social')): ?>
-    <a <?php echo $activeNav === 'social' ? 'class="active"' : ''; ?> href="social.php" title="Social">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></span><span class="nav-label">Social</span>
-    </a>
-    <?php endif; ?>
-    <?php if (teamHasAccess('ads')): ?>
-    <?php $shell_has_ads = function_exists('tenantHasFeature') ? tenantHasFeature($conn ?? null, $tenant_id, 'ads_pixel') : true; ?>
-    <a <?php echo $activeNav === 'ads' ? 'class="active"' : ''; ?> href="ads.php" title="Ads &amp; Funnels">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><span class="nav-label">Ads &amp; Funnel</span>
-      <?php if (!$shell_has_ads): ?>
-      <span style="font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:4px;background:rgba(194,245,66,0.18);color:var(--lime,#c2f542);margin-left:auto;">PRO</span>
-      <?php endif; ?>
-    </a>
+
+    <?php if ($has_biz_grp): ?>
+    <!-- Subgroup: Business & Operations -->
+    <div class="nav-group <?php echo $active_biz ? 'is-open' : ''; ?>" data-nav-group="business">
+      <button type="button" class="nav-group-toggle <?php echo $active_biz ? 'is-active-parent' : ''; ?>" aria-expanded="<?php echo $active_biz ? 'true' : 'false'; ?>" title="Business & Operations">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+        <span class="nav-label">Business &amp; CRM</span>
+        <span class="nav-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </button>
+      <div class="nav-group-menu">
+        <div class="nav-group-flyout-title">Business &amp; CRM</div>
+        <?php if ($can_cust): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'customers' ? 'active' : ''; ?>" href="customers.php" title="Customers">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Customers</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($can_comp): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'company' ? 'active' : ''; ?>" href="company.php" title="Company Profile">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Company Profile</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($can_serv): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'services' ? 'active' : ''; ?>" href="services.php" title="Services">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Services</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($can_anal): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'analysis' ? 'active' : ''; ?>" href="analysis.php" title="Analytics">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Analytics</span>
+        </a>
+        <?php endif; ?>
+      </div>
+    </div>
     <?php endif; ?>
   </nav>
   
   <div class="nav-caption">Manage</div>
-  <nav>
-    <?php if (teamHasAccess('team')): ?>
+  <nav class="admin-sidebar-nav">
+    <?php if ($can_team): ?>
     <a <?php echo $activeNav === 'team' ? 'class="active"' : ''; ?> href="team.php" title="Team Members">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span class="nav-label">Team Members</span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span class="nav-label">Team Members</span>
     </a>
     <?php endif; ?>
-    <?php if (teamHasAccess('subscription')): ?>
+    <?php if ($can_sub): ?>
     <a <?php echo $activeNav === 'subscription' ? 'class="active"' : ''; ?> href="subscription.php" title="Subscription">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span><span class="nav-label">Subscription</span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span><span class="nav-label">Subscription</span>
     </a>
     <?php endif; ?>
-    <?php if (teamHasAccess('support')):
-    // Count tickets with unread platform replies for badge
-    $support_unread = 0;
-    if (isset($conn) && $is_tenant && $tenant_id) {
-        try {
-            $r = @$conn->query("SELECT COUNT(*) FROM platform_feedback WHERE tenant_id = " . (int)$tenant_id . " AND status IN ('open','in_progress','resolved') AND last_reply_by = 'superadmin'");
-            if ($r) {
-                $support_unread = (int) ($r->fetch_assoc()['COUNT(*)'] ?? 0);
-            }
-        } catch (\Throwable $e) {
-            $support_unread = 0;
-        }
-    }
-    ?>
+    <?php if ($can_supp): ?>
     <a <?php echo $activeNav === 'support' ? 'class="active"' : ''; ?> href="support.php" title="Platform Support & Feedback">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><span class="nav-label">Platform Support</span><?php if ($support_unread > 0): ?><span class="admin-nav-count"><?php echo $support_unread > 99 ? '99+' : (int)$support_unread; ?></span><?php endif; ?>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><span class="nav-label">Platform Support</span><?php if ($support_unread > 0): ?><span class="admin-nav-count"><?php echo $support_unread > 99 ? '99+' : (int)$support_unread; ?></span><?php endif; ?>
     </a>
     <?php endif; ?>
-    <?php if (teamHasAccess('backups')): ?>
-    <a <?php echo $activeNav === 'backups' ? 'class="active"' : ''; ?> href="backups.php" title="Workspace Backups">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span><span class="nav-label">Backups</span>
-    </a>
-    <?php endif; ?>
-    <?php if (teamHasAccess('logs')): ?>
-    <a <?php echo $activeNav === 'logs' ? 'class="active"' : ''; ?> href="logs.php" title="Activity Log">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg></span><span class="nav-label">Activity Log</span>
-    </a>
-    <?php endif; ?>
-    <?php if (teamHasAccess('settings')): ?>
-    <a <?php echo ($activeNav === 'settings' && (($_GET['tab'] ?? '') === 'customization')) ? 'class="active"' : ''; ?> href="settings.php?tab=customization#tab=customization" title="Public Page Customisation">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/><path d="M12 22.5A8.5 8.5 0 0 0 20.5 14c0-2.3-1.07-4.4-2.84-5.84L12 2.69 6.34 8.16A8.5 8.5 0 0 0 3.5 14a8.5 8.5 0 0 0 8.5 8.5z"/></svg></span><span class="nav-label">Page Customiser</span>
-    </a>
-    <a <?php echo ($activeNav === 'settings' && empty($_GET['tab'])) ? 'class="active"' : ''; ?> href="settings.php" title="Settings">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span class="nav-label">Settings</span>
-    </a>
+
+    <?php if ($has_sys_grp): ?>
+    <!-- Subgroup: Settings & System -->
+    <div class="nav-group <?php echo $active_sys ? 'is-open' : ''; ?>" data-nav-group="settings">
+      <button type="button" class="nav-group-toggle <?php echo $active_sys ? 'is-active-parent' : ''; ?>" aria-expanded="<?php echo $active_sys ? 'true' : 'false'; ?>" title="Settings & System">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        <span class="nav-label">Settings &amp; System</span>
+        <span class="nav-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </button>
+      <div class="nav-group-menu">
+        <div class="nav-group-flyout-title">Settings &amp; System</div>
+        <?php if ($can_settings): ?>
+        <a class="nav-sub-link <?php echo $is_gen_settings ? 'active' : ''; ?>" href="settings.php" title="Settings">
+          <span class="sub-dot"></span>
+          <span class="nav-label">General Settings</span>
+        </a>
+        <a class="nav-sub-link <?php echo $is_customizer ? 'active' : ''; ?>" href="settings.php?tab=customization#tab=customization" title="Public Page Customisation">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Page Customiser</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($can_logs): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'logs' ? 'active' : ''; ?>" href="logs.php" title="Activity Log">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Activity Log</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($can_backups): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'backups' ? 'active' : ''; ?>" href="backups.php" title="Workspace Backups">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Workspace Backups</span>
+        </a>
+        <?php endif; ?>
+      </div>
+    </div>
     <?php endif; ?>
   </nav>
   </div>

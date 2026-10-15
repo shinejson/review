@@ -99,10 +99,28 @@
 
         var COLLAPSE_KEY = 'optibiz-admin-sidebar-collapsed';
 
+        function syncTooltips(collapsed) {
+            var items = document.querySelectorAll('.admin-sidebar-nav a, .admin-sidebar-nav button');
+            for (var i = 0; i < items.length; i++) {
+                var el = items[i];
+                if (collapsed) {
+                    if (el.hasAttribute('title')) {
+                        el.setAttribute('data-nav-title', el.getAttribute('title'));
+                        el.removeAttribute('title');
+                    }
+                } else {
+                    if (el.hasAttribute('data-nav-title')) {
+                        el.setAttribute('title', el.getAttribute('data-nav-title'));
+                    }
+                }
+            }
+        }
+
         function applyCollapsed(collapsed, persist) {
             app.classList.toggle('is-collapsed', collapsed);
             btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
             btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+            syncTooltips(collapsed);
             if (persist !== false) {
                 try {
                     localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
@@ -119,6 +137,8 @@
         }
         if (saved === '1') {
             applyCollapsed(true, false);
+        } else if (app.classList.contains('is-collapsed')) {
+            syncTooltips(true);
         }
 
         btn.addEventListener('click', function () {
@@ -535,10 +555,93 @@
         });
     }
 
+    /* ---------- Sidebar Subgroup Dropdowns ---------- */
+    function initNavDropdowns() {
+        var STORAGE_KEY = 'optibiz-admin-nav-open-groups';
+        var savedOpen = {};
+        try {
+            var raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) savedOpen = JSON.parse(raw);
+        } catch (e) {
+            savedOpen = {};
+        }
+
+        // Restore saved or active state on initial load
+        var groups = document.querySelectorAll('.nav-group');
+        for (var i = 0; i < groups.length; i++) {
+            var grp = groups[i];
+            var id = grp.getAttribute('data-nav-group');
+            var toggle = grp.querySelector('.nav-group-toggle');
+            if (!toggle) continue;
+
+            var isChildActive = toggle.classList.contains('is-active-parent');
+            if (isChildActive) {
+                grp.classList.add('is-open');
+                toggle.setAttribute('aria-expanded', 'true');
+            } else if (id && savedOpen[id] === true) {
+                grp.classList.add('is-open');
+                toggle.setAttribute('aria-expanded', 'true');
+            } else if (id && savedOpen[id] === false) {
+                grp.classList.remove('is-open');
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+        }
+
+        // Delegated click handler on document
+        document.addEventListener('click', function (e) {
+            var toggle = e.target.closest ? e.target.closest('.nav-group-toggle') : null;
+            if (!toggle) {
+                // Don't close if clicking inside the menu itself (e.g. padding/header)
+                if (e.target.closest && e.target.closest('.nav-group-menu')) {
+                    return;
+                }
+                // Clicking outside closes any open flyout popups in collapsed mode
+                var openPopups = document.querySelectorAll('.nav-group.is-popup-open');
+                for (var p = 0; p < openPopups.length; p++) {
+                    openPopups[p].classList.remove('is-popup-open');
+                }
+                return;
+            }
+
+            var grp = toggle.closest('.nav-group');
+            if (!grp) return;
+
+            var app = document.querySelector('.admin-app');
+            var isCollapsed = app && app.classList.contains('is-collapsed') && window.innerWidth >= 769;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (isCollapsed) {
+                // In collapsed mode: toggle popup card on click
+                var wasOpen = grp.classList.contains('is-popup-open');
+                var allPopups = document.querySelectorAll('.nav-group.is-popup-open');
+                for (var j = 0; j < allPopups.length; j++) {
+                    allPopups[j].classList.remove('is-popup-open');
+                }
+                if (!wasOpen) {
+                    grp.classList.add('is-popup-open');
+                }
+            } else {
+                // In expanded mode: toggle accordion
+                var isOpen = grp.classList.toggle('is-open');
+                toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                var id = grp.getAttribute('data-nav-group');
+                if (id) {
+                    savedOpen[id] = isOpen;
+                    try {
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(savedOpen));
+                    } catch (err) {}
+                }
+            }
+        });
+    }
+
     onReady(function () {
         initTheme();
         initCollapse();
         initSidebar();
+        initNavDropdowns();
         initNotifications();
         initMenus();
         initSearch();

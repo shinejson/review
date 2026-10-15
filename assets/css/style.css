@@ -74,19 +74,8 @@ body {
 }
 
 .admin-nav {
-    background: #333;
-    padding: 15px;
-    margin-bottom: 20px;
-}
-
-.admin-nav a {
-    color: white;
-    text-decoration: none;
-    margin-right: 20px;
-}
-
-.admin-nav a:hover {
-    text-decoration: underline;
+    display: flex;
+    flex-direction: column;
 }
 
 .stats {
