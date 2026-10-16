@@ -147,6 +147,7 @@ $sa_badges = [
         0,
         'subscription_payments'
     ),
+    'seo_scans' => (int) sa_scalar($conn, "SELECT COUNT(*) FROM seo_audits", 0, 'seo_audits'),
 ];
 
 /* The bell reads the same inbox as superadmin/notifications.php, so the
@@ -158,42 +159,57 @@ if (isset($conn)) {
 }
 $sa_badges['unread'] = (int) $sa_inbox['unread'];
 
-$sa_nav = [
-    ['section' => 'Overview'],
-    ['key' => 'dashboard',     'label' => 'Dashboard',      'href' => 'index.php',            'icon' => 'grid'],
-    ['key' => 'notifications', 'label' => 'Notifications',  'href' => 'notifications.php',    'icon' => 'bell', 'badge' => 'unread', 'alert' => true, 'always' => true],
-    ['key' => 'analytics',     'label' => 'Analytics',      'href' => 'analytics.php',        'icon' => 'chart'],
-    ['section' => 'Billing'],
-    ['key' => 'tenants',       'label' => 'Tenants',        'href' => 'tenants.php',          'icon' => 'building', 'badge' => 'tenants'],
-    ['key' => 'subscriptions', 'label' => 'Subscriptions',  'href' => 'subscriptions.php',    'icon' => 'card',     'badge' => 'subs', 'alert' => true],
-    ['key' => 'finance',       'label' => 'Financials',     'href' => 'finance.php',          'icon' => 'dollar',   'badge' => 'payments', 'alert' => true],
-    ['key' => 'gateways',      'label' => 'Payment integrations', 'href' => 'payment_gateways.php', 'icon' => 'key'],
-    ['key' => 'plans',         'label' => 'Plans',          'href' => 'plans.php',            'icon' => 'layers'],
-    ['key' => 'quotes',        'label' => 'Quote Requests', 'href' => 'quote_requests.php',   'icon' => 'inbox',    'badge' => 'quotes', 'alert' => true],
-    ['section' => 'Directory'],
-    ['key' => 'support_tickets', 'label' => 'Support Tickets', 'href' => 'support.php',         'icon' => 'message',  'badge' => 'tickets', 'alert' => true],
-    ['key' => 'reviews',       'label' => 'Support & Disputes', 'href' => 'reviews.php',          'icon' => 'inbox',    'badge' => 'support', 'alert' => true],
-    ['key' => 'customers',     'label' => 'Tenant Companies', 'href' => 'customers.php',        'icon' => 'building'],
-    ['key' => 'categories',    'label' => 'Categories',     'href' => 'categories.php',       'icon' => 'list'],
-    ['section' => 'System'],
-    ['key' => 'users',         'label' => 'Users',          'href' => 'users.php',            'icon' => 'users'],
-    ['key' => 'settings',      'label' => 'Settings',       'href' => 'settings.php',         'icon' => 'settings'],
-    ['key' => 'backups',       'label' => 'Backups',        'href' => 'backups.php',          'icon' => 'database'],
-    ['key' => 'logs',          'label' => 'Activity Logs',  'href' => 'logs.php',             'icon' => 'activity'],
+$sa_nav_sections = [
+    [
+        'section' => 'Overview',
+        'items'   => [
+            ['key' => 'dashboard',     'label' => 'Dashboard',      'href' => 'index.php',            'icon' => 'grid',  'always' => true],
+            ['key' => 'notifications', 'label' => 'Notifications',  'href' => 'notifications.php',    'icon' => 'bell',  'badge' => 'unread', 'alert' => true, 'always' => true],
+            ['key' => 'analytics',     'label' => 'Analytics',      'href' => 'analytics.php',        'icon' => 'chart'],
+        ],
+    ],
+    [
+        'section' => 'Platform',
+        'groups'  => [
+            [
+                'group_key' => 'billing',
+                'label'     => 'Billing & Finance',
+                'icon'      => 'card',
+                'items'     => [
+                    ['key' => 'tenants',       'label' => 'Tenants',              'href' => 'tenants.php',          'badge' => 'tenants'],
+                    ['key' => 'subscriptions', 'label' => 'Subscriptions',        'href' => 'subscriptions.php',    'badge' => 'subs', 'alert' => true],
+                    ['key' => 'finance',       'label' => 'Financials',           'href' => 'finance.php',          'badge' => 'payments', 'alert' => true],
+                    ['key' => 'gateways',      'label' => 'Payment Integrations', 'href' => 'payment_gateways.php'],
+                    ['key' => 'plans',         'label' => 'Plans & Pricing',      'href' => 'plans.php'],
+                    ['key' => 'quotes',        'label' => 'Quote Requests',       'href' => 'quote_requests.php',   'badge' => 'quotes', 'alert' => true],
+                ],
+            ],
+            [
+                'group_key' => 'support',
+                'label'     => 'Support & Directory',
+                'icon'      => 'message',
+                'items'     => [
+                    ['key' => 'support_tickets', 'label' => 'Support Tickets',    'href' => 'support.php',          'badge' => 'tickets', 'alert' => true],
+                    ['key' => 'reviews',         'label' => 'Support & Disputes', 'href' => 'reviews.php',          'badge' => 'support', 'alert' => true],
+                    ['key' => 'customers',       'label' => 'Tenant Directory',   'href' => 'customers.php'],
+                    ['key' => 'categories',      'label' => 'Categories',         'href' => 'categories.php'],
+                    ['key' => 'seo_checker',     'label' => 'SEO Checker & Leads', 'href' => 'seo_checker.php',     'badge' => 'seo_scans'],
+                ],
+            ],
+            [
+                'group_key' => 'system',
+                'label'     => 'System & Security',
+                'icon'      => 'settings',
+                'items'     => [
+                    ['key' => 'users',         'label' => 'Super Admins',         'href' => 'users.php'],
+                    ['key' => 'settings',      'label' => 'Platform Settings',    'href' => 'settings.php'],
+                    ['key' => 'backups',       'label' => 'Database Backups',     'href' => 'backups.php'],
+                    ['key' => 'logs',          'label' => 'Activity Logs',        'href' => 'logs.php'],
+                ],
+            ],
+        ],
+    ],
 ];
-
-/* Only keep the nav items the signed-in super admin may open.
-   'always' items (the inbox, the profile) belong to every account and
-   skip the permission test. A section label is dropped when every item
-   under it is hidden. */
-$sa_nav_visible = [];
-$sa_pending_section = null;
-foreach ($sa_nav as $sa_item) {
-    if (isset($sa_item['section'])) { $sa_pending_section = $sa_item; continue; }
-    if (empty($sa_item['always']) && !sa_can($sa_item['key'], $conn)) continue;
-    if ($sa_pending_section !== null) { $sa_nav_visible[] = $sa_pending_section; $sa_pending_section = null; }
-    $sa_nav_visible[] = $sa_item;
-}
 
 if (!defined('SA_HEADER_INCLUDED')) {
     include dirname(__DIR__) . '/includes/header.php';
@@ -220,27 +236,98 @@ if (!defined('SA_HEADER_INCLUDED')) {
         </a>
 
         <nav class="sa-nav" aria-label="Super admin">
-<?php foreach ($sa_nav_visible as $item): ?>
-<?php if (isset($item['section'])): ?>
-            <div class="sa-nav-label"><span><?php echo sa_e($item['section']); ?></span></div>
-<?php else: ?>
+<?php foreach ($sa_nav_sections as $sec): ?>
 <?php
-    $is_active = ($item['key'] === $sa_active);
-    $badge_key = isset($item['badge']) ? $item['badge'] : null;
-    $badge_val = $badge_key && isset($sa_badges[$badge_key]) ? (int) $sa_badges[$badge_key] : 0;
-    $show_badge = $badge_val > 0;
-    if ($badge_key === 'subs') {
-        $show_badge = $badge_val > 0;
-    }
+    $rendered_sec_header = false;
+    
+    // 1. Render standalone items in section if any
+    if (!empty($sec['items'])) {
+        foreach ($sec['items'] as $item) {
+            if (empty($item['always']) && !sa_can($item['key'], $conn)) continue;
+            if (!$rendered_sec_header && !empty($sec['section'])) {
+                echo '<div class="sa-nav-label"><span>' . sa_e($sec['section']) . '</span></div>';
+                $rendered_sec_header = true;
+            }
+            $is_active = ($item['key'] === $sa_active);
+            $badge_key = isset($item['badge']) ? $item['badge'] : null;
+            $badge_val = $badge_key && isset($sa_badges[$badge_key]) ? (int) $sa_badges[$badge_key] : 0;
+            $show_badge = $badge_val > 0;
 ?>
-            <a href="<?php echo sa_e($item['href']); ?>" data-label="<?php echo sa_e($item['label']); ?>"<?php echo $is_active ? ' class="active" aria-current="page"' : ''; ?>>
-                <?php echo sa_icon($item['icon']); ?>
-                <span><?php echo sa_e($item['label']); ?></span>
+            <a href="<?php echo sa_e($item['href']); ?>" class="sa-nav-item<?php echo $is_active ? ' active' : ''; ?>" data-label="<?php echo sa_e($item['label']); ?>"<?php echo $is_active ? ' aria-current="page"' : ''; ?>>
+                <span class="sa-nav-icon"><?php echo sa_icon($item['icon']); ?></span>
+                <span class="sa-nav-label-text"><?php echo sa_e($item['label']); ?></span>
 <?php if ($show_badge): ?>
                 <span class="sa-nav-count<?php echo !empty($item['alert']) && $badge_key !== 'tenants' ? ' is-alert' : ''; ?>"><?php echo $badge_val; ?></span>
 <?php endif; ?>
             </a>
+<?php
+        }
+    }
+
+    // 2. Render dropdown groups in section if any
+    if (!empty($sec['groups'])) {
+        foreach ($sec['groups'] as $grp) {
+            $visible_subs = [];
+            $grp_badge_total = 0;
+            $grp_has_alert = false;
+            $is_group_active = false;
+            foreach ($grp['items'] as $sub) {
+                if (empty($sub['always']) && !sa_can($sub['key'], $conn)) continue;
+                $visible_subs[] = $sub;
+                if ($sub['key'] === $sa_active) {
+                    $is_group_active = true;
+                }
+                $sb_key = isset($sub['badge']) ? $sub['badge'] : null;
+                $sb_val = $sb_key && isset($sa_badges[$sb_key]) ? (int) $sa_badges[$sb_key] : 0;
+                if ($sb_val > 0) {
+                    $grp_badge_total += $sb_val;
+                    if (!empty($sub['alert']) && $sb_key !== 'tenants') {
+                        $grp_has_alert = true;
+                    }
+                }
+            }
+            if (empty($visible_subs)) continue;
+
+            if (!$rendered_sec_header && !empty($sec['section'])) {
+                echo '<div class="sa-nav-label"><span>' . sa_e($sec['section']) . '</span></div>';
+                $rendered_sec_header = true;
+            }
+?>
+            <div class="sa-nav-group<?php echo $is_group_active ? ' is-open' : ''; ?>" data-sa-nav-group="<?php echo sa_e($grp['group_key']); ?>">
+                <button type="button" class="sa-nav-group-toggle<?php echo $is_group_active ? ' is-active-parent' : ''; ?>" aria-expanded="<?php echo $is_group_active ? 'true' : 'false'; ?>" data-label="<?php echo sa_e($grp['label']); ?>">
+                    <span class="sa-nav-icon"><?php echo sa_icon($grp['icon']); ?></span>
+                    <span class="sa-nav-label-text"><?php echo sa_e($grp['label']); ?></span>
+<?php if ($grp_badge_total > 0): ?>
+                    <span class="sa-nav-count<?php echo $grp_has_alert ? ' is-alert' : ''; ?>"><?php echo $grp_badge_total; ?></span>
 <?php endif; ?>
+                    <span class="sa-nav-chevron"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+                </button>
+                <div class="sa-nav-group-menu">
+                    <div class="sa-nav-flyout-title">
+                        <span class="sa-flyout-icon"><?php echo sa_icon($grp['icon']); ?></span>
+                        <span><?php echo sa_e($grp['label']); ?></span>
+                    </div>
+<?php foreach ($visible_subs as $sub): ?>
+<?php
+    $sub_active = ($sub['key'] === $sa_active);
+    $sub_b_key = isset($sub['badge']) ? $sub['badge'] : null;
+    $sub_b_val = $sub_b_key && isset($sa_badges[$sub_b_key]) ? (int) $sa_badges[$sub_b_key] : 0;
+    $sub_show_b = $sub_b_val > 0;
+?>
+                    <a href="<?php echo sa_e($sub['href']); ?>" class="sa-nav-sub-link<?php echo $sub_active ? ' active' : ''; ?>"<?php echo $sub_active ? ' aria-current="page"' : ''; ?>>
+                        <span class="sa-sub-dot"></span>
+                        <span class="sa-sub-label"><?php echo sa_e($sub['label']); ?></span>
+<?php if ($sub_show_b): ?>
+                        <span class="sa-nav-count<?php echo !empty($sub['alert']) && $sub_b_key !== 'tenants' ? ' is-alert' : ''; ?>"><?php echo $sub_b_val; ?></span>
+<?php endif; ?>
+                    </a>
+<?php endforeach; ?>
+                </div>
+            </div>
+<?php
+        }
+    }
+?>
 <?php endforeach; ?>
         </nav>
 

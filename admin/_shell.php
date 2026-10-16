@@ -109,8 +109,9 @@ $activeNav = $activeNav ?? 'dashboard';
   $can_qr          = $is_tenant && teamHasAccess('qr_stand');
   $can_social      = teamHasAccess('social');
   $can_ads         = teamHasAccess('ads');
-  $has_mktg_grp    = $can_qr || $can_social || $can_ads;
-  $active_mktg     = in_array($activeNav, ['qr_stand', 'social', 'ads'], true);
+  $can_seo         = teamHasAccess('seo');
+  $has_mktg_grp    = $can_qr || $can_social || $can_ads || $can_seo;
+  $active_mktg     = in_array($activeNav, ['qr_stand', 'social', 'ads', 'seo_checker'], true);
   $shell_has_ads   = function_exists('tenantHasFeature') ? tenantHasFeature($conn ?? null, $tenant_id, 'ads_pixel') : true;
 
   $can_cust        = teamHasAccess('customers');
@@ -221,6 +222,13 @@ $activeNav = $activeNav ?? 'dashboard';
           <?php if (!$shell_has_ads): ?>
           <span style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:rgba(194,245,66,0.18);color:var(--lime,#c2f542);margin-left:auto;">PRO</span>
           <?php endif; ?>
+        </a>
+        <?php endif; ?>
+        <?php if ($can_seo): ?>
+        <a class="nav-sub-link <?php echo $activeNav === 'seo_checker' ? 'active' : ''; ?>" href="seo_checker.php" title="SEO Health Checker">
+          <span class="sub-dot"></span>
+          <span class="nav-label">SEO Checker</span>
+          <span style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:rgba(194,245,66,0.18);color:var(--lime,#c2f542);margin-left:auto;">FREE</span>
         </a>
         <?php endif; ?>
       </div>

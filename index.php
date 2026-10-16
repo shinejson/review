@@ -1523,6 +1523,7 @@ if ($plan_result) {
                 <a href="features.php">Features</a>
                 <a href="pricing.php">Pricing</a>
                 <a href="companies.php">Directory</a>
+                <a href="seo-checker.php">SEO Checker</a>
                 <a href="#how-it-works">How It Works</a>
             </nav>
             <div class="nav-actions">
@@ -1557,6 +1558,10 @@ if ($plan_result) {
                     <a href="companies.php" class="mobile-nav-link">
                         <i class="fa-solid fa-building"></i>
                         <span>Directory</span>
+                    </a>
+                    <a href="seo-checker.php" class="mobile-nav-link">
+                        <i class="fa-solid fa-magnifying-glass-chart"></i>
+                        <span>SEO Checker</span>
                     </a>
                     <a href="#how-it-works" class="mobile-nav-link">
                         <i class="fa-solid fa-circle-question"></i>
@@ -1755,6 +1760,44 @@ if ($plan_result) {
                 <h3>Paid Ad Funnel &amp; Retargeting</h3>
                 <p>Integrate Meta Pixel, Google Tag Manager, and TikTok Pixel to retarget warm review visitors with high-converting promotional ads.</p>
                 <div class="f-badge"><i class="fa-solid fa-chart-line"></i> Pixel Audiences</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- New Feature Callout: SEO Health Checker (matching screenshot) -->
+    <section class="seo-feature-banner" style="max-width:1200px;margin:40px auto 60px;padding:0 5%;">
+        <div style="background:linear-gradient(135deg, #0a1727 0%, #162a45 100%);border:2px solid #1e3a5f;border-radius:24px;padding:44px 36px;box-shadow:0 20px 50px rgba(0,0,0,0.3);position:relative;overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:32px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:300px;">
+                    <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(194,245,66,0.15);color:var(--accent-lime);border:1px solid rgba(194,245,66,0.3);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:800;text-transform:uppercase;margin-bottom:16px;">
+                        <span>⚡ 100% Free Instant Scan • Free for Tenants</span>
+                    </div>
+                    <h2 style="font-size:clamp(26px, 3.5vw, 40px);font-weight:900;line-height:1.2;color:#ffffff;text-transform:uppercase;margin-bottom:14px;letter-spacing:-0.5px;">
+                        How Many <span style="background:linear-gradient(135deg, #38bdf8, #818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">SEO Problems</span><br>Does Your Website Have?
+                    </h2>
+                    <p style="color:#cbd5e1;font-size:16px;margin-bottom:24px;line-height:1.6;max-width:540px;">
+                        Scan your website in 30 seconds. Detect missing SEO content, slow server response times, and weak visibility holding your Google rankings back.
+                    </p>
+                    <form action="seo-checker.php" method="GET" style="display:flex;gap:10px;max-width:520px;flex-wrap:wrap;">
+                        <input type="text" name="url" placeholder="https://yourwebsite.com" style="flex:1;min-width:240px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:14px 18px;border-radius:12px;font-size:15px;outline:none;">
+                        <button type="submit" style="background:var(--accent-lime);color:#0f2438;border:none;padding:14px 24px;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:all 0.2s;">
+                            <span>Scan Free</span> <i class="fa-solid fa-arrow-right"></i>
+                        </button>
+                    </form>
+                </div>
+                <div style="flex-shrink:0;background:#ffffff;color:#0f172a;border-radius:20px;padding:24px 28px;box-shadow:0 15px 35px rgba(0,0,0,0.4);max-width:320px;width:100%;">
+                    <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Website Health Preview</div>
+                    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                        <div style="width:70px;height:70px;border-radius:50%;background:#fee2e2;border:6px solid #ef4444;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#0f172a;">41</div>
+                        <div>
+                            <div style="font-size:18px;font-weight:900;color:#ef4444;display:flex;align-items:center;gap:6px;"><i class="fa-solid fa-triangle-exclamation"></i> 17 Issues</div>
+                            <div style="font-size:12px;color:#64748b;">Google can't understand site</div>
+                        </div>
+                    </div>
+                    <div style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;">
+                        ✓ Fix 12 issues automatically
+                    </div>
+                </div>
             </div>
         </div>
     </section>

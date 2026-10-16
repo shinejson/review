@@ -225,42 +225,121 @@ include __DIR__ . '/_shell.php';
     </article>
 </div>
 
-<form method="get" action="notifications.php" class="sa-toolbar sa-card sa-mt">
-    <div class="sa-field">
-        <label for="f_status">Read state</label>
-        <select id="f_status" name="status">
-            <option value="all" <?php echo $status === 'all' ? 'selected' : ''; ?>>All notices</option>
-            <option value="unread" <?php echo $status === 'unread' ? 'selected' : ''; ?>>Unread only</option>
-            <option value="read" <?php echo $status === 'read' ? 'selected' : ''; ?>>Read only</option>
-        </select>
+<?php
+$has_active_filters = ($status !== 'all' && $status !== '') 
+    || ($type !== '') 
+    || ($search !== '') 
+    || (!empty($_GET['start'])) 
+    || (!empty($_GET['end'])) 
+    || ($filter_tenant > 0);
+?>
+<form method="get" action="notifications.php" class="sa-filter-card sa-mt" role="search" aria-label="Filter notifications">
+    <?php if ($filter_tenant > 0): ?>
+    <input type="hidden" name="tenant" value="<?php echo (int) $filter_tenant; ?>">
+    <?php endif; ?>
+    <?php if ($sort === 'oldest'): ?>
+    <input type="hidden" name="sort" value="oldest">
+    <?php endif; ?>
+
+    <!-- Top Row: Search and Action Buttons -->
+    <div class="sa-filter-search-row">
+        <div class="sa-filter-search-wrap">
+            <span class="sa-filter-search-icon"><?php echo sa_icon('search'); ?></span>
+            <input type="search" id="f_q" name="q" class="sa-input sa-filter-search-input"
+                   placeholder="Search notifications by title, detail or keywords…"
+                   value="<?php echo sa_e($search); ?>" autocomplete="off">
+            <?php if ($search !== ''): ?>
+            <a href="<?php echo sa_e(sa_notifications_url(['q' => ''])); ?>" class="sa-filter-clear-btn" title="Clear search text">&times;</a>
+            <?php endif; ?>
+        </div>
+        <div class="sa-filter-actions">
+            <button type="submit" class="sa-btn sa-btn-primary">
+                <?php echo sa_icon('filter'); ?> Apply
+            </button>
+            <?php if ($has_active_filters): ?>
+            <a class="sa-btn sa-btn-ghost" href="notifications.php" title="Reset all filters">
+                <?php echo sa_icon('refresh'); ?> Reset
+            </a>
+            <?php else: ?>
+            <a class="sa-btn sa-btn-ghost" href="notifications.php">Reset</a>
+            <?php endif; ?>
+        </div>
     </div>
-    <div class="sa-field">
-        <label for="f_type">Kind</label>
-        <select id="f_type" name="type">
-            <option value="">Every kind</option>
-            <?php foreach ($allowed_types as $type_key): ?>
-            <?php $type_meta = notifications_type_meta($type_key); ?>
-            <option value="<?php echo sa_e($type_key); ?>" <?php echo $type === $type_key ? 'selected' : ''; ?>>
-                <?php echo sa_e($type_meta['label']); ?><?php echo isset($breakdown[$type_key]) ? ' (' . (int) $breakdown[$type_key]['total'] . ')' : ''; ?>
-            </option>
-            <?php endforeach; ?>
-        </select>
+
+    <!-- Bottom Row: Filter Dropdowns and Date Pickers -->
+    <div class="sa-filter-grid">
+        <div class="sa-field">
+            <label for="f_status">Read state</label>
+            <select id="f_status" name="status" class="sa-select">
+                <option value="all" <?php echo $status === 'all' ? 'selected' : ''; ?>>All notices</option>
+                <option value="unread" <?php echo $status === 'unread' ? 'selected' : ''; ?>>Unread only</option>
+                <option value="read" <?php echo $status === 'read' ? 'selected' : ''; ?>>Read only</option>
+            </select>
+        </div>
+        <div class="sa-field">
+            <label for="f_type">Category / Kind</label>
+            <select id="f_type" name="type" class="sa-select">
+                <option value="">Every kind</option>
+                <?php foreach ($allowed_types as $type_key): ?>
+                <?php $type_meta = notifications_type_meta($type_key); ?>
+                <option value="<?php echo sa_e($type_key); ?>" <?php echo $type === $type_key ? 'selected' : ''; ?>>
+                    <?php echo sa_e($type_meta['label']); ?><?php echo isset($breakdown[$type_key]) ? ' (' . (int) $breakdown[$type_key]['total'] . ')' : ''; ?>
+                </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="sa-field">
+            <label for="f_start">From Date</label>
+            <input type="date" id="f_start" name="start" class="sa-input" value="<?php echo sa_e((string) ($_GET['start'] ?? '')); ?>">
+        </div>
+        <div class="sa-field">
+            <label for="f_end">To Date</label>
+            <input type="date" id="f_end" name="end" class="sa-input" value="<?php echo sa_e((string) ($_GET['end'] ?? '')); ?>">
+        </div>
     </div>
-    <div class="sa-field">
-        <label for="f_start">From</label>
-        <input type="date" id="f_start" name="start" value="<?php echo sa_e((string) ($_GET['start'] ?? '')); ?>">
+
+    <?php if ($has_active_filters): ?>
+    <div class="sa-filter-chips">
+        <span class="sa-filter-chips-label">Active filters:</span>
+        <?php if ($status !== 'all' && $status !== ''): ?>
+        <a class="sa-filter-chip" href="<?php echo sa_e(sa_notifications_url(['status' => ''])); ?>" title="Remove status filter">
+            State: <strong><?php echo ucfirst($status); ?></strong>
+            <span class="sa-chip-remove">&times;</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($type !== ''): ?>
+        <a class="sa-filter-chip" href="<?php echo sa_e(sa_notifications_url(['type' => ''])); ?>" title="Remove kind filter">
+            Kind: <strong><?php echo sa_e(notifications_type_meta($type)['label']); ?></strong>
+            <span class="sa-chip-remove">&times;</span>
+        </a>
+        <?php endif; ?>
+        <?php if (!empty($_GET['start'])): ?>
+        <a class="sa-filter-chip" href="<?php echo sa_e(sa_notifications_url(['start' => ''])); ?>" title="Remove from date">
+            From: <strong><?php echo sa_e($_GET['start']); ?></strong>
+            <span class="sa-chip-remove">&times;</span>
+        </a>
+        <?php endif; ?>
+        <?php if (!empty($_GET['end'])): ?>
+        <a class="sa-filter-chip" href="<?php echo sa_e(sa_notifications_url(['end' => ''])); ?>" title="Remove to date">
+            To: <strong><?php echo sa_e($_GET['end']); ?></strong>
+            <span class="sa-chip-remove">&times;</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($search !== ''): ?>
+        <a class="sa-filter-chip" href="<?php echo sa_e(sa_notifications_url(['q' => ''])); ?>" title="Remove keyword search">
+            Search: <strong>"<?php echo sa_e($search); ?>"</strong>
+            <span class="sa-chip-remove">&times;</span>
+        </a>
+        <?php endif; ?>
+        <?php if ($filter_tenant > 0): ?>
+        <a class="sa-filter-chip" href="<?php echo sa_e(sa_notifications_url(['tenant' => ''])); ?>" title="Remove workspace filter">
+            Workspace: <strong><?php echo sa_e($tenant_names[$filter_tenant] ?? ('#' . $filter_tenant)); ?></strong>
+            <span class="sa-chip-remove">&times;</span>
+        </a>
+        <?php endif; ?>
+        <a class="sa-filter-clear-all" href="notifications.php">Clear all filters</a>
     </div>
-    <div class="sa-field">
-        <label for="f_end">To</label>
-        <input type="date" id="f_end" name="end" value="<?php echo sa_e((string) ($_GET['end'] ?? '')); ?>">
-    </div>
-    <div class="sa-field" style="flex:1 1 220px;">
-        <label for="f_q">Search</label>
-        <input type="search" id="f_q" name="q" placeholder="Title or detail…"
-               value="<?php echo sa_e($search); ?>" autocomplete="off">
-    </div>
-    <button type="submit" class="sa-btn sa-btn-sm sa-btn-primary"><?php echo sa_icon('filter'); ?> Apply</button>
-    <a class="sa-btn sa-btn-sm sa-btn-ghost" href="notifications.php">Reset</a>
+    <?php endif; ?>
 </form>
 
 <div class="sa-card sa-mt">

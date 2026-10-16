@@ -116,6 +116,23 @@
             return;
         }
 
+        function syncTooltips(collapsed) {
+            var items = document.querySelectorAll('.sa-nav a, .sa-nav button');
+            for (var i = 0; i < items.length; i++) {
+                var el = items[i];
+                if (collapsed) {
+                    if (el.hasAttribute('title')) {
+                        el.setAttribute('data-nav-title', el.getAttribute('title'));
+                        el.removeAttribute('title');
+                    }
+                } else {
+                    if (el.hasAttribute('data-nav-title')) {
+                        el.setAttribute('title', el.getAttribute('data-nav-title'));
+                    }
+                }
+            }
+        }
+
         var collapse = document.querySelector('[data-sa-collapse]');
         if (collapse) {
             var stored = null;
@@ -126,9 +143,13 @@
             }
             if (stored === '1') {
                 app.classList.add('is-collapsed');
+                syncTooltips(true);
+            } else if (app.classList.contains('is-collapsed')) {
+                syncTooltips(true);
             }
             collapse.addEventListener('click', function () {
                 var collapsed = app.classList.toggle('is-collapsed');
+                syncTooltips(collapsed);
                 try {
                     localStorage.setItem(RAIL_KEY, collapsed ? '1' : '0');
                 } catch (e) {
@@ -182,6 +203,116 @@
                 links[j].classList.add('active');
             }
         }
+    }
+
+    /* ---------- Sidebar: Subgroup Dropdowns ---------- */
+    function initNavDropdowns() {
+        var STORAGE_KEY = 'optibiz-sa-nav-open-groups';
+        var savedOpen = {};
+        try {
+            var raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) savedOpen = JSON.parse(raw);
+        } catch (e) {
+            savedOpen = {};
+        }
+
+        // Restore saved or active state on initial load
+        var groups = document.querySelectorAll('.sa-nav-group');
+        var activeFound = false;
+        for (var i = 0; i < groups.length; i++) {
+            var toggleCheck = groups[i].querySelector('.sa-nav-group-toggle');
+            if (toggleCheck && toggleCheck.classList.contains('is-active-parent')) {
+                activeFound = true;
+                break;
+            }
+        }
+
+        for (var i = 0; i < groups.length; i++) {
+            var grp = groups[i];
+            var id = grp.getAttribute('data-sa-nav-group');
+            var toggle = grp.querySelector('.sa-nav-group-toggle');
+            if (!toggle) continue;
+
+            var isChildActive = toggle.classList.contains('is-active-parent');
+            if (isChildActive) {
+                grp.classList.add('is-open');
+                toggle.setAttribute('aria-expanded', 'true');
+            } else if (!activeFound && id && savedOpen[id] === true) {
+                grp.classList.add('is-open');
+                toggle.setAttribute('aria-expanded', 'true');
+            } else {
+                grp.classList.remove('is-open');
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+        }
+
+        // Delegated click handler on document
+        document.addEventListener('click', function (e) {
+            var toggle = e.target.closest ? e.target.closest('.sa-nav-group-toggle') : null;
+            if (!toggle) {
+                // Don't close if clicking inside the menu itself (e.g. padding/header)
+                if (e.target.closest && e.target.closest('.sa-nav-group-menu')) {
+                    return;
+                }
+                // Clicking outside closes any open flyout popups in collapsed mode
+                var openPopups = document.querySelectorAll('.sa-nav-group.is-popup-open');
+                for (var p = 0; p < openPopups.length; p++) {
+                    openPopups[p].classList.remove('is-popup-open');
+                }
+                return;
+            }
+
+            var grp = toggle.closest('.sa-nav-group');
+            if (!grp) return;
+
+            var app = document.querySelector('.sa-app');
+            var isCollapsed = app && app.classList.contains('is-collapsed') && window.innerWidth >= 901;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (isCollapsed) {
+                // In collapsed mode: toggle popup card on click
+                var wasOpen = grp.classList.contains('is-popup-open');
+                var allPopups = document.querySelectorAll('.sa-nav-group.is-popup-open');
+                for (var j = 0; j < allPopups.length; j++) {
+                    allPopups[j].classList.remove('is-popup-open');
+                }
+                if (!wasOpen) {
+                    grp.classList.add('is-popup-open');
+                }
+            } else {
+                // In expanded mode: toggle accordion (single-open behavior)
+                var isOpen = grp.classList.toggle('is-open');
+                toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                var id = grp.getAttribute('data-sa-nav-group');
+                if (id) {
+                    savedOpen[id] = isOpen;
+                }
+
+                // If opening this dropdown, close all others
+                if (isOpen) {
+                    var allGroups = document.querySelectorAll('.sa-nav-group');
+                    for (var k = 0; k < allGroups.length; k++) {
+                        if (allGroups[k] !== grp) {
+                            allGroups[k].classList.remove('is-open');
+                            var otherToggle = allGroups[k].querySelector('.sa-nav-group-toggle');
+                            if (otherToggle) {
+                                otherToggle.setAttribute('aria-expanded', 'false');
+                            }
+                            var otherId = allGroups[k].getAttribute('data-sa-nav-group');
+                            if (otherId) {
+                                savedOpen[otherId] = false;
+                            }
+                        }
+                    }
+                }
+
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedOpen));
+                } catch (err) {}
+            }
+        });
     }
 
     /* ---------- Avatar dropdown ---------- */
@@ -898,6 +1029,7 @@
     onReady(function () {
         initTheme();
         initSidebar();
+        initNavDropdowns();
         initMenus();
         initNotifications();
         initTableSearch();

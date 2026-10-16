@@ -568,6 +568,15 @@
 
         // Restore saved or active state on initial load
         var groups = document.querySelectorAll('.nav-group');
+        var activeFound = false;
+        for (var i = 0; i < groups.length; i++) {
+            var toggleCheck = groups[i].querySelector('.nav-group-toggle');
+            if (toggleCheck && toggleCheck.classList.contains('is-active-parent')) {
+                activeFound = true;
+                break;
+            }
+        }
+
         for (var i = 0; i < groups.length; i++) {
             var grp = groups[i];
             var id = grp.getAttribute('data-nav-group');
@@ -578,10 +587,10 @@
             if (isChildActive) {
                 grp.classList.add('is-open');
                 toggle.setAttribute('aria-expanded', 'true');
-            } else if (id && savedOpen[id] === true) {
+            } else if (!activeFound && id && savedOpen[id] === true) {
                 grp.classList.add('is-open');
                 toggle.setAttribute('aria-expanded', 'true');
-            } else if (id && savedOpen[id] === false) {
+            } else {
                 grp.classList.remove('is-open');
                 toggle.setAttribute('aria-expanded', 'false');
             }
@@ -623,16 +632,35 @@
                     grp.classList.add('is-popup-open');
                 }
             } else {
-                // In expanded mode: toggle accordion
+                // In expanded mode: toggle accordion (single-open behavior)
                 var isOpen = grp.classList.toggle('is-open');
                 toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
                 var id = grp.getAttribute('data-nav-group');
                 if (id) {
                     savedOpen[id] = isOpen;
-                    try {
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify(savedOpen));
-                    } catch (err) {}
                 }
+
+                // If opening this dropdown, close all others
+                if (isOpen) {
+                    var allGroups = document.querySelectorAll('.nav-group');
+                    for (var k = 0; k < allGroups.length; k++) {
+                        if (allGroups[k] !== grp) {
+                            allGroups[k].classList.remove('is-open');
+                            var otherToggle = allGroups[k].querySelector('.nav-group-toggle');
+                            if (otherToggle) {
+                                otherToggle.setAttribute('aria-expanded', 'false');
+                            }
+                            var otherId = allGroups[k].getAttribute('data-nav-group');
+                            if (otherId) {
+                                savedOpen[otherId] = false;
+                            }
+                        }
+                    }
+                }
+
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedOpen));
+                } catch (err) {}
             }
         });
     }

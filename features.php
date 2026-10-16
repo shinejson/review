@@ -1362,6 +1362,7 @@ if ($cat_res) {
                 <a href="features.php" class="active">Features</a>
                 <a href="pricing.php">Pricing</a>
                 <a href="companies.php">Directory</a>
+                <a href="seo-checker.php">SEO Checker</a>
                 <a href="index.php#how-it-works">How It Works</a>
             </nav>
             <div class="nav-actions">
@@ -1396,6 +1397,10 @@ if ($cat_res) {
                     <a href="companies.php" class="mobile-nav-link">
                         <i class="fa-solid fa-building"></i>
                         <span>Directory</span>
+                    </a>
+                    <a href="seo-checker.php" class="mobile-nav-link">
+                        <i class="fa-solid fa-magnifying-glass-chart"></i>
+                        <span>SEO Checker</span>
                     </a>
                     <a href="index.php#how-it-works" class="mobile-nav-link">
                         <i class="fa-solid fa-circle-question"></i>
