@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/seo.php';
 
 // Fetch currency settings
 $currency_symbol = '$';
@@ -48,12 +49,25 @@ if ($cat_res) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GH">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Features Tour — Optibiz Review, Reputation &amp; Growth Suite</title>
-    <meta name="description" content="Explore the 6 core engines of Optibiz: In-store Counter QR Stands, WhatsApp review requests, Google Review boosting, social proof card studio, and ad retargeting funnels.">
+    <?php
+    $seo_title = 'Features Tour — Optibiz Review, Reputation & Growth Suite';
+    $seo_desc  = 'Explore the 6 core engines of Optibiz: in-store Counter QR Stands, WhatsApp review requests, Google Review boosting, social proof card studio, and ad retargeting funnels.';
+    ?>
+    <title><?php echo htmlspecialchars($seo_title, ENT_QUOTES, 'UTF-8'); ?></title>
+    <meta name="description" content="<?php echo htmlspecialchars($seo_desc, ENT_QUOTES, 'UTF-8'); ?>">
+
+    <?php seo_head(array(
+        'title'       => $seo_title,
+        'description' => $seo_desc,
+        'path'        => 'features.php',
+        'breadcrumbs' => array(array('Home', ''), array('Features', 'features.php')),
+    )); ?>
+
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         :root {

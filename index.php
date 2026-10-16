@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/seo.php';
 
 // Dynamic platform metrics
 $total_ratings = (int) ($conn->query("SELECT COUNT(*) as count FROM ratings WHERE reported = 0")->fetch_assoc()['count'] ?? 0);
@@ -87,14 +88,125 @@ if ($plan_result) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// SEO metadata  (see includes/seo.php — the shared helper renders the
+// canonical / Open Graph / Twitter / JSON-LD block for every public page)
+// ---------------------------------------------------------------------------
+$seo_title = 'Optibiz — All-in-One Review, Trust & Reputation Growth Platform';
+$seo_desc  = 'Collect more customer reviews with QR counter stands, WhatsApp requests and Google review boosting. Optibiz turns 5-star feedback into social proof.';
+
+// Cheapest active plan drives the "offers" price in the SoftwareApplication
+// schema. price is selected with ORDER BY price ASC above, so the first row
+// is the entry price; we still scan defensively in case ordering changes.
+$seo_price = null;
+foreach ($modal_plans as $plan) {
+    $candidate = (float) ($plan['price'] ?? 0);
+    if ($seo_price === null || $candidate < $seo_price) {
+        $seo_price = $candidate;
+    }
+}
+
+$seo_currency = function_exists('sa_setting') ? sa_setting($conn, 'currency_code', 'USD') : 'USD';
+if ($seo_currency === '') {
+    $seo_currency = 'USD';
+}
+
+// --- FAQ content ------------------------------------------------------------
+// Single source of truth: rendered to the page AND emitted as FAQPage JSON-LD,
+// so the copy and the structured data can never drift apart.
+$seo_faqs = array(
+    array(
+        'q' => 'What is Optibiz?',
+        'a' => 'Optibiz is a review and reputation platform for businesses. It collects verified customer ratings at the point of service with printable Counter QR Stands, follows up over WhatsApp, and routes happy customers to your Google Business Profile so good feedback becomes public search visibility.',
+    ),
+    array(
+        'q' => 'How does the printable Counter QR Stand work?',
+        'a' => 'Generate a QR stand for your counter, table or reception desk from your workspace, print it, and place it where customers finish their visit. A quick scan opens a one-tap rating card in the customer\'s phone browser — no app install and no sign-up. Every scan is logged so you can see how many customers engaged.',
+    ),
+    array(
+        'q' => 'Will Optibiz help me get more Google reviews?',
+        'a' => 'Yes. Ratings of four stars and above are automatically routed to your Google review link, while lower scores are captured privately so your team can resolve the issue before it reaches a public platform. This review-gating pattern raises both the volume and the average of your public ratings.',
+    ),
+    array(
+        'q' => 'What happens when a customer leaves a low rating?',
+        'a' => 'Low scores trigger the private feedback shield. The customer is asked what went wrong and the response is delivered straight to the manager, so you can recover the relationship in private instead of wearing a public one-star review.',
+    ),
+    array(
+        'q' => 'Do my customers need to download an app?',
+        'a' => 'No. Rating pages open in any mobile browser, and WhatsApp requests are just a normal chat link. There is nothing for your customers to install, which keeps the completion rate high.',
+    ),
+    array(
+        'q' => 'How much does Optibiz cost?',
+        'a' => 'Optibiz is sold as a monthly subscription with several plan tiers, and annual billing is discounted on selected plans. Every new workspace starts with a free trial — see the pricing page for current rates in your currency.',
+    ),
+);
+
+// --- JSON-LD nodes ----------------------------------------------------------
+$seo_app_node = array(
+    '@type'                 => 'SoftwareApplication',
+    '@id'                   => seo_url('') . '#software',
+    'name'                  => 'Optibiz',
+    'applicationCategory'   => 'BusinessApplication',
+    'applicationSubCategory' => 'Reputation Management Software',
+    'operatingSystem'       => 'Web browser (desktop and mobile)',
+    'url'                   => seo_url(''),
+    'description'           => 'Collect verified customer reviews with printable Counter QR Stands and WhatsApp requests, boost Google reviews, and turn five-star feedback into social proof graphics.',
+    'publisher'             => array('@id' => seo_url('') . '#organization'),
+    'inLanguage'            => 'en-GH',
+    'featureList'           => array(
+        'Printable Counter QR Stands',
+        'WhatsApp 1-Click Review Requester',
+        'Google Review Booster',
+        'Social Proof Card Studio',
+        'Public Community Q&A',
+        'Paid Ad Funnel & Retargeting',
+    ),
+);
+
+if ($seo_price !== null) {
+    $seo_app_node['offers'] = array(
+        '@type'         => 'Offer',
+        'price'         => rtrim(rtrim(number_format($seo_price, 2, '.', ''), '0'), '.'),
+        'priceCurrency' => $seo_currency,
+        'availability'  => 'https://schema.org/InStock',
+        'url'           => seo_url('pricing.php'),
+    );
+}
+
+$seo_faq_entities = array();
+foreach ($seo_faqs as $faq) {
+    $seo_faq_entities[] = array(
+        '@type'          => 'Question',
+        'name'           => $faq['q'],
+        'acceptedAnswer' => array(
+            '@type' => 'Answer',
+            'text'  => $faq['a'],
+        ),
+    );
+}
+$seo_faq_node = array(
+    '@type'          => 'FAQPage',
+    '@id'            => seo_url('') . '#faq',
+    'mainEntity'     => $seo_faq_entities,
+);
+
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GH">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Optibiz — All-in-One Review, Trust &amp; Reputation Growth Platform</title>
-    <meta name="description" content="Collect customer reviews with Counter QR Stands, WhatsApp requests, Google Review boosting, and automated social proof graphics.">
+    <title><?php echo htmlspecialchars($seo_title, ENT_QUOTES, 'UTF-8'); ?></title>
+    <meta name="description" content="<?php echo htmlspecialchars($seo_desc, ENT_QUOTES, 'UTF-8'); ?>">
+
+    <?php seo_head(array(
+        'title'       => $seo_title,
+        'description' => $seo_desc,
+        'path'        => '',
+        'jsonld'      => array($seo_app_node, $seo_faq_node),
+    )); ?>
+
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         :root {
@@ -684,7 +796,7 @@ if ($plan_result) {
             font-size: 18px;
             font-weight: 800;
         }
-        .demo-biz-info h3 {
+        .demo-biz-info .demo-biz-name {
             font-size: 16px;
             font-weight: 700;
             color: var(--text-main);
@@ -1108,14 +1220,27 @@ if ($plan_result) {
             flex-direction: column;
             gap: 10px;
         }
-        .footer-links-list a {
+        .footer-links-list a,
+        .footer-links-list .footer-link-button {
             color: #94a3b8;
             text-decoration: none;
             font-size: 13.5px;
             transition: color 0.2s;
         }
-        .footer-links-list a:hover {
+        .footer-links-list a:hover,
+        .footer-links-list .footer-link-button:hover {
             color: var(--accent-lime);
+        }
+        /* A real <button> styled as a footer link: it opens a dialog, so it is
+           not a navigation and should not pretend to be one (no href="#"). */
+        .footer-links-list .footer-link-button {
+            background: none;
+            border: 0;
+            padding: 0;
+            font-family: inherit;
+            font-size: 13.5px;
+            text-align: left;
+            cursor: pointer;
         }
         .footer-bottom {
             max-width: 1280px;
@@ -1507,9 +1632,94 @@ if ($plan_result) {
             background: var(--accent-lime);
             color: var(--primary-dark);
         }
+
+        /* Skip link — keyboard/screen-reader users jump straight to the content */
+        .skip-link {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            z-index: 200;
+            background: var(--accent-lime);
+            color: var(--primary-dark);
+            font-weight: 700;
+            padding: 12px 20px;
+            border-radius: 0 0 10px 0;
+            text-decoration: none;
+        }
+        .skip-link:focus {
+            left: 0;
+        }
+
+        /* FAQ Section — native <details> so it stays crawlable without JS */
+        .faq-section {
+            padding: 80px 5%;
+            background: #f8fafc;
+        }
+        .faq-list {
+            max-width: 860px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .faq-item {
+            background: #ffffff;
+            border: 1px solid var(--border-line);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .faq-item:hover {
+            border-color: var(--accent-lime);
+        }
+        .faq-item[open] {
+            border-color: var(--accent-lime);
+            box-shadow: 0 8px 24px rgba(15, 36, 56, 0.07);
+        }
+        .faq-item summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 20px 56px 20px 22px;
+            position: relative;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--primary-dark);
+            line-height: 1.45;
+        }
+        .faq-item summary::-webkit-details-marker {
+            display: none;
+        }
+        .faq-item summary::after {
+            content: "\f107";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            position: absolute;
+            right: 22px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--accent-green-text);
+            transition: transform 0.25s ease;
+            font-size: 15px;
+        }
+        .faq-item[open] summary::after {
+            transform: translateY(-50%) rotate(180deg);
+        }
+        .faq-item summary:focus-visible {
+            outline: 3px solid var(--accent-lime);
+            outline-offset: -3px;
+        }
+        .faq-answer {
+            padding: 0 22px 22px;
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--text-muted);
+        }
+        .faq-answer p { margin: 0; }
     </style>
 </head>
 <body>
+
+    <a class="skip-link" href="#main-content">Skip to main content</a>
 
     <!-- Header & Navigation -->
     <div class="top-bar-wrap" id="top">
@@ -1593,14 +1803,15 @@ if ($plan_result) {
     <!-- Mobile Backdrop Overlay -->
     <div class="mobile-nav-overlay" id="mobileNavOverlay" aria-hidden="true"></div>
 
+    <main id="main-content">
     <!-- Hero Section -->
-    <section class="hero-section">
+    <section class="hero-section" aria-labelledby="hero-title">
         <div class="hero-container">
             <div class="hero-left">
                 <div class="badge-tag">
                     <i class="fa-solid fa-star"></i> Omnichannel Review &amp; Reputation Growth
                 </div>
-                <h1 class="hero-title">Turn Customer Reviews Into Your <span>#1 Growth Engine</span></h1>
+                <h1 class="hero-title" id="hero-title">Turn Customer Reviews Into Your <span>#1 Growth Engine</span></h1>
                 <p class="hero-desc">
                     Collect in-store ratings with printable Counter QR Stands, trigger personalized WhatsApp outreach, boost your Google Reviews with smart routing, and auto-generate social proof graphics for ads.
                 </p>
@@ -1648,7 +1859,10 @@ if ($plan_result) {
                     <div class="demo-biz-header">
                         <div class="demo-biz-avatar"><?php echo htmlspecialchars($hero_demo_avatar); ?></div>
                         <div class="demo-biz-info">
-                            <h3><?php echo htmlspecialchars($hero_demo_name); ?></h3>
+                            <!-- Not a heading: this is a mock of the customer-facing
+                                 rating widget, so it must not inject an h3 into the
+                                 document outline between the h1 and the first h2. -->
+                            <p class="demo-biz-name"><?php echo htmlspecialchars($hero_demo_name); ?></p>
                             <p>Powered by Optibiz Counter QR Stand</p>
                         </div>
                     </div>
@@ -1844,7 +2058,9 @@ if ($plan_result) {
                 <div class="c-card-top">
                     <div class="c-card-logo">
                         <?php if (!empty($fc['logo'])): ?>
-                            <img src="<?php echo htmlspecialchars($fc['logo']); ?>" alt="<?php echo htmlspecialchars($fc['company_name']); ?>">
+                            <img src="<?php echo htmlspecialchars($fc['logo'], ENT_QUOTES, 'UTF-8'); ?>"
+                                 alt="<?php echo htmlspecialchars($fc['company_name'], ENT_QUOTES, 'UTF-8'); ?> logo"
+                                 width="48" height="48" loading="lazy" decoding="async">
                         <?php else: ?>
                             <?php echo strtoupper(substr($fc['company_name'], 0, 1)); ?>
                         <?php endif; ?>
@@ -1906,6 +2122,29 @@ if ($plan_result) {
         </div>
     </section>
     <?php endif; ?>
+
+    <!-- Frequently Asked Questions -->
+    <!-- Native <details>/<summary>: fully crawlable with JavaScript disabled,
+         keyboard accessible for free, and the copy mirrors the FAQPage
+         JSON-LD emitted in <head> ($seo_faqs is the single source of truth). -->
+    <section class="faq-section" id="faq" aria-labelledby="faq-title">
+        <div class="section-header">
+            <span class="section-tag">Answers</span>
+            <h2 class="section-title" id="faq-title">Frequently Asked Questions</h2>
+            <p class="section-subtitle">Everything you need to know about collecting reviews with Optibiz.</p>
+        </div>
+
+        <div class="faq-list">
+            <?php foreach ($seo_faqs as $faq): ?>
+            <details class="faq-item">
+                <summary><?php echo htmlspecialchars($faq['q'], ENT_QUOTES, 'UTF-8'); ?></summary>
+                <div class="faq-answer">
+                    <p><?php echo htmlspecialchars($faq['a'], ENT_QUOTES, 'UTF-8'); ?></p>
+                </div>
+            </details>
+            <?php endforeach; ?>
+        </div>
+    </section>
 
     <!-- Banner CTA -->
     <section class="cta-banner">
@@ -1977,70 +2216,98 @@ if ($plan_result) {
             <p class="section-subtitle">The passionate people building Ghana's leading review and reputation platform.</p>
         </div>
 
+        <?php
+        // Team profiles.
+        //
+        // Fill in a real profile URL whenever you have one. An icon is only
+        // rendered as a link when a URL is configured, so the page never ships
+        // dead href="#" placeholders — crawlers treat those as soft 404s and
+        // screen readers announce them as broken links.
+        $team_members = array(
+            array(
+                'initials' => 'SA',
+                'name'     => 'Samuel Asante',
+                'role'     => 'Founder & CEO',
+                'bio'      => 'Founder of Optibiz with 10+ years experience in digital marketing and customer engagement across West Africa.',
+                'links'    => array(
+                    // 'linkedin' => 'https://www.linkedin.com/in/…',
+                    // 'twitter'  => 'https://x.com/…',
+                ),
+            ),
+            array(
+                'initials' => 'EK',
+                'name'     => 'Elsie Kumah',
+                'role'     => 'Head of Product',
+                'bio'      => 'Leads product development and UX design, ensuring Optibiz delivers the best experience for businesses and customers.',
+                'links'    => array(
+                    // 'linkedin' => 'https://www.linkedin.com/in/…',
+                    // 'github'   => 'https://github.com/…',
+                ),
+            ),
+            array(
+                'initials' => 'MO',
+                'name'     => 'Michael Osei',
+                'role'     => 'Senior Developer',
+                'bio'      => 'Full-stack developer building scalable features and integrations that power Optibiz\'s review and reputation tools.',
+                'links'    => array(
+                    // 'linkedin' => 'https://www.linkedin.com/in/…',
+                    // 'github'   => 'https://github.com/…',
+                ),
+            ),
+            array(
+                'initials' => 'AN',
+                'name'     => 'Ama Nkrumah',
+                'role'     => 'Customer Success',
+                'bio'      => 'Helps businesses maximize their use of Optibiz, providing onboarding support and ongoing success coaching.',
+                'links'    => array(
+                    // 'linkedin' => 'https://www.linkedin.com/in/…',
+                    // 'email'    => 'ama@…',
+                ),
+            ),
+        );
+
+        // Key -> [Font Awesome classes, accessible label]
+        $team_link_icons = array(
+            'linkedin' => array('fa-brands fa-linkedin', 'LinkedIn'),
+            'twitter'  => array('fa-brands fa-x-twitter', 'X (Twitter)'),
+            'github'   => array('fa-brands fa-github', 'GitHub'),
+            'email'    => array('fa-solid fa-envelope', 'Email'),
+        );
+        ?>
         <div class="team-grid">
+            <?php foreach ($team_members as $member): ?>
             <div class="team-card">
                 <div class="team-avatar">
-                    <span>SA</span>
+                    <span><?php echo htmlspecialchars($member['initials'], ENT_QUOTES, 'UTF-8'); ?></span>
                 </div>
-                <div class="team-name">Samuel Asante</div>
-                <div class="team-role">Founder &amp; CEO</div>
-                <div class="team-bio">
-                    Founder of Optibiz with 10+ years experience in digital marketing and customer engagement across West Africa.
-                </div>
+                <div class="team-name"><?php echo htmlspecialchars($member['name'], ENT_QUOTES, 'UTF-8'); ?></div>
+                <div class="team-role"><?php echo htmlspecialchars($member['role'], ENT_QUOTES, 'UTF-8'); ?></div>
+                <div class="team-bio"><?php echo htmlspecialchars($member['bio'], ENT_QUOTES, 'UTF-8'); ?></div>
+                <?php if (!empty($member['links'])): ?>
                 <div class="team-social">
-                    <a href="#"><i class="fa-brands fa-linkedin"></i></a>
-                    <a href="#"><i class="fa-brands fa-x-twitter"></i></a>
+                    <?php foreach ($member['links'] as $key => $url): ?>
+                        <?php
+                        if (!isset($team_link_icons[$key]) || $url === '') continue;
+                        list($icon_class, $icon_label) = $team_link_icons[$key];
+                        $is_email = ($key === 'email');
+                        $href = ($is_email && stripos($url, 'mailto:') !== 0) ? 'mailto:' . $url : $url;
+                        ?>
+                        <a href="<?php echo htmlspecialchars($href, ENT_QUOTES, 'UTF-8'); ?>"
+                           aria-label="<?php echo htmlspecialchars($icon_label . ' — ' . $member['name'], ENT_QUOTES, 'UTF-8'); ?>"
+                           <?php echo $is_email ? '' : 'target="_blank" rel="noopener noreferrer"'; ?>>
+                            <i class="<?php echo htmlspecialchars($icon_class, ENT_QUOTES, 'UTF-8'); ?>" aria-hidden="true"></i>
+                        </a>
+                    <?php endforeach; ?>
                 </div>
+                <?php endif; ?>
             </div>
-
-            <div class="team-card">
-                <div class="team-avatar">
-                    <span>EK</span>
-                </div>
-                <div class="team-name">Elsie Kumah</div>
-                <div class="team-role">Head of Product</div>
-                <div class="team-bio">
-                    Leads product development and UX design, ensuring Optibiz delivers the best experience for businesses and customers.
-                </div>
-                <div class="team-social">
-                    <a href="#"><i class="fa-brands fa-linkedin"></i></a>
-                    <a href="#"><i class="fa-brands fa-github"></i></a>
-                </div>
-            </div>
-
-            <div class="team-card">
-                <div class="team-avatar">
-                    <span>MO</span>
-                </div>
-                <div class="team-name">Michael Osei</div>
-                <div class="team-role">Senior Developer</div>
-                <div class="team-bio">
-                    Full-stack developer building scalable features and integrations that power Optibiz's review and reputation tools.
-                </div>
-                <div class="team-social">
-                    <a href="#"><i class="fa-brands fa-linkedin"></i></a>
-                    <a href="#"><i class="fa-brands fa-github"></i></a>
-                </div>
-            </div>
-
-            <div class="team-card">
-                <div class="team-avatar">
-                    <span>AN</span>
-                </div>
-                <div class="team-name">Ama Nkrumah</div>
-                <div class="team-role">Customer Success</div>
-                <div class="team-bio">
-                    Helps businesses maximize their use of Optibiz, providing onboarding support and ongoing success coaching.
-                </div>
-                <div class="team-social">
-                    <a href="#"><i class="fa-brands fa-linkedin"></i></a>
-                    <a href="#"><i class="fa-solid fa-envelope"></i></a>
-                </div>
-            </div>
+            <?php endforeach; ?>
         </div>
     </section>
 
     <!-- Footer -->
+    </main>
+
     <footer class="site-footer" id="contact">
         <div class="footer-grid-container">
             <div class="footer-col-brand">
@@ -2051,12 +2318,35 @@ if ($plan_result) {
                 <p class="footer-brand-desc">
                     The modern business review, reputation management, and customer acquisition platform. Built for in-store foot traffic and online growth.
                 </p>
+                <?php
+                // Brand social profiles. These feed BOTH the visible footer
+                // links and the Organization "sameAs" array in the JSON-LD,
+                // which is how Google confirms which profiles belong to you.
+                // Set them in Control Center → Settings → Branding, or add the
+                // social_* keys to the `settings` table. Until they are set the
+                // icons are hidden rather than linking to a generic homepage.
+                $footer_socials = array(
+                    'twitter'   => array('fa-brands fa-x-twitter', 'X (Twitter)', seo_setting('social_twitter', '')),
+                    'linkedin'  => array('fa-brands fa-linkedin', 'LinkedIn',    seo_setting('social_linkedin', '')),
+                    'facebook'  => array('fa-brands fa-facebook', 'Facebook',    seo_setting('social_facebook', '')),
+                    'instagram' => array('fa-brands fa-instagram', 'Instagram',  seo_setting('social_instagram', '')),
+                );
+                $footer_socials = array_filter($footer_socials, function ($s) {
+                    return preg_match('~^https?://~i', $s[2]);
+                });
+                ?>
+                <?php if (!empty($footer_socials)): ?>
                 <div style="display:flex;gap:12px;font-size:16px">
-                    <a href="https://twitter.com" style="color:#94a3b8"><i class="fa-brands fa-x-twitter"></i></a>
-                    <a href="https://linkedin.com" style="color:#94a3b8"><i class="fa-brands fa-linkedin"></i></a>
-                    <a href="https://facebook.com" style="color:#94a3b8"><i class="fa-brands fa-facebook"></i></a>
-                    <a href="https://instagram.com" style="color:#94a3b8"><i class="fa-brands fa-instagram"></i></a>
+                    <?php foreach ($footer_socials as $s): ?>
+                    <a href="<?php echo htmlspecialchars($s[2], ENT_QUOTES, 'UTF-8'); ?>"
+                       style="color:#94a3b8"
+                       aria-label="<?php echo htmlspecialchars($s[1], ENT_QUOTES, 'UTF-8'); ?>"
+                       rel="me noopener noreferrer" target="_blank">
+                        <i class="<?php echo htmlspecialchars($s[0], ENT_QUOTES, 'UTF-8'); ?>" aria-hidden="true"></i>
+                    </a>
+                    <?php endforeach; ?>
                 </div>
+                <?php endif; ?>
             </div>
 
             <div>
@@ -2085,7 +2375,7 @@ if ($plan_result) {
                 <ul class="footer-links-list">
                     <li><a href="<?php echo admin_url('login.php'); ?>">Business Admin Login</a></li>
                     <li><a href="superadmin/login.php">Control Center</a></li>
-                    <li><a href="#" onclick="openModal(); return false;">Request Custom Quote</a></li>
+                    <li><button type="button" class="footer-link-button" onclick="openModal()">Request Custom Quote</button></li>
                 </ul>
             </div>
         </div>

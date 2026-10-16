@@ -1,0 +1,56 @@
+# ============================================================
+#  Optibiz — robots.txt
+# ============================================================
+#
+#  *** READ THIS BEFORE DEPLOYING ***
+#
+#  robots.txt is only honoured at the ROOT of a host. A copy served from
+#  https://example.com/rate/robots.txt is IGNORED by Google, Bing,
+#  DuckDuckGo and every other compliant crawler.
+#
+#    1. Publish this file at  https://YOUR-DOMAIN/robots.txt
+#    2. Replace every YOUR-DOMAIN placeholder below with your real domain.
+#
+#  The rules below assume the app lives in /rate/ (matching `RewriteBase /rate/`
+#  in .htaccess and APP_BASE_URL in .env). If you move the app to the domain
+#  root, delete the "/rate" prefix from each path and from the Sitemap URL.
+#
+#  Note: the tenant workspace lives behind a secret alias, which is deliberately
+#  NOT listed here — advertising it in a world-readable file would defeat the
+#  point. Those pages are kept out of the index by `noindex` response headers
+#  instead (see includes/header.php).
+# ============================================================
+
+User-agent: *
+Allow: /
+
+# ---- Application internals (never useful in search results) ----
+Disallow: /rate/api/
+Disallow: /rate/includes/
+Disallow: /rate/config/
+Disallow: /rate/admin/
+Disallow: /rate/superadmin/
+Disallow: /rate/migrations/
+Disallow: /rate/tools/
+Disallow: /rate/scratch/
+Disallow: /rate/backups/
+Disallow: /rate/uploads/
+Disallow: /rate/.vscode/
+Disallow: /rate/.git/
+Disallow: /rate/.env
+Disallow: /rate/database.sql
+Disallow: /rate/composer.json
+
+# ---- Query-string variants of the homepage (duplicate content) ----
+Disallow: /rate/index.php?
+
+# ---- Thin / embeddable pages ----
+# widget.php is designed to be iframed into customer sites; it is not a
+# landing page and only creates duplicate-content noise if crawled.
+Disallow: /rate/widget.php
+
+# ---- Crawl budget: give bots room to breathe on big directories ----
+# Uncomment if crawlers ever hammer the directory too hard.
+# Crawl-delay: 1
+
+Sitemap: https://YOUR-DOMAIN/rate/sitemap.xml

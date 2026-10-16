@@ -23,6 +23,16 @@ RewriteRule ^p7xk2mqw9vrt4zhn$ p7xk2mqw9vrt4zhn/ [R=301,L]
 RewriteRule ^p7xk2mqw9vrt4zhn/$ admin/index.php [L,QSA]
 RewriteRule ^p7xk2mqw9vrt4zhn/(.*)$ admin/$1 [L,QSA]
 
+# ============================================================
+# SEO: sitemap + robots
+# ============================================================
+# /rate/sitemap.xml is generated on the fly by sitemap.php so the long tail of
+# company profile pages stays in sync with the database.
+# NOTE: robots.txt must be published at the DOMAIN ROOT (https://example.com/robots.txt).
+# A robots.txt served from a subdirectory is ignored by crawlers — see the
+# file-level comment in robots.txt and INSTALLATION.md.
+RewriteRule ^sitemap\.xml$ sitemap.php [L,QSA]
+
 # Allow direct access to real existing files and directories
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
@@ -58,12 +68,41 @@ Options -Indexes
     </IfModule>
 </FilesMatch>
 
+# ============================================================
 # Security HTTP Headers
+# ============================================================
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options "nosniff"
-    Header always set X-XSS-Protection "1; mode=block"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Clickjacking: refuse to be framed by another origin. The public review
+    # widget is embedded by design, so keep SAMEORIGIN rather than DENY.
+    Header always set X-Frame-Options "SAMEORIGIN"
+
+    # Turn off the sensitive APIs this app simply never uses.
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), serial=()"
+
+    # HSTS is only emitted on HTTPS responses (env=HTTPS), so enabling it can
+    # never lock a visitor out over plain HTTP. Raise max-age to 63072000 and
+    # add "; preload" once you are confident every subdomain is HTTPS-only.
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
+
+    # X-XSS-Protection is deprecated and can introduce issues in legacy
+    # browsers; it is intentionally no longer sent. Modern protection comes
+    # from a Content-Security-Policy — see SEO-AUDIT.md for the recommended
+    # rollout (report-only first, because the pages use inline <style>/<script>).
 </IfModule>
+
+# ============================================================
+# Force HTTPS  —  ENABLE IN PRODUCTION
+# ============================================================
+# Uncomment once a valid certificate is installed. The X-Forwarded-Proto check
+# keeps it loop-free behind a load balancer or reverse proxy that terminates TLS.
+# <IfModule mod_rewrite.c>
+#     RewriteCond %{HTTPS} off
+#     RewriteCond %{HTTP:X-Forwarded-Proto} !https [NC]
+#     RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# </IfModule>
 
 # Set default charset
 AddDefaultCharset UTF-8
@@ -85,6 +124,8 @@ AddDefaultCharset UTF-8
 </IfModule>
 
 # Enable gzip compression
+# (image/svg+xml and application/xml are compressible too — SVG is our favicon
+# format and application/xml is what sitemap.php serves.)
 <IfModule mod_deflate.c>
-    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css application/javascript application/json
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css application/javascript application/json application/xml image/svg+xml
 </IfModule>
