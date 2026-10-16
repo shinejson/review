@@ -500,10 +500,11 @@ include __DIR__ . '/_shell.php';
     width: 232px;
     border-radius: 16px;
     padding: 16px;
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    margin-bottom: 18px;
+    /* block layout (not flex): html2canvas skips images inside flex
+       containers, which left the QR blank in downloaded PNGs */
+    display: block;
+    margin: 0 auto 18px;
+    text-align: center;
     box-shadow: 0 10px 25px rgba(0,0,0,0.15);
 }
 /* QR image in visible card */

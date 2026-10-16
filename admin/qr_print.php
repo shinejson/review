@@ -189,7 +189,7 @@ html,body{margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;back
 .stand-cta-box{margin-bottom:20px;}
 .stand-headline{margin:0 0 6px;font-size:20px;font-weight:800;letter-spacing:-.5px;}
 .stand-subtext{margin:0;font-size:12.5px;line-height:1.4;}
-.stand-qr-box{box-sizing:border-box;width:232px;border-radius:16px;padding:16px;display:inline-flex;flex-direction:column;align-items:center;margin-bottom:18px;}
+.stand-qr-box{box-sizing:border-box;width:232px;border-radius:16px;padding:16px;display:block;margin:0 auto 18px;text-align:center;}
 .stand-qr-img{width:200px;height:200px;display:block;margin:0 auto;}
 .stand-qr-scan-badge{margin-top:8px;background:#0f172a;color:#c2f542;padding:4px 10px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:1px;display:inline-block;}
 .stand-steps-row{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:16px;font-size:11px;font-weight:700;}
