@@ -18,6 +18,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/sa_helpers.php';
 require_once __DIR__ . '/includes/seo_checker.php';
+require_once __DIR__ . '/includes/seo.php';
 
 seo_ensure_schema($conn);
 
@@ -138,12 +139,25 @@ if ($existing_audit) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GH">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Free SEO Health Checker &amp; Website Audit — Optibiz</title>
-    <meta name="description" content="Scan your website in 30 seconds. Discover SEO issues, meta tags flaws, page load speed problems, and get actionable auto-fix guides. Free for tenants!">
+    <?php
+    $seo_title = 'Free SEO Health Checker & Website Audit — Optibiz';
+    $seo_desc  = 'Scan your website in 30 seconds. Discover SEO issues, meta tag flaws, page load speed problems, and get actionable auto-fix guides. Free for tenants!';
+    ?>
+    <title><?php echo htmlspecialchars($seo_title, ENT_QUOTES, 'UTF-8'); ?></title>
+    <meta name="description" content="<?php echo htmlspecialchars($seo_desc, ENT_QUOTES, 'UTF-8'); ?>">
+
+    <?php seo_head(array(
+        'title'       => $seo_title,
+        'description' => $seo_desc,
+        'path'        => 'seo-checker.php',
+        'breadcrumbs' => array(array('Home', ''), array('SEO Checker', 'seo-checker.php')),
+    )); ?>
+
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         :root {

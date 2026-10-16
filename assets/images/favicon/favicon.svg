@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Optibiz">
+  <title>Optibiz</title>
+  <rect width="24" height="24" rx="5.64" fill="#c2f542"/>
+  <rect x="1.2" y="1.2" width="8.8" height="8.8" rx="1.15" fill="#0f2438"/>
+  <circle cx="17.6" cy="5.6" r="4.2" fill="#0f2438"/>
+  <path d="M12 12.6 L20.4 20.4 L3.6 20.4 Z" fill="#0f2438"/>
+</svg>

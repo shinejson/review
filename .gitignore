@@ -1,3 +1,31 @@
+# ============================================================
+# Secrets — NEVER commit these
+# ============================================================
+# config/database.php loads .env at runtime. Committing it would publish
+# live DB credentials and the JWT signing key to the world.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ============================================================
+# Database dumps
+# ============================================================
+# The app writes tenant backups to backups/. They contain customer email
+# addresses, review content, session records and the superadmin password
+# hash — they must never enter version control.
+backups/*.sql
+backups/*.sql.gz
+backups/*.dump
+*.sql.gz
+*.sql
+# …but the canonical schema is intentionally version-controlled.
+!database.sql
+!migrations/*.sql
+
 # Generated previews (tools/render-php-preview.js, tools/build-preview.js)
 .preview/
 .preview-build/

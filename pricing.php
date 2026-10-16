@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/subscription_chart_component.php';
+require_once __DIR__ . '/includes/seo.php';
 
 // Fetch currency settings
 $currency_symbol = '$';
@@ -51,12 +52,25 @@ if ($cat_res) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GH">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pricing &amp; Plans — Optibiz Review &amp; Reputation Platform</title>
-    <meta name="description" content="Flexible and transparent pricing for businesses of all sizes. Collect genuine customer reviews, boost Google rankings, and automate social proof.">
+    <?php
+    $seo_title = 'Pricing & Plans — Optibiz Review & Reputation Platform';
+    $seo_desc  = 'Flexible and transparent pricing for businesses of all sizes. Collect genuine customer reviews, boost Google rankings, and automate social proof.';
+    ?>
+    <title><?php echo htmlspecialchars($seo_title, ENT_QUOTES, 'UTF-8'); ?></title>
+    <meta name="description" content="<?php echo htmlspecialchars($seo_desc, ENT_QUOTES, 'UTF-8'); ?>">
+
+    <?php seo_head(array(
+        'title'       => $seo_title,
+        'description' => $seo_desc,
+        'path'        => 'pricing.php',
+        'breadcrumbs' => array(array('Home', ''), array('Pricing', 'pricing.php')),
+    )); ?>
+
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         :root {
