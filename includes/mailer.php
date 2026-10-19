@@ -40,6 +40,23 @@ if (!function_exists('sa_get_mail_config')) {
             $res[$k] = ($val !== '') ? $val : $def;
         }
 
+        // Google app passwords are shown as 4 groups of 4 letters and are often
+        // pasted with spaces. Gmail expects the 16 characters with no spaces,
+        // so normalize that exact shape (leave every other password untouched).
+        if (isset($res['smtp_password']) && preg_match('/^[A-Za-z]{4} [A-Za-z]{4} [A-Za-z]{4} [A-Za-z]{4}$/', $res['smtp_password'])) {
+            $res['smtp_password'] = str_replace(' ', '', $res['smtp_password']);
+        }
+
+        // SMTP servers (Gmail in particular) reject MAIL FROM when the From
+        // address is not the authenticated account. Fall back to the SMTP
+        // username whenever the From address is empty or a placeholder.
+        $fromEmail = strtolower(trim((string)($res['mail_from_email'] ?? '')));
+        $username  = trim((string)($res['smtp_username'] ?? ''));
+        if (in_array($fromEmail, ['', 'admin@example.com', 'noreply@localhost'], true)
+            && filter_var($username, FILTER_VALIDATE_EMAIL)) {
+            $res['mail_from_email'] = $username;
+        }
+
         return $res;
     }
 }

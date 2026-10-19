@@ -71,9 +71,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     tfa_start_pending_session('tenant', (int)$tenant['id'], $sessionData, $method, $email, $tenant['company_name'], 'admin', $phone);
                     if ($method === 'email' && !empty($email)) {
-                        tfa_send_email_otp($conn, 'tenant', (int)$tenant['id'], $email, $tenant['company_name']);
+                        $tfaSend = tfa_send_email_otp($conn, 'tenant', (int)$tenant['id'], $email, $tenant['company_name']);
+                        if (empty($tfaSend['success'])) {
+                            $_SESSION['2fa_pending']['delivery_warning'] = 'Your verification email could not be sent: ' . ($tfaSend['message'] ?? 'please check the SMTP configuration in Superadmin settings.');
+                        }
                     } elseif ($method === 'whatsapp' && !empty($phone)) {
-                        tfa_send_whatsapp_otp($conn, 'tenant', (int)$tenant['id'], $phone, $tenant['company_name']);
+                        $tfaSend = tfa_send_whatsapp_otp($conn, 'tenant', (int)$tenant['id'], $phone, $tenant['company_name']);
+                        if (empty($tfaSend['delivered'])) {
+                            $_SESSION['2fa_pending']['delivery_warning'] = $tfaSend['message'] ?? 'The WhatsApp verification code could not be delivered automatically.';
+                        }
                     }
                     redirect('2fa-verify.php');
                 } else {
@@ -154,9 +160,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                             tfa_start_pending_session('team_member', (int)$member['id'], $sessionData, $method, $email, $member['full_name'], 'admin', $phone);
                             if ($method === 'email' && !empty($email)) {
-                                tfa_send_email_otp($conn, 'team_member', (int)$member['id'], $email, $member['full_name']);
+                                $tfaSend = tfa_send_email_otp($conn, 'team_member', (int)$member['id'], $email, $member['full_name']);
+                                if (empty($tfaSend['success'])) {
+                                    $_SESSION['2fa_pending']['delivery_warning'] = 'Your verification email could not be sent: ' . ($tfaSend['message'] ?? 'please check the SMTP configuration in Superadmin settings.');
+                                }
                             } elseif ($method === 'whatsapp' && !empty($phone)) {
-                                tfa_send_whatsapp_otp($conn, 'team_member', (int)$member['id'], $phone, $member['full_name']);
+                                $tfaSend = tfa_send_whatsapp_otp($conn, 'team_member', (int)$member['id'], $phone, $member['full_name']);
+                                if (empty($tfaSend['delivered'])) {
+                                    $_SESSION['2fa_pending']['delivery_warning'] = $tfaSend['message'] ?? 'The WhatsApp verification code could not be delivered automatically.';
+                                }
                             }
                             redirect('2fa-verify.php');
                         } else {
@@ -205,7 +217,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $method = $tfaRow['method'] ?? 'totp';
                             tfa_start_pending_session('admin', (int)$admin['id'], $sessionData, $method, $admin['email'] ?? '', $admin['username'], 'admin');
                             if ($method === 'email' && !empty($admin['email'])) {
-                                tfa_send_email_otp($conn, 'admin', (int)$admin['id'], $admin['email'], $admin['username']);
+                                $tfaSend = tfa_send_email_otp($conn, 'admin', (int)$admin['id'], $admin['email'], $admin['username']);
+                                if (empty($tfaSend['success'])) {
+                                    $_SESSION['2fa_pending']['delivery_warning'] = 'Your verification email could not be sent: ' . ($tfaSend['message'] ?? 'please check the SMTP configuration in Superadmin settings.');
+                                }
                             }
                             redirect('2fa-verify.php');
                         } else {

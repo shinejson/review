@@ -583,7 +583,13 @@ function tfa_send_email_otp($conn, $userType, $userId, $toEmail, $displayName = 
         If you did not attempt to sign in to your account, someone else may have entered your password. Please sign in and update your password immediately.
     </p>';
 
-    $mailResult = sa_send_mail($toEmail, "$code is your Optibiz verification code", $html, $conn);
+    // Wrap in the standard dark email template — the OTP markup above uses
+    // light-on-dark colors and is unreadable on the default white background.
+    $fullHtml = function_exists('sa_render_email_template')
+        ? sa_render_email_template('Your ' . $siteName . ' Two-Factor Verification Code', $html, $siteName)
+        : $html;
+
+    $mailResult = sa_send_mail($toEmail, "$code is your Optibiz verification code", $fullHtml, $conn);
     return $mailResult;
 }
 
@@ -860,14 +866,31 @@ function tfa_send_whatsapp_otp($conn, $userType, $userId, $phone, $displayName =
     $siteName = function_exists('sa_setting') && $conn ? sa_setting($conn, 'site_name', 'Optibiz') : 'Optibiz';
     $message = "Your {$siteName} two-factor verification code is: {$code}\nValid for 10 minutes. Do not share this code with anyone.";
 
-    // Attempt dispatch via configured SMS/WhatsApp gateway if available
+    // Attempt dispatch via configured SMS/WhatsApp gateway if available.
+    // NOTE: the built-in providers (Hubtel, mNotify, Africa's Talking, Nalo,
+    // Twilio) deliver SMS — none of them push real WhatsApp messages. A code
+    // is only "delivered" when a real gateway accepted the request; the
+    // 'manual' provider merely logs it without sending anything.
+    $delivered = false;
+    $dispatchNote = 'No SMS/WhatsApp gateway is configured and enabled.';
     if (file_exists(__DIR__ . '/sms_providers.php')) {
         require_once __DIR__ . '/sms_providers.php';
-        if (function_exists('sms_provider_list')) {
+        if (function_exists('sms_provider_list') && function_exists('sms_send_via_provider')) {
             $providers = sms_provider_list($conn, true);
             if (!empty($providers)) {
                 $firstProv = $providers[0]['provider_key'];
-                sms_send_via_provider($conn, $firstProv, $digits, $message, $siteName);
+                $dispatch = sms_send_via_provider($conn, $firstProv, $digits, $message, $siteName);
+                $isManual = ($firstProv === 'manual')
+                    || (!empty($dispatch['provider_id']) && strpos((string)$dispatch['provider_id'], 'MANUAL-') === 0)
+                    || (is_array($dispatch['raw'] ?? null) && (($dispatch['raw']['mode'] ?? '') === 'manual'));
+                if (!empty($dispatch['ok']) && !$isManual) {
+                    $delivered = true;
+                    $dispatchNote = 'Handed to gateway ' . $firstProv . '.';
+                } elseif (!empty($dispatch['ok']) && $isManual) {
+                    $dispatchNote = 'The "' . $firstProv . '" provider only logs messages — nothing was actually sent.';
+                } else {
+                    $dispatchNote = 'Gateway ' . $firstProv . ' rejected the message: ' . ($dispatch['message'] ?? 'unknown error');
+                }
             }
         }
     }
@@ -883,9 +906,16 @@ function tfa_send_whatsapp_otp($conn, $userType, $userId, $phone, $displayName =
     $_SESSION['last_whatsapp_phone'] = $phone;
 
     $masked = tfa_mask_phone($phone);
+    if ($delivered) {
+        $outMessage = "6-digit verification code sent to WhatsApp at {$masked}.";
+    } else {
+        $outMessage = "A verification code was generated for {$masked}, but it could NOT be automatically delivered ({$dispatchNote}) "
+            . "Switch to email verification or use an emergency backup code, or ask the administrator to configure an SMS gateway in Superadmin settings.";
+    }
     return [
         'success'  => true,
-        'message'  => "6-digit verification code sent to WhatsApp at {$masked}.",
+        'delivered' => $delivered,
+        'message'  => $outMessage,
         'code'     => $code,
         'wa_url'   => $waUrl,
         'phone'    => $phone,
