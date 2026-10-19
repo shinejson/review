@@ -647,3 +647,24 @@ ALTER TABLE IF EXISTS team_members ADD COLUMN IF NOT EXISTS account_locked_until
 ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS failed_login_attempts INT NOT NULL DEFAULT 0;
 ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS last_failed_attempt_at DATETIME NULL;
 ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS account_locked_until DATETIME NULL;
+
+-- ============================================================
+-- TWO-FACTOR AUTHENTICATION (2FA)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_two_factor (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_type VARCHAR(32) NOT NULL,
+    user_id INT NOT NULL,
+    is_enabled TINYINT(1) NOT NULL DEFAULT 0,
+    method VARCHAR(16) NOT NULL DEFAULT 'totp',
+    secret VARCHAR(64) NULL,
+    backup_codes TEXT NULL,
+    email_otp_hash VARCHAR(255) NULL,
+    email_otp_expires_at DATETIME NULL,
+    last_used_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_user_type_id (user_type, user_id),
+    INDEX idx_user_lookup (user_type, user_id, is_enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

@@ -8,6 +8,7 @@ require_once dirname(__DIR__) . '/helpers/response.php';
 require_once dirname(__DIR__) . '/helpers/jwt.php';
 require_once dirname(__DIR__) . '/helpers/rate_limiter.php';
 require_once RATE_ROOT_PATH . '/config/database.php';
+require_once RATE_ROOT_PATH . '/includes/two_factor.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     api_send_error('Method Not Allowed. Use POST.', 405);
@@ -90,6 +91,44 @@ if ($cStmt) {
         $companyId = (int)$cRow['id'];
     }
     $cStmt->close();
+}
+
+// Check if Two-Factor Authentication is enabled
+$targetUserType = ($userRole === 'team_member') ? 'team_member' : 'tenant';
+$targetUserId   = ($userRole === 'team_member') ? (int)$authenticatedUser['team_member_id'] : (int)$authenticatedUser['id'];
+
+if (tfa_is_enabled($conn, $targetUserType, $targetUserId)) {
+    $tfaRow = tfa_get_user_2fa($conn, $targetUserType, $targetUserId);
+    $method = $tfaRow['method'] ?? 'totp';
+
+    // Issue a short-lived temporary token for 2FA verification
+    $tempClaims = [
+        'sub'                 => $targetUserId,
+        'user_type'           => $targetUserType,
+        'tenant_id'           => (int)$authenticatedUser['id'],
+        'role'                => $userRole,
+        'team_member_id'      => ($userRole === 'team_member') ? (int)$authenticatedUser['team_member_id'] : 0,
+        'company_id'          => $companyId,
+        'email'               => (string)$authenticatedUser['email'],
+        'username'            => (string)$authenticatedUser['username'],
+        'public_id'           => (string)$authenticatedUser['public_id'],
+        'company_name'        => (string)$authenticatedUser['company_name'],
+        'plan_id'             => (int)($authenticatedUser['plan_id'] ?? 1),
+        'logo'                => (string)($authenticatedUser['logo'] ?? ''),
+        'subscription_status' => (string)($authenticatedUser['subscription_status'] ?? 'active'),
+    ];
+    $tempToken = JWT::generate($tempClaims, 300, '2fa_temp');
+
+    if ($method === 'email') {
+        tfa_send_email_otp($conn, $targetUserType, $targetUserId, (string)$authenticatedUser['email'], (string)$authenticatedUser['company_name']);
+    }
+
+    api_send_success([
+        'two_factor_required' => true,
+        'two_factor_method'   => $method,
+        'temp_token'          => $tempToken,
+        'masked_email'        => ($method === 'email') ? tfa_mask_email((string)$authenticatedUser['email']) : null,
+    ], 'Two-factor authentication code required', 200);
 }
 
 // Generate JWT tokens
