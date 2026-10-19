@@ -16,6 +16,7 @@
 
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/mailer.php';
+require_once __DIR__ . '/sa_helpers.php';
 
 /* ============================================================
  *  Schema & Migration
@@ -42,9 +43,12 @@ function tfa_ensure_schema($conn)
         is_enabled TINYINT(1) NOT NULL DEFAULT 0,
         method VARCHAR(16) NOT NULL DEFAULT 'totp',
         secret VARCHAR(64) NULL,
+        phone VARCHAR(30) NULL,
         backup_codes TEXT NULL,
         email_otp_hash VARCHAR(255) NULL,
         email_otp_expires_at DATETIME NULL,
+        whatsapp_otp_hash VARCHAR(255) NULL,
+        whatsapp_otp_expires_at DATETIME NULL,
         last_used_at DATETIME NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -53,6 +57,52 @@ function tfa_ensure_schema($conn)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
     @$conn->query($sql);
+
+    // Auto-heal missing columns in existing user_two_factor table
+    $tfaCols = [];
+    $resTfa = @$conn->query("SHOW COLUMNS FROM user_two_factor");
+    if ($resTfa) {
+        while ($r = $resTfa->fetch_assoc()) {
+            $tfaCols[strtolower($r['Field'])] = true;
+        }
+    }
+    if (!isset($tfaCols['phone'])) {
+        @$conn->query("ALTER TABLE user_two_factor ADD COLUMN phone VARCHAR(30) NULL AFTER secret");
+    }
+    if (!isset($tfaCols['whatsapp_otp_hash'])) {
+        @$conn->query("ALTER TABLE user_two_factor ADD COLUMN whatsapp_otp_hash VARCHAR(255) NULL AFTER email_otp_expires_at");
+    }
+    if (!isset($tfaCols['whatsapp_otp_expires_at'])) {
+        @$conn->query("ALTER TABLE user_two_factor ADD COLUMN whatsapp_otp_expires_at DATETIME NULL AFTER whatsapp_otp_hash");
+    }
+
+    $sqlTrusted = "CREATE TABLE IF NOT EXISTS user_trusted_devices (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_type VARCHAR(32) NOT NULL,
+        user_id INT NOT NULL,
+        device_token_hash VARCHAR(64) NOT NULL,
+        device_name VARCHAR(255) NULL,
+        ip_address VARCHAR(45) NULL,
+        user_agent VARCHAR(500) NULL,
+        expires_at DATETIME NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_lookup (user_type, user_id, device_token_hash),
+        INDEX idx_expires (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+    @$conn->query($sqlTrusted);
+
+    // Auto-heal phone column in super_admins table
+    $resSa = @$conn->query("SHOW COLUMNS FROM super_admins LIKE 'phone'");
+    if ($resSa && $resSa->num_rows === 0) {
+        @$conn->query("ALTER TABLE super_admins ADD COLUMN phone VARCHAR(30) NULL AFTER email");
+    }
+
+    // Auto-heal phone column in team_members table
+    $resTm = @$conn->query("SHOW COLUMNS FROM team_members LIKE 'phone'");
+    if ($resTm && $resTm->num_rows === 0) {
+        @$conn->query("ALTER TABLE team_members ADD COLUMN phone VARCHAR(30) NULL AFTER email");
+    }
 }
 
 /* ============================================================
@@ -328,6 +378,7 @@ function tfa_get_status($conn, $userType, $userId)
         return [
             'is_enabled' => false,
             'method' => 'totp',
+            'phone' => null,
             'remaining_backup_codes' => 0,
             'last_used_at' => null,
         ];
@@ -344,6 +395,7 @@ function tfa_get_status($conn, $userType, $userId)
     return [
         'is_enabled' => true,
         'method' => $row['method'] ?? 'totp',
+        'phone' => $row['phone'] ?? null,
         'remaining_backup_codes' => $remaining,
         'total_backup_codes' => count($codes),
         'last_used_at' => $row['last_used_at'] ?? null,
@@ -351,31 +403,42 @@ function tfa_get_status($conn, $userType, $userId)
 }
 
 /**
- * Enables 2FA for a user (saves secret/method/backup codes).
+ * Enables 2FA for a user (saves secret/method/backup codes/phone).
  *
  * @param mysqli $conn
  * @param string $userType
  * @param int $userId
- * @param string $method 'totp' | 'email'
- * @param string $secret Base32 secret for TOTP (can be empty if email)
+ * @param string $method 'totp' | 'email' | 'whatsapp'
+ * @param string $secret Base32 secret for TOTP (can be empty if email/whatsapp)
  * @param array $hashedBackupCodes
+ * @param string|null $phone
  * @return bool
  */
-function tfa_enable($conn, $userType, $userId, $method, $secret, array $hashedBackupCodes)
+function tfa_enable($conn, $userType, $userId, $method, $secret, array $hashedBackupCodes, $phone = null)
 {
     tfa_ensure_schema($conn);
     $userId = (int)$userId;
     $userType = trim($userType);
-    $method = in_array($method, ['totp', 'email'], true) ? $method : 'totp';
+    $method = in_array($method, ['totp', 'email', 'whatsapp'], true) ? $method : 'totp';
     $codesJson = json_encode($hashedBackupCodes);
 
-    $stmt = $conn->prepare("INSERT INTO user_two_factor (user_type, user_id, is_enabled, method, secret, backup_codes)
-        VALUES (?, ?, 1, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE is_enabled = 1, method = VALUES(method), secret = VALUES(secret), backup_codes = VALUES(backup_codes)");
-    if (!$stmt) {
-        return false;
+    if ($phone !== null && $phone !== '') {
+        $stmt = $conn->prepare("INSERT INTO user_two_factor (user_type, user_id, is_enabled, method, secret, phone, backup_codes)
+            VALUES (?, ?, 1, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE is_enabled = 1, method = VALUES(method), secret = VALUES(secret), phone = VALUES(phone), backup_codes = VALUES(backup_codes)");
+        if (!$stmt) {
+            return false;
+        }
+        $stmt->bind_param("sissss", $userType, $userId, $method, $secret, $phone, $codesJson);
+    } else {
+        $stmt = $conn->prepare("INSERT INTO user_two_factor (user_type, user_id, is_enabled, method, secret, backup_codes)
+            VALUES (?, ?, 1, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE is_enabled = 1, method = VALUES(method), secret = VALUES(secret), backup_codes = VALUES(backup_codes)");
+        if (!$stmt) {
+            return false;
+        }
+        $stmt->bind_param("sisss", $userType, $userId, $method, $secret, $codesJson);
     }
-    $stmt->bind_param("sisss", $userType, $userId, $method, $secret, $codesJson);
     $ok = $stmt->execute();
     $stmt->close();
     return $ok;
@@ -395,7 +458,7 @@ function tfa_disable($conn, $userType, $userId)
     $userId = (int)$userId;
     $userType = trim($userType);
 
-    $stmt = $conn->prepare("UPDATE user_two_factor SET is_enabled = 0, secret = NULL, backup_codes = NULL, email_otp_hash = NULL WHERE user_type = ? AND user_id = ?");
+    $stmt = $conn->prepare("UPDATE user_two_factor SET is_enabled = 0, secret = NULL, backup_codes = NULL, email_otp_hash = NULL, whatsapp_otp_hash = NULL WHERE user_type = ? AND user_id = ?");
     if (!$stmt) {
         return false;
     }
@@ -406,7 +469,7 @@ function tfa_disable($conn, $userType, $userId)
 }
 
 /**
- * Switches the active 2FA method between 'totp' and 'email'.
+ * Switches the active 2FA method between 'totp', 'whatsapp', and 'email'.
  *
  * @param mysqli $conn
  * @param string $userType
@@ -419,7 +482,7 @@ function tfa_switch_method($conn, $userType, $userId, $method)
     tfa_ensure_schema($conn);
     $userId = (int)$userId;
     $userType = trim($userType);
-    $method = in_array($method, ['totp', 'email'], true) ? $method : 'totp';
+    $method = in_array($method, ['totp', 'email', 'whatsapp'], true) ? $method : 'totp';
 
     $stmt = $conn->prepare("UPDATE user_two_factor SET method = ? WHERE user_type = ? AND user_id = ?");
     if (!$stmt) {
@@ -566,6 +629,312 @@ function tfa_verify_email_otp($conn, $userType, $userId, $code)
 }
 
 /* ============================================================
+ *  WhatsApp 2FA & User Contact Operations
+ * ============================================================ */
+
+/**
+ * Masks a phone number for privacy display (e.g. "+233 24 ••• ••18").
+ *
+ * @param string $phone
+ * @return string
+ */
+function tfa_mask_phone($phone)
+{
+    $clean = trim((string)$phone);
+    if ($clean === '') {
+        return 'your phone';
+    }
+    $digits = preg_replace('/\D+/', '', $clean);
+    $len = strlen($digits);
+    if ($len < 6) {
+        return htmlspecialchars($clean);
+    }
+    $prefix = (strpos($clean, '+') === 0) ? '+' : '';
+    $head = substr($digits, 0, min(5, (int)($len / 2)));
+    $tail = substr($digits, -2);
+    return $prefix . $head . ' ••• ••' . $tail;
+}
+
+/**
+ * Retrieves the contact profile (email, phone, name) for a user.
+ *
+ * @param mysqli $conn
+ * @param string $userType 'tenant' | 'team_member' | 'superadmin' | 'admin'
+ * @param int $userId
+ * @return array ['email' => string, 'phone' => string, 'name' => string]
+ */
+function tfa_get_user_contact($conn, $userType, $userId)
+{
+    $userId = (int)$userId;
+    $res = ['email' => '', 'phone' => '', 'name' => ''];
+    if ($userId <= 0 || !is_object($conn)) {
+        return $res;
+    }
+
+    tfa_ensure_schema($conn);
+
+    if ($userType === 'tenant') {
+        $stmt = $conn->prepare("SELECT email, phone, company_name, username FROM tenants WHERE id = ? LIMIT 1");
+        if ($stmt) {
+            $stmt->bind_param("i", $userId);
+            $stmt->execute();
+            if ($row = $stmt->get_result()->fetch_assoc()) {
+                $res['email'] = (string)($row['email'] ?? '');
+                $res['phone'] = (string)($row['phone'] ?? '');
+                $res['name']  = (string)($row['company_name'] ?: $row['username']);
+            }
+            $stmt->close();
+        }
+    } elseif ($userType === 'team_member') {
+        $stmt = $conn->prepare("SELECT email, phone, full_name, username FROM team_members WHERE id = ? LIMIT 1");
+        if ($stmt) {
+            $stmt->bind_param("i", $userId);
+            $stmt->execute();
+            if ($row = $stmt->get_result()->fetch_assoc()) {
+                $res['email'] = (string)($row['email'] ?? '');
+                $res['phone'] = (string)($row['phone'] ?? '');
+                $res['name']  = (string)($row['full_name'] ?: $row['username']);
+            }
+            $stmt->close();
+        }
+    } elseif ($userType === 'superadmin') {
+        $stmt = $conn->prepare("SELECT email, phone, username FROM super_admins WHERE id = ? LIMIT 1");
+        if ($stmt) {
+            $stmt->bind_param("i", $userId);
+            $stmt->execute();
+            if ($row = $stmt->get_result()->fetch_assoc()) {
+                $res['email'] = (string)($row['email'] ?? '');
+                $res['phone'] = (string)($row['phone'] ?? '');
+                $res['name']  = (string)($row['username'] ?? 'Super Admin');
+            }
+            $stmt->close();
+        }
+    } elseif ($userType === 'admin') {
+        $stmt = $conn->prepare("SELECT email, phone, username FROM admins WHERE id = ? LIMIT 1");
+        if ($stmt) {
+            $stmt->bind_param("i", $userId);
+            $stmt->execute();
+            if ($row = $stmt->get_result()->fetch_assoc()) {
+                $res['email'] = (string)($row['email'] ?? '');
+                $res['phone'] = (string)($row['phone'] ?? '');
+                $res['name']  = (string)($row['username'] ?? 'Admin');
+            }
+            $stmt->close();
+        }
+    }
+
+    // Also check if user_two_factor has a phone stored
+    $tfaRow = tfa_get_user_2fa($conn, $userType, $userId);
+    if (!empty($tfaRow['phone']) && empty($res['phone'])) {
+        $res['phone'] = (string)$tfaRow['phone'];
+    }
+
+    return $res;
+}
+
+/**
+ * Updates a user's contact information (email and/or phone) in their primary table and 2FA record.
+ *
+ * @param mysqli $conn
+ * @param string $userType
+ * @param int $userId
+ * @param string|null $email
+ * @param string|null $phone
+ * @return bool
+ */
+function tfa_update_user_contact($conn, $userType, $userId, $email = null, $phone = null)
+{
+    $userId = (int)$userId;
+    if ($userId <= 0 || !is_object($conn)) {
+        return false;
+    }
+    tfa_ensure_schema($conn);
+
+    if ($phone !== null) {
+        $phone = trim($phone);
+    }
+    if ($email !== null) {
+        $email = trim($email);
+    }
+
+    // Update in user_two_factor
+    if ($phone !== null) {
+        $stmtTfa = $conn->prepare("INSERT INTO user_two_factor (user_type, user_id, phone)
+            VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE phone = VALUES(phone)");
+        if ($stmtTfa) {
+            $stmtTfa->bind_param("sis", $userType, $userId, $phone);
+            $stmtTfa->execute();
+            $stmtTfa->close();
+        }
+    }
+
+    // Update in primary table
+    if ($userType === 'tenant') {
+        if ($email !== null && $phone !== null) {
+            $stmt = $conn->prepare("UPDATE tenants SET email = ?, phone = ? WHERE id = ?");
+            if ($stmt) { $stmt->bind_param("ssi", $email, $phone, $userId); $stmt->execute(); $stmt->close(); }
+        } elseif ($phone !== null) {
+            $stmt = $conn->prepare("UPDATE tenants SET phone = ? WHERE id = ?");
+            if ($stmt) { $stmt->bind_param("si", $phone, $userId); $stmt->execute(); $stmt->close(); }
+        } elseif ($email !== null) {
+            $stmt = $conn->prepare("UPDATE tenants SET email = ? WHERE id = ?");
+            if ($stmt) { $stmt->bind_param("si", $email, $userId); $stmt->execute(); $stmt->close(); }
+        }
+    } elseif ($userType === 'team_member') {
+        if ($email !== null && $phone !== null) {
+            $stmt = $conn->prepare("UPDATE team_members SET email = ?, phone = ? WHERE id = ?");
+            if ($stmt) { $stmt->bind_param("ssi", $email, $phone, $userId); $stmt->execute(); $stmt->close(); }
+        } elseif ($phone !== null) {
+            $stmt = $conn->prepare("UPDATE team_members SET phone = ? WHERE id = ?");
+            if ($stmt) { $stmt->bind_param("si", $phone, $userId); $stmt->execute(); $stmt->close(); }
+        } elseif ($email !== null) {
+            $stmt = $conn->prepare("UPDATE team_members SET email = ? WHERE id = ?");
+            if ($stmt) { $stmt->bind_param("si", $email, $userId); $stmt->execute(); $stmt->close(); }
+        }
+    } elseif ($userType === 'superadmin') {
+        if ($email !== null && $phone !== null) {
+            $stmt = $conn->prepare("UPDATE super_admins SET email = ?, phone = ? WHERE id = ?");
+            if ($stmt) { $stmt->bind_param("ssi", $email, $phone, $userId); $stmt->execute(); $stmt->close(); }
+        } elseif ($phone !== null) {
+            $stmt = $conn->prepare("UPDATE super_admins SET phone = ? WHERE id = ?");
+            if ($stmt) { $stmt->bind_param("si", $phone, $userId); $stmt->execute(); $stmt->close(); }
+        } elseif ($email !== null) {
+            $stmt = $conn->prepare("UPDATE super_admins SET email = ? WHERE id = ?");
+            if ($stmt) { $stmt->bind_param("si", $email, $userId); $stmt->execute(); $stmt->close(); }
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Generates and sends a 6-digit WhatsApp OTP to the user's phone.
+ *
+ * @param mysqli $conn
+ * @param string $userType
+ * @param int $userId
+ * @param string $phone
+ * @param string $displayName
+ * @return array ['success' => bool, 'message' => string, 'code' => string, 'wa_url' => string, 'phone' => string, 'masked' => string]
+ */
+function tfa_send_whatsapp_otp($conn, $userType, $userId, $phone, $displayName = '')
+{
+    tfa_ensure_schema($conn);
+    $userId = (int)$userId;
+    $userType = trim($userType);
+    $phone = trim($phone);
+
+    // Normalize phone digits
+    $digits = preg_replace('/\D+/', '', $phone);
+    if (strlen($digits) < 7) {
+        return ['success' => false, 'message' => 'Please provide a valid phone number with country code.'];
+    }
+
+    // If starts with 0 and 10 digits, assume Ghana (+233)
+    if ($digits[0] === '0' && strlen($digits) === 10) {
+        $digits = '233' . substr($digits, 1);
+        $phone = '+' . $digits;
+    } elseif (strpos($phone, '+') !== 0) {
+        $phone = '+' . $digits;
+    }
+
+    // Save phone to contact record
+    tfa_update_user_contact($conn, $userType, $userId, null, $phone);
+
+    // Generate 6-digit OTP
+    $code = (string)random_int(100000, 999999);
+    $hash = password_hash($code, PASSWORD_DEFAULT);
+    $expires = date('Y-m-d H:i:s', time() + 600); // 10 minutes
+
+    // Save in user_two_factor
+    $stmt = $conn->prepare("INSERT INTO user_two_factor (user_type, user_id, method, phone, whatsapp_otp_hash, whatsapp_otp_expires_at)
+        VALUES (?, ?, 'whatsapp', ?, ?, ?)
+        ON DUPLICATE KEY UPDATE method = VALUES(method), phone = VALUES(phone), whatsapp_otp_hash = VALUES(whatsapp_otp_hash), whatsapp_otp_expires_at = VALUES(whatsapp_otp_expires_at)");
+    if ($stmt) {
+        $stmt->bind_param("sisss", $userType, $userId, $phone, $hash, $expires);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    $siteName = function_exists('sa_setting') && $conn ? sa_setting($conn, 'site_name', 'Optibiz') : 'Optibiz';
+    $message = "Your {$siteName} two-factor verification code is: {$code}\nValid for 10 minutes. Do not share this code with anyone.";
+
+    // Attempt dispatch via configured SMS/WhatsApp gateway if available
+    if (file_exists(__DIR__ . '/sms_providers.php')) {
+        require_once __DIR__ . '/sms_providers.php';
+        if (function_exists('sms_provider_list')) {
+            $providers = sms_provider_list($conn, true);
+            if (!empty($providers)) {
+                $firstProv = $providers[0]['provider_key'];
+                sms_send_via_provider($conn, $firstProv, $digits, $message, $siteName);
+            }
+        }
+    }
+
+    // Generate direct click-to-open WhatsApp URL for mobile/desktop client
+    $waUrl = 'https://wa.me/' . $digits . '?text=' . urlencode($message);
+
+    // Store in session for seamless development / instant local testing
+    if (session_status() === PHP_SESSION_NONE) {
+        auth_session_start();
+    }
+    $_SESSION['last_whatsapp_otp'] = $code;
+    $_SESSION['last_whatsapp_phone'] = $phone;
+
+    $masked = tfa_mask_phone($phone);
+    return [
+        'success'  => true,
+        'message'  => "6-digit verification code sent to WhatsApp at {$masked}.",
+        'code'     => $code,
+        'wa_url'   => $waUrl,
+        'phone'    => $phone,
+        'masked'   => $masked,
+    ];
+}
+
+/**
+ * Verifies a WhatsApp OTP.
+ *
+ * @param mysqli $conn
+ * @param string $userType
+ * @param int $userId
+ * @param string $code
+ * @return bool
+ */
+function tfa_verify_whatsapp_otp($conn, $userType, $userId, $code)
+{
+    $code = trim((string)$code);
+    if (!preg_match('/^[0-9]{6}$/', $code)) {
+        return false;
+    }
+
+    $row = tfa_get_user_2fa($conn, $userType, $userId);
+    if (!$row || empty($row['whatsapp_otp_hash']) || empty($row['whatsapp_otp_expires_at'])) {
+        return false;
+    }
+
+    // Check expiry
+    if (strtotime($row['whatsapp_otp_expires_at']) < time()) {
+        return false;
+    }
+
+    // Check code
+    if (password_verify($code, $row['whatsapp_otp_hash'])) {
+        // Clear used OTP and touch last_used_at
+        $stmt = $conn->prepare("UPDATE user_two_factor SET whatsapp_otp_hash = NULL, whatsapp_otp_expires_at = NULL, last_used_at = NOW() WHERE user_type = ? AND user_id = ?");
+        if ($stmt) {
+            $stmt->bind_param("si", $userType, $userId);
+            $stmt->execute();
+            $stmt->close();
+        }
+        return true;
+    }
+
+    return false;
+}
+
+/* ============================================================
  *  Backup Code Verification
  * ============================================================ */
 
@@ -665,9 +1034,21 @@ function tfa_verify_code($conn, $userType, $userId, $code, &$usedBackup = false)
         if (tfa_verify_email_otp($conn, $userType, $userId, $code)) {
             return true;
         }
+    } elseif ($method === 'whatsapp') {
+        if (tfa_verify_whatsapp_otp($conn, $userType, $userId, $code)) {
+            return true;
+        }
     }
 
-    // 2. Check backup recovery codes
+    // 2. Cross-method fallback (e.g. if code was sent to WhatsApp or Email)
+    if (!empty($row['whatsapp_otp_hash']) && tfa_verify_whatsapp_otp($conn, $userType, $userId, $code)) {
+        return true;
+    }
+    if (!empty($row['email_otp_hash']) && tfa_verify_email_otp($conn, $userType, $userId, $code)) {
+        return true;
+    }
+
+    // 3. Check backup recovery codes
     if (tfa_verify_backup_code($conn, $userType, $userId, $code)) {
         $usedBackup = true;
         return true;
@@ -686,12 +1067,13 @@ function tfa_verify_code($conn, $userType, $userId, $code, &$usedBackup = false)
  * @param string $userType 'tenant' | 'superadmin' | 'team_member' | 'admin'
  * @param int $userId
  * @param array $sessionData Session variables to commit upon successful 2FA
- * @param string $method 'totp' | 'email'
+ * @param string $method 'totp' | 'email' | 'whatsapp'
  * @param string $targetEmail
  * @param string $targetName
  * @param string $portal 'admin' | 'superadmin'
+ * @param string $targetPhone
  */
-function tfa_start_pending_session($userType, $userId, array $sessionData, $method, $targetEmail = '', $targetName = '', $portal = 'admin')
+function tfa_start_pending_session($userType, $userId, array $sessionData, $method, $targetEmail = '', $targetName = '', $portal = 'admin', $targetPhone = '')
 {
     if (session_status() === PHP_SESSION_NONE) {
         auth_session_start();
@@ -707,6 +1089,7 @@ function tfa_start_pending_session($userType, $userId, array $sessionData, $meth
         'method'       => $method,
         'target_email' => $targetEmail,
         'target_name'  => $targetName,
+        'target_phone' => $targetPhone,
         'portal'       => $portal,
         'started_at'   => time(),
         'attempts'     => 0,
@@ -850,4 +1233,277 @@ function tfa_prepare_totp_setup($accountLabel, $issuer = 'Optibiz', $forceNew = 
         'qr_url'      => $qr,
     ];
 }
+
+/* ============================================================
+ *  Trusted Device Management (30-day "Trust this device" cookie)
+ * ============================================================ */
+
+/**
+ * Returns the secret key used for HMAC signing of the trusted device cookie.
+ *
+ * @return string
+ */
+function tfa_get_app_secret()
+{
+    if (defined('API_JWT_SECRET') && strlen(API_JWT_SECRET) >= 16) {
+        return API_JWT_SECRET;
+    }
+    $env = getenv('OPTIBIZ_JWT_SECRET') ?: getenv('APP_KEY');
+    if ($env && strlen($env) >= 16) {
+        return $env;
+    }
+    return 'optibiz_secure_device_secret_salt_32bytes_min';
+}
+
+/**
+ * Checks whether the current browser device is trusted for a user.
+ *
+ * @param mysqli $conn
+ * @param string $userType
+ * @param int $userId
+ * @return bool
+ */
+function tfa_is_device_trusted($conn, $userType, $userId)
+{
+    if (empty($_COOKIE['optibiz_trusted_device'])) {
+        return false;
+    }
+
+    $cookie = (string)$_COOKIE['optibiz_trusted_device'];
+    $dotPos = strrpos($cookie, '.');
+    if ($dotPos === false) {
+        return false;
+    }
+
+    $payloadB64 = substr($cookie, 0, $dotPos);
+    $signature = substr($cookie, $dotPos + 1);
+
+    $expectedSig = hash_hmac('sha256', $payloadB64, tfa_get_app_secret());
+    if (!hash_equals($expectedSig, $signature)) {
+        return false;
+    }
+
+    $raw = base64_decode($payloadB64);
+    $data = json_decode($raw, true);
+    if (!is_array($data) || empty($data['tok'])) {
+        return false;
+    }
+
+    if (($data['type'] ?? '') !== $userType || (int)($data['uid'] ?? 0) !== (int)$userId) {
+        return false;
+    }
+
+    // Check expiry in cookie payload
+    if (!empty($data['exp']) && time() > (int)$data['exp']) {
+        return false;
+    }
+
+    // Validate in DB
+    tfa_ensure_schema($conn);
+    $tokenHash = hash('sha256', (string)$data['tok']);
+    $userId = (int)$userId;
+    $userType = trim($userType);
+
+    $stmt = $conn->prepare("SELECT id FROM user_trusted_devices WHERE user_type = ? AND user_id = ? AND device_token_hash = ? AND expires_at > NOW() LIMIT 1");
+    if (!$stmt) {
+        return false;
+    }
+    $stmt->bind_param("sis", $userType, $userId, $tokenHash);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $isTrusted = ($res && $res->num_rows === 1);
+    $stmt->close();
+
+    return $isTrusted;
+}
+
+/**
+ * Registers this device as trusted for the specified number of days (default 30).
+ * Sets a cryptographically signed HttpOnly cookie and stores hash in DB.
+ *
+ * @param mysqli $conn
+ * @param string $userType
+ * @param int $userId
+ * @param int $days Default 30
+ * @return bool
+ */
+function tfa_trust_device($conn, $userType, $userId, $days = 30)
+{
+    tfa_ensure_schema($conn);
+    $userId = (int)$userId;
+    $userType = trim($userType);
+    $days = max(1, (int)$days);
+
+    $rawToken = bin2hex(random_bytes(32));
+    $tokenHash = hash('sha256', $rawToken);
+    $lifetime = $days * 86400;
+    $expTimestamp = time() + $lifetime;
+    $expiresAt = date('Y-m-d H:i:s', $expTimestamp);
+
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500);
+
+    // Save to DB using MySQL DATE_ADD(NOW(), INTERVAL ? DAY) for guaranteed timezone alignment
+    $stmt = $conn->prepare("INSERT INTO user_trusted_devices (user_type, user_id, device_token_hash, ip_address, user_agent, expires_at) VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))");
+    if ($stmt) {
+        $stmt->bind_param("sisssi", $userType, $userId, $tokenHash, $ip, $ua, $days);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    // Clean up expired tokens for this user
+    $escapedType = $conn->real_escape_string($userType);
+    @$conn->query("DELETE FROM user_trusted_devices WHERE user_type = '{$escapedType}' AND user_id = {$userId} AND expires_at <= NOW()");
+
+    // Sign and set cookie
+    $payloadB64 = base64_encode(json_encode([
+        'type' => $userType,
+        'uid'  => $userId,
+        'tok'  => $rawToken,
+        'exp'  => $expTimestamp,
+    ]));
+    $sig = hash_hmac('sha256', $payloadB64, tfa_get_app_secret());
+    $cookieVal = $payloadB64 . '.' . $sig;
+
+    $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
+               (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
+    return setcookie('optibiz_trusted_device', $cookieVal, [
+        'expires'  => $expTimestamp,
+        'path'     => '/',
+        'secure'   => $isHttps,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+
+/**
+ * Revokes the trusted device cookie from browser.
+ */
+function tfa_revoke_trusted_device_cookie()
+{
+    $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
+               (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
+    setcookie('optibiz_trusted_device', '', [
+        'expires'  => time() - 86400,
+        'path'     => '/',
+        'secure'   => $isHttps,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+
+/**
+ * Revokes all trusted devices for a user in the database.
+ *
+ * @param mysqli $conn
+ * @param string $userType
+ * @param int $userId
+ * @return bool
+ */
+function tfa_revoke_user_devices($conn, $userType, $userId)
+{
+    tfa_ensure_schema($conn);
+    $userId = (int)$userId;
+    $userType = trim($userType);
+
+    $stmt = $conn->prepare("DELETE FROM user_trusted_devices WHERE user_type = ? AND user_id = ?");
+    if ($stmt) {
+        $stmt->bind_param("si", $userType, $userId);
+        $ok = $stmt->execute();
+        $stmt->close();
+        tfa_revoke_trusted_device_cookie();
+        return $ok;
+    }
+    return false;
+}
+
+/* ============================================================
+ *  Mandatory 2FA Enrollment Pending State
+ * ============================================================ */
+
+/**
+ * Starts a pending 2FA mandatory setup session.
+ *
+ * @param string $userType 'tenant' | 'superadmin' | 'team_member' | 'admin'
+ * @param int $userId
+ * @param array $sessionData
+ * @param string $targetEmail
+ * @param string $targetName
+ * @param string $portal 'admin' | 'superadmin'
+ * @param string $targetPhone
+ */
+function tfa_start_pending_setup_session($userType, $userId, array $sessionData, $targetEmail = '', $targetName = '', $portal = 'admin', $targetPhone = '')
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        auth_session_start();
+    }
+
+    // Never keep active authenticated session keys while 2FA setup is pending
+    unset($_SESSION['tenant_id'], $_SESSION['admin_id'], $_SESSION['super_admin_id']);
+
+    $_SESSION['2fa_setup_pending'] = [
+        'user_type'    => $userType,
+        'user_id'      => (int)$userId,
+        'session_data' => $sessionData,
+        'target_email' => $targetEmail,
+        'target_name'  => $targetName,
+        'target_phone' => $targetPhone,
+        'portal'       => $portal,
+        'started_at'   => time(),
+    ];
+}
+
+/**
+ * Retrieves the pending 2FA setup session if active and not expired.
+ *
+ * @param int $maxLifetimeSeconds Default 900 (15 min)
+ * @return array|null
+ */
+function tfa_get_pending_setup_session($maxLifetimeSeconds = 900)
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        auth_session_start();
+    }
+
+    if (empty($_SESSION['2fa_setup_pending']) || !is_array($_SESSION['2fa_setup_pending'])) {
+        return null;
+    }
+
+    $pending = $_SESSION['2fa_setup_pending'];
+    if (empty($pending['started_at']) || (time() - (int)$pending['started_at']) > $maxLifetimeSeconds) {
+        unset($_SESSION['2fa_setup_pending']);
+        return null;
+    }
+
+    return $pending;
+}
+
+/**
+ * Clears the pending 2FA setup session.
+ */
+function tfa_clear_pending_setup_session()
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        auth_session_start();
+    }
+    unset($_SESSION['2fa_setup_pending']);
+}
+
+/**
+ * Returns single initial character for user avatar pill (e.g. "T" for "Theophilus").
+ *
+ * @param string $name
+ * @return string
+ */
+function tfa_get_user_initial($name)
+{
+    $clean = trim((string)$name);
+    if ($clean === '') {
+        return 'U';
+    }
+    return strtoupper(mb_substr($clean, 0, 1));
+}
+
 

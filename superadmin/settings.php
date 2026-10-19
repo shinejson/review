@@ -289,17 +289,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save_admin') {
         $username = sanitize($_POST['username'] ?? '');
         $email = sanitize($_POST['email'] ?? '');
+        $phone = sanitize($_POST['phone'] ?? '');
         $id = (int) ($_SESSION['super_admin_id'] ?? 0);
         if ($username === '' || !$id) {
             sa_flash('error', 'A username is required.');
         } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             sa_flash('error', 'That email address does not look valid.');
         } else {
-            $stmt = $conn->prepare("UPDATE super_admins SET username = ?, email = ? WHERE id = ?");
-            $stmt->bind_param("ssi", $username, $email, $id);
+            tfa_ensure_schema($conn);
+            $stmt = $conn->prepare("UPDATE super_admins SET username = ?, email = ?, phone = ? WHERE id = ?");
+            $stmt->bind_param("sssi", $username, $email, $phone, $id);
             $stmt->execute();
             sa_flash($stmt->error ? 'error' : 'success', $stmt->error ? 'Could not save: ' . $stmt->error : 'Account details updated.');
             $stmt->close();
+            if ($phone !== '') {
+                tfa_update_user_contact($conn, 'superadmin', $id, $email, $phone);
+            }
         }
         redirect('settings.php');
     }
@@ -344,9 +349,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (strpos($action, 'sa_tfa_') === 0) {
         $sa_id = (int) ($_SESSION['super_admin_id'] ?? 0);
-        $sa_row = sa_one($conn, "SELECT username, email FROM super_admins WHERE id = " . $sa_id, 'super_admins');
-        $sa_email = $sa_row['email'] ?? '';
-        $sa_label = $sa_row['username'] ?? 'Super Admin';
+        $sa_contact = tfa_get_user_contact($conn, 'superadmin', $sa_id);
+        $sa_email = $sa_contact['email'] ?? '';
+        $sa_phone = $sa_contact['phone'] ?? '';
+        $sa_label = $sa_contact['name'] ?? 'Super Admin';
 
         if ($action === 'sa_tfa_enable_totp') {
             $code = trim($_POST['code'] ?? '');
@@ -407,12 +413,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('settings.php');
         }
 
+        if ($action === 'sa_tfa_send_whatsapp_code') {
+            $inputPhone = trim($_POST['phone_number'] ?? $sa_phone);
+            if ($inputPhone === '') {
+                sa_flash('error', 'Please enter a valid phone number with country code for WhatsApp delivery.');
+            } else {
+                $sendRes = tfa_send_whatsapp_otp($conn, 'superadmin', $sa_id, $inputPhone, $sa_label);
+                if (!empty($sendRes['success'])) {
+                    sa_flash('success', 'A 6-digit confirmation code was sent to WhatsApp at ' . htmlspecialchars($sendRes['masked']) . '. Enter it below to enable WhatsApp 2FA.');
+                } else {
+                    sa_flash('error', 'Could not deliver WhatsApp message: ' . ($sendRes['message'] ?? 'Please check number format.'));
+                }
+            }
+            redirect('settings.php?setup=whatsapp');
+        }
+
+        if ($action === 'sa_tfa_confirm_whatsapp_otp') {
+            $code = trim($_POST['code'] ?? '');
+            if ($code === '') {
+                sa_flash('error', 'Please enter the 6-digit verification code sent to your WhatsApp.');
+            } elseif (!tfa_verify_whatsapp_otp($conn, 'superadmin', $sa_id, $code)) {
+                sa_flash('error', 'Invalid or expired verification code. Please check your WhatsApp or request a new code.');
+            } else {
+                $contact = tfa_get_user_contact($conn, 'superadmin', $sa_id);
+                $backup = tfa_generate_backup_codes(8);
+                if (tfa_enable($conn, 'superadmin', $sa_id, 'whatsapp', '', $backup['hashed'], $contact['phone'] ?? null)) {
+                    $_SESSION['tfa_sa_new_backup_codes'] = $backup['plain'];
+                    sa_flash('success', 'Two-Factor Authentication (WhatsApp 2FA) enabled! Please save your emergency recovery codes.');
+                    if (function_exists('sa_log_activity')) {
+                        sa_log_activity($conn, '2fa_enabled', 'Enabled Two-Factor Authentication via WhatsApp 2FA');
+                    }
+                } else {
+                    sa_flash('error', 'Failed to activate WhatsApp 2FA in the database.');
+                }
+            }
+            redirect('settings.php');
+        }
+
         if ($action === 'sa_tfa_disable') {
             $currentPassword = (string)($_POST['current_password'] ?? '');
             if (!tfa_verify_user_password($conn, 'superadmin', $sa_id, $currentPassword)) {
                 sa_flash('error', 'Incorrect password. Two-factor authentication was not disabled.');
             } else {
                 if (tfa_disable($conn, 'superadmin', $sa_id)) {
+                    tfa_revoke_user_devices($conn, 'superadmin', $sa_id);
                     unset($_SESSION['tfa_setup_secret'], $_SESSION['tfa_sa_new_backup_codes']);
                     sa_flash('success', 'Two-Factor Authentication has been disabled for your super admin account.');
                     if (function_exists('sa_log_activity')) {
@@ -446,12 +490,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'sa_tfa_switch_method') {
             $currentPassword = (string)($_POST['current_password'] ?? '');
-            $newMethod = ($_POST['new_method'] ?? 'totp') === 'email' ? 'email' : 'totp';
+            $newMethod = in_array($_POST['new_method'] ?? 'totp', ['totp', 'whatsapp', 'email'], true) ? $_POST['new_method'] : 'totp';
             if (!tfa_verify_user_password($conn, 'superadmin', $sa_id, $currentPassword)) {
                 sa_flash('error', 'Incorrect password. Method was not switched.');
             } else {
                 tfa_switch_method($conn, 'superadmin', $sa_id, $newMethod);
-                sa_flash('success', 'Primary 2FA method switched to ' . ($newMethod === 'email' ? 'Email OTP' : 'Authenticator App') . '.');
+                $methodNames = ['totp' => 'Authenticator App', 'whatsapp' => 'WhatsApp 2FA', 'email' => 'Email OTP'];
+                sa_flash('success', 'Primary 2FA method switched to ' . ($methodNames[$newMethod] ?? $newMethod) . '.');
                 if (function_exists('sa_log_activity')) {
                     sa_log_activity($conn, '2fa_method_switched', 'Switched 2FA method to ' . $newMethod);
                 }
@@ -477,7 +522,7 @@ $logo_stored   = isset($settings['logo_asset']) ? $settings['logo_asset'] : '';
 $favicon_stored = isset($settings['favicon_asset']) ? $settings['favicon_asset'] : '';
 $logo_url      = sa_platform_logo($conn);
 $favicon_url   = sa_platform_favicon($conn);
-$admin = sa_one($conn, "SELECT id, username, email, created_at FROM super_admins WHERE id = " . (int) ($_SESSION['super_admin_id'] ?? 0), 'super_admins');
+$admin = sa_one($conn, "SELECT id, username, email, phone, created_at FROM super_admins WHERE id = " . (int) ($_SESSION['super_admin_id'] ?? 0), 'super_admins');
 $mail_cfg = sa_get_mail_config($conn);
 
 $tables = ['super_admins', 'subscription_plans', 'tenants', 'admins', 'categories', 'customers', 'ratings', 'settings', 'quote_requests'];
@@ -975,6 +1020,11 @@ include __DIR__ . '/_shell.php';
                     <div class="sa-field">
                         <label for="a_email">Email</label>
                         <input id="a_email" type="email" name="email" value="<?php echo sa_e($admin ? $admin['email'] : ''); ?>">
+                    </div>
+                    <div class="sa-field">
+                        <label for="a_phone">WhatsApp / Phone Number</label>
+                        <input id="a_phone" type="text" name="phone" value="<?php echo sa_e($admin ? ($admin['phone'] ?? '') : ''); ?>" placeholder="+233 24 123 4567">
+                        <span class="sa-hint">Used for WhatsApp Two-Factor Authentication security codes.</span>
                     </div>
                     <div class="sa-field">
                         <label>Member since</label>

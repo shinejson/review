@@ -3,6 +3,7 @@
  * Optibiz — SMS Providers Abstraction
  * Supports Hubtel, mNotify, Africa's Talking, Nalo, Twilio + manual fallback.
  */
+require_once __DIR__ . '/sa_helpers.php';
 require_once __DIR__ . '/monetization.php';
 
 if (!function_exists('sms_provider_list')) {

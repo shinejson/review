@@ -55,19 +55,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ];
 
                 if (tfa_is_enabled($conn, 'tenant', (int)$tenant['id'])) {
+                    // Check if current browser is a trusted device for 30 days
+                    if (tfa_is_device_trusted($conn, 'tenant', (int)$tenant['id'])) {
+                        foreach ($sessionData as $k => $v) {
+                            $_SESSION[$k] = $v;
+                        }
+                        auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['username'] ?: $tenant['company_name'], 'tenant');
+                        redirect('index.php');
+                    }
                     $tfaRow = tfa_get_user_2fa($conn, 'tenant', (int)$tenant['id']);
                     $method = $tfaRow['method'] ?? 'totp';
-                    tfa_start_pending_session('tenant', (int)$tenant['id'], $sessionData, $method, $tenant['email'], $tenant['company_name'], 'admin');
-                    if ($method === 'email') {
-                        tfa_send_email_otp($conn, 'tenant', (int)$tenant['id'], $tenant['email'], $tenant['company_name']);
+                    $contact = tfa_get_user_contact($conn, 'tenant', (int)$tenant['id']);
+                    $phone = $tfaRow['phone'] ?? ($tenant['phone'] ?: ($contact['phone'] ?? ''));
+                    $email = $tenant['email'] ?? ($contact['email'] ?? '');
+
+                    tfa_start_pending_session('tenant', (int)$tenant['id'], $sessionData, $method, $email, $tenant['company_name'], 'admin', $phone);
+                    if ($method === 'email' && !empty($email)) {
+                        tfa_send_email_otp($conn, 'tenant', (int)$tenant['id'], $email, $tenant['company_name']);
+                    } elseif ($method === 'whatsapp' && !empty($phone)) {
+                        tfa_send_whatsapp_otp($conn, 'tenant', (int)$tenant['id'], $phone, $tenant['company_name']);
                     }
                     redirect('2fa-verify.php');
                 } else {
-                    foreach ($sessionData as $k => $v) {
-                        $_SESSION[$k] = $v;
-                    }
-                    auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['username'] ?: $tenant['company_name'], 'tenant');
-                    redirect('index.php');
+                    // Mandatory 2FA: user must configure two-factor authentication before logging in
+                    $contact = tfa_get_user_contact($conn, 'tenant', (int)$tenant['id']);
+                    $phone = $tenant['phone'] ?: ($contact['phone'] ?? '');
+                    $email = $tenant['email'] ?? ($contact['email'] ?? '');
+                    tfa_start_pending_setup_session('tenant', (int)$tenant['id'], $sessionData, $email, $tenant['company_name'], 'admin', $phone);
+                    redirect('2fa-setup.php');
                 }
             } else {
                 // Record failed attempt
@@ -121,21 +136,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ];
 
                         if (tfa_is_enabled($conn, 'team_member', (int)$member['id'])) {
+                            // Check if current browser is a trusted device for 30 days
+                            if (tfa_is_device_trusted($conn, 'team_member', (int)$member['id'])) {
+                                foreach ($sessionData as $k => $v) {
+                                    $_SESSION[$k] = $v;
+                                }
+                                auth_login_session($conn, 'admin', (int)$member['id'], $member['full_name'], 'team');
+                                $ll = $conn->prepare("UPDATE team_members SET last_login_at = NOW() WHERE id = ?");
+                                if ($ll) { $ll->bind_param("i", $member['id']); $ll->execute(); $ll->close(); }
+                                redirect('index.php');
+                            }
                             $tfaRow = tfa_get_user_2fa($conn, 'team_member', (int)$member['id']);
                             $method = $tfaRow['method'] ?? 'totp';
-                            tfa_start_pending_session('team_member', (int)$member['id'], $sessionData, $method, $member['email'], $member['full_name'], 'admin');
-                            if ($method === 'email') {
-                                tfa_send_email_otp($conn, 'team_member', (int)$member['id'], $member['email'], $member['full_name']);
+                            $contact = tfa_get_user_contact($conn, 'team_member', (int)$member['id']);
+                            $phone = $tfaRow['phone'] ?? ($member['phone'] ?? ($contact['phone'] ?? ''));
+                            $email = $member['email'] ?? ($contact['email'] ?? '');
+
+                            tfa_start_pending_session('team_member', (int)$member['id'], $sessionData, $method, $email, $member['full_name'], 'admin', $phone);
+                            if ($method === 'email' && !empty($email)) {
+                                tfa_send_email_otp($conn, 'team_member', (int)$member['id'], $email, $member['full_name']);
+                            } elseif ($method === 'whatsapp' && !empty($phone)) {
+                                tfa_send_whatsapp_otp($conn, 'team_member', (int)$member['id'], $phone, $member['full_name']);
                             }
                             redirect('2fa-verify.php');
                         } else {
-                            foreach ($sessionData as $k => $v) {
-                                $_SESSION[$k] = $v;
-                            }
-                            auth_login_session($conn, 'admin', (int)$member['id'], $member['full_name'], 'team');
-                            $ll = $conn->prepare("UPDATE team_members SET last_login_at = NOW() WHERE id = ?");
-                            if ($ll) { $ll->bind_param("i", $member['id']); $ll->execute(); $ll->close(); }
-                            redirect('index.php');
+                            // Mandatory 2FA setup!
+                            $contact = tfa_get_user_contact($conn, 'team_member', (int)$member['id']);
+                            $phone = $member['phone'] ?? ($contact['phone'] ?? '');
+                            $email = $member['email'] ?? ($contact['email'] ?? '');
+                            tfa_start_pending_setup_session('team_member', (int)$member['id'], $sessionData, $email, $member['full_name'], 'admin', $phone);
+                            redirect('2fa-setup.php');
                         }
                     }
                 }
@@ -163,6 +193,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ];
 
                         if (tfa_is_enabled($conn, 'admin', (int)$admin['id'])) {
+                            // Check if current browser is a trusted device for 30 days
+                            if (tfa_is_device_trusted($conn, 'admin', (int)$admin['id'])) {
+                                foreach ($sessionData as $k => $v) {
+                                    $_SESSION[$k] = $v;
+                                }
+                                auth_login_session($conn, 'admin', (int)$admin['id'], $admin['username'], 'admin');
+                                redirect('index.php');
+                            }
                             $tfaRow = tfa_get_user_2fa($conn, 'admin', (int)$admin['id']);
                             $method = $tfaRow['method'] ?? 'totp';
                             tfa_start_pending_session('admin', (int)$admin['id'], $sessionData, $method, $admin['email'] ?? '', $admin['username'], 'admin');
@@ -171,11 +209,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                             redirect('2fa-verify.php');
                         } else {
-                            foreach ($sessionData as $k => $v) {
-                                $_SESSION[$k] = $v;
-                            }
-                            auth_login_session($conn, 'admin', (int)$admin['id'], $admin['username'], 'admin');
-                            redirect('index.php');
+                            // Mandatory 2FA setup!
+                            tfa_start_pending_setup_session('admin', (int)$admin['id'], $sessionData, $admin['email'] ?? '', $admin['username'], 'admin');
+                            redirect('2fa-setup.php');
                         }
                     } else {
                         $error = 'Invalid credentials. Please verify your password.';

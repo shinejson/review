@@ -13,6 +13,8 @@
  *  Each stream has: definition, entitlement check, checkout helper,
  *  and super-admin management utilities. Self-healing schema included.
  */
+require_once __DIR__ . '/sa_helpers.php';
+require_once __DIR__ . '/payments.php';
 
 if (!function_exists('monetization_ensure_schema')) {
     function monetization_ensure_schema($conn)

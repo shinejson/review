@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS super_admins (
     username VARCHAR(50) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     email VARCHAR(100),
+    phone VARCHAR(30) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     permissions TEXT NULL,
     is_owner TINYINT(1) NOT NULL DEFAULT 0
@@ -88,6 +89,7 @@ CREATE TABLE IF NOT EXISTS team_members (
     full_name VARCHAR(100) NOT NULL,
     username VARCHAR(50) NOT NULL,
     email VARCHAR(100) NOT NULL,
+    phone VARCHAR(30) NULL,
     password VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL DEFAULT 'staff',
     permissions VARCHAR(1000) NOT NULL DEFAULT '',
@@ -760,13 +762,31 @@ CREATE TABLE IF NOT EXISTS user_two_factor (
     is_enabled TINYINT(1) NOT NULL DEFAULT 0,
     method VARCHAR(16) NOT NULL DEFAULT 'totp',
     secret VARCHAR(64) NULL,
+    phone VARCHAR(30) NULL,
     backup_codes TEXT NULL,
     email_otp_hash VARCHAR(255) NULL,
     email_otp_expires_at DATETIME NULL,
+    whatsapp_otp_hash VARCHAR(255) NULL,
+    whatsapp_otp_expires_at DATETIME NULL,
     last_used_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_user_type_id (user_type, user_id),
     INDEX idx_user_lookup (user_type, user_id, is_enabled)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS user_trusted_devices (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_type VARCHAR(32) NOT NULL,
+    user_id INT NOT NULL,
+    device_token_hash VARCHAR(64) NOT NULL,
+    device_name VARCHAR(255) NULL,
+    ip_address VARCHAR(45) NULL,
+    user_agent VARCHAR(500) NULL,
+    expires_at DATETIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_lookup (user_type, user_id, device_token_hash),
+    INDEX idx_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 

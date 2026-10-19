@@ -341,6 +341,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && strpos($
             $_SESSION['error'] = "Incorrect password. Two-factor authentication was not disabled.";
         } else {
             if (tfa_disable($conn, $tfa_user_type, $tfa_user_id)) {
+                tfa_revoke_user_devices($conn, $tfa_user_type, $tfa_user_id);
                 unset($_SESSION['tfa_setup_secret'], $_SESSION['tfa_email_setup_pending'], $_SESSION['tfa_just_enabled_backup_codes']);
                 $_SESSION['success'] = "Two-Factor Authentication has been disabled for your account.";
                 admin_log_activity($conn, '2fa_disabled', 'Disabled Two-Factor Authentication');
@@ -371,15 +372,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && strpos($
         exit;
     }
 
-    // 6. Switch Active Method (between 'totp' and 'email')
+    // 6. Request WhatsApp 2FA setup code
+    if ($tfa_action === 'tfa_send_whatsapp_code') {
+        $contact = tfa_get_user_contact($conn, $tfa_user_type, $tfa_user_id);
+        $targetPhone = trim($_POST['phone_number'] ?? ($contact['phone'] ?? ''));
+        if (empty($targetPhone)) {
+            $_SESSION['error'] = "Please enter a valid WhatsApp phone number with country code.";
+        } else {
+            $sendRes = tfa_send_whatsapp_otp($conn, $tfa_user_type, $tfa_user_id, $targetPhone, $tfa_user_label);
+            if (!empty($sendRes['success'])) {
+                $_SESSION['tfa_whatsapp_setup_pending'] = true;
+                $_SESSION['success'] = "A 6-digit confirmation code was sent to WhatsApp at " . htmlspecialchars($sendRes['masked']) . ". Enter it below to enable WhatsApp 2FA.";
+            } else {
+                $_SESSION['error'] = "Could not deliver WhatsApp code: " . ($sendRes['message'] ?? 'Please check number format.');
+            }
+        }
+        header('Location: settings.php?tab=security&setup=whatsapp');
+        exit;
+    }
+
+    // 7. Confirm and Enable WhatsApp 2FA
+    if ($tfa_action === 'tfa_confirm_whatsapp_otp') {
+        $code = trim($_POST['code'] ?? '');
+        $contact = tfa_get_user_contact($conn, $tfa_user_type, $tfa_user_id);
+        if ($code === '') {
+            $_SESSION['error'] = "Please enter the 6-digit verification code sent to your WhatsApp.";
+        } elseif (!tfa_verify_whatsapp_otp($conn, $tfa_user_type, $tfa_user_id, $code)) {
+            $_SESSION['error'] = "Invalid or expired verification code. Please check your WhatsApp or request a new code.";
+        } else {
+            $backup = tfa_generate_backup_codes(8);
+            if (tfa_enable($conn, $tfa_user_type, $tfa_user_id, 'whatsapp', '', $backup['hashed'], $contact['phone'] ?? null)) {
+                unset($_SESSION['tfa_whatsapp_setup_pending']);
+                $_SESSION['tfa_just_enabled_backup_codes'] = $backup['plain'];
+                $_SESSION['success'] = "Two-Factor Authentication (WhatsApp 2FA) successfully enabled! Please copy and store your backup recovery codes.";
+                admin_log_activity($conn, '2fa_enabled', 'Enabled 2FA with WhatsApp');
+            } else {
+                $_SESSION['error'] = "Failed to activate WhatsApp 2FA in the database. Please try again.";
+            }
+        }
+        header('Location: settings.php?tab=security');
+        exit;
+    }
+
+    // 8. Switch Active Method (between 'totp', 'whatsapp', and 'email')
     if ($tfa_action === 'tfa_switch_method') {
         $currentPassword = (string)($_POST['current_password'] ?? '');
-        $newMethod = ($_POST['new_method'] ?? 'totp') === 'email' ? 'email' : 'totp';
+        $newMethod = in_array($_POST['new_method'] ?? 'totp', ['totp', 'whatsapp', 'email'], true) ? $_POST['new_method'] : 'totp';
         if (!tfa_verify_user_password($conn, $tfa_user_type, $tfa_user_id, $currentPassword)) {
             $_SESSION['error'] = "Incorrect password. Method was not switched.";
         } else {
             tfa_switch_method($conn, $tfa_user_type, $tfa_user_id, $newMethod);
-            $_SESSION['success'] = "Primary 2FA method switched to " . ($newMethod === 'email' ? 'Email OTP' : 'Authenticator App') . ".";
+            $methodNames = ['totp' => 'Authenticator App', 'whatsapp' => 'WhatsApp 2FA', 'email' => 'Email OTP'];
+            $_SESSION['success'] = "Primary 2FA method switched to " . ($methodNames[$newMethod] ?? $newMethod) . ".";
             admin_log_activity($conn, '2fa_method_switched', 'Switched 2FA method to ' . $newMethod);
         }
         header('Location: settings.php?tab=security');

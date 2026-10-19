@@ -44,6 +44,11 @@ if (!$verified) {
     api_send_error('Invalid 2FA verification code. Please check your code and try again.', 401);
 }
 
+// Trust device for 30 days if requested
+if (!empty($input['trust_device'])) {
+    tfa_trust_device($conn, $userType, $userId, 30);
+}
+
 // If team member, record last login
 if ($userType === 'team_member' && !empty($claims['team_member_id'])) {
     $tmId = (int)$claims['team_member_id'];

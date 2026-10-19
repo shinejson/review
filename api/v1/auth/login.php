@@ -98,8 +98,10 @@ $targetUserType = ($userRole === 'team_member') ? 'team_member' : 'tenant';
 $targetUserId   = ($userRole === 'team_member') ? (int)$authenticatedUser['team_member_id'] : (int)$authenticatedUser['id'];
 
 if (tfa_is_enabled($conn, $targetUserType, $targetUserId)) {
-    $tfaRow = tfa_get_user_2fa($conn, $targetUserType, $targetUserId);
-    $method = $tfaRow['method'] ?? 'totp';
+    // Check if this client device is already trusted for 30 days
+    if (!tfa_is_device_trusted($conn, $targetUserType, $targetUserId)) {
+        $tfaRow = tfa_get_user_2fa($conn, $targetUserType, $targetUserId);
+        $method = $tfaRow['method'] ?? 'totp';
 
     // Issue a short-lived temporary token for 2FA verification
     $tempClaims = [
@@ -121,14 +123,41 @@ if (tfa_is_enabled($conn, $targetUserType, $targetUserId)) {
 
     if ($method === 'email') {
         tfa_send_email_otp($conn, $targetUserType, $targetUserId, (string)$authenticatedUser['email'], (string)$authenticatedUser['company_name']);
+    } elseif ($method === 'whatsapp') {
+        $contact = tfa_get_user_contact($conn, $targetUserType, $targetUserId);
+        $targetPhone = $contact['phone'] ?? ($tfaRow['phone'] ?? '');
+        tfa_send_whatsapp_otp($conn, $targetUserType, $targetUserId, $targetPhone, (string)$authenticatedUser['company_name']);
     }
 
+    $maskedPhone = null;
+    if ($method === 'whatsapp') {
+        $contact = $contact ?? tfa_get_user_contact($conn, $targetUserType, $targetUserId);
+        $maskedPhone = tfa_mask_phone($contact['phone'] ?? ($tfaRow['phone'] ?? ''));
+    }
+
+        api_send_success([
+            'two_factor_required' => true,
+            'two_factor_method'   => $method,
+            'temp_token'          => $tempToken,
+            'masked_email'        => ($method === 'email') ? tfa_mask_email((string)$authenticatedUser['email']) : null,
+            'masked_phone'        => $maskedPhone,
+        ], 'Two-factor authentication code required', 200);
+    }
+} else {
+    // 2FA is mandatory: if not enabled, return notice for API client
+    $tempClaims = [
+        'sub'                 => $targetUserId,
+        'user_type'           => $targetUserType,
+        'tenant_id'           => (int)$authenticatedUser['id'],
+        'role'                => $userRole,
+        'email'               => (string)$authenticatedUser['email'],
+    ];
+    $tempToken = JWT::generate($tempClaims, 900, '2fa_temp');
     api_send_success([
-        'two_factor_required' => true,
-        'two_factor_method'   => $method,
-        'temp_token'          => $tempToken,
-        'masked_email'        => ($method === 'email') ? tfa_mask_email((string)$authenticatedUser['email']) : null,
-    ], 'Two-factor authentication code required', 200);
+        'two_factor_setup_required' => true,
+        'temp_token'                => $tempToken,
+        'setup_url'                 => '/admin/2fa-setup.php',
+    ], 'Two-factor authentication setup is required before logging in.', 200);
 }
 
 // Generate JWT tokens

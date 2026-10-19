@@ -46,19 +46,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
 
             if (tfa_is_enabled($conn, 'superadmin', $adminId)) {
+                // Check if current browser is a trusted device for 30 days
+                if (tfa_is_device_trusted($conn, 'superadmin', $adminId)) {
+                    foreach ($sessionData as $k => $v) {
+                        $_SESSION[$k] = $v;
+                    }
+                    auth_login_session($conn, 'superadmin', $adminId, $admin['username'], 'super_admin');
+                    redirect('index.php');
+                }
                 $tfaRow = tfa_get_user_2fa($conn, 'superadmin', $adminId);
                 $method = $tfaRow['method'] ?? 'totp';
-                tfa_start_pending_session('superadmin', $adminId, $sessionData, $method, $admin['email'] ?? '', $admin['username'], 'superadmin');
-                if ($method === 'email' && !empty($admin['email'])) {
-                    tfa_send_email_otp($conn, 'superadmin', $adminId, $admin['email'], $admin['username']);
+                $contact = tfa_get_user_contact($conn, 'superadmin', $adminId);
+                $phone = $tfaRow['phone'] ?? ($contact['phone'] ?? '');
+                $email = $admin['email'] ?? ($contact['email'] ?? '');
+
+                tfa_start_pending_session('superadmin', $adminId, $sessionData, $method, $email, $admin['username'], 'superadmin', $phone);
+                if ($method === 'email' && !empty($email)) {
+                    tfa_send_email_otp($conn, 'superadmin', $adminId, $email, $admin['username']);
+                } elseif ($method === 'whatsapp' && !empty($phone)) {
+                    tfa_send_whatsapp_otp($conn, 'superadmin', $adminId, $phone, $admin['username']);
                 }
                 redirect('2fa-verify.php');
             } else {
-                foreach ($sessionData as $k => $v) {
-                    $_SESSION[$k] = $v;
-                }
-                auth_login_session($conn, 'superadmin', $adminId, $admin['username'], 'super_admin');
-                redirect('index.php');
+                // Mandatory 2FA setup!
+                $contact = tfa_get_user_contact($conn, 'superadmin', $adminId);
+                $phone = $contact['phone'] ?? '';
+                $email = $admin['email'] ?? ($contact['email'] ?? '');
+                tfa_start_pending_setup_session('superadmin', $adminId, $sessionData, $email, $admin['username'], 'superadmin', $phone);
+                redirect('2fa-setup.php');
             }
         }
         $error = 'Invalid username or password. Please try again.';

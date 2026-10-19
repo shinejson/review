@@ -19,6 +19,7 @@ $testUserId = 999999;
 
 // Cleanup previous test state if any
 $conn->query("DELETE FROM user_two_factor WHERE user_type = '{$testType}' AND user_id = {$testUserId}");
+$conn->query("DELETE FROM user_trusted_devices WHERE user_type = '{$testType}' AND user_id = {$testUserId}");
 
 // 1. Generate TOTP secret and backup codes
 echo "[1] Testing Secret & Backup Code Generation...\n";
@@ -95,7 +96,7 @@ if ($reused) {
 }
 echo "    -> Reused backup code was properly rejected.\n";
 
-// 6. Test Email OTP Switch and Verification
+// 6. Test Email OTP Mode
 echo "\n[6] Testing Email OTP Mode...\n";
 $switched = tfa_switch_method($conn, $testType, $testUserId, 'email');
 if (!$switched) {
@@ -155,8 +156,102 @@ if ($cleared !== null) {
 }
 echo "    -> Pending session successfully cleared.\n";
 
-// 8. Test API 2FA Temp Token (JWT)
-echo "\n[8] Testing API 2FA JWT Flow...\n";
+// 8. Test Mandatory 2FA Setup Pending Flow
+echo "\n[8] Testing Mandatory 2FA Setup Pending Flow...\n";
+tfa_start_pending_setup_session($testType, $testUserId, ['setup_key' => 'setup_val'], 'user@example.com', 'Test User', 'admin');
+$pendingSetup = tfa_get_pending_setup_session();
+if (!$pendingSetup || $pendingSetup['user_id'] !== $testUserId || $pendingSetup['portal'] !== 'admin') {
+    echo "FAIL: Pending setup session not matching: " . json_encode($pendingSetup) . "\n";
+    exit(1);
+}
+echo "    -> Pending setup session successfully created.\n";
+tfa_clear_pending_setup_session();
+$clearedSetup = tfa_get_pending_setup_session();
+if ($clearedSetup !== null) {
+    echo "FAIL: Pending setup session was not cleared!\n";
+    exit(1);
+}
+echo "    -> Pending setup session successfully cleared.\n";
+
+// 9. Test "Trust this device for 30 days" Mechanics
+echo "\n[9] Testing 'Trust this device for 30 days' Cookie & DB State...\n";
+// Ensure trusted device table exists
+$chkTable = $conn->query("SHOW TABLES LIKE 'user_trusted_devices'");
+if (!$chkTable || $chkTable->num_rows !== 1) {
+    echo "FAIL: user_trusted_devices table does not exist.\n";
+    exit(1);
+}
+
+// Register device as trusted for 30 days
+$trustedSaved = tfa_trust_device($conn, $testType, $testUserId, 30);
+// Check DB record
+$qDev = $conn->query("SELECT * FROM user_trusted_devices WHERE user_type = '{$testType}' AND user_id = {$testUserId}");
+if (!$qDev || $qDev->num_rows !== 1) {
+    echo "FAIL: Trusted device record was not inserted in database.\n";
+    exit(1);
+}
+$devRow = $qDev->fetch_assoc();
+echo "    -> Trusted device record persisted with token hash: " . substr($devRow['device_token_hash'], 0, 16) . "...\n";
+echo "    -> Device expires at: {$devRow['expires_at']}\n";
+
+// Simulate cookie received from browser
+$rawToken = 'test_raw_token_value_32_bytes_len_123';
+$tokenHash = hash('sha256', $rawToken);
+$futureExp = time() + (30 * 86400);
+$futureDate = date('Y-m-d H:i:s', $futureExp);
+$conn->query("UPDATE user_trusted_devices SET device_token_hash = '{$tokenHash}', expires_at = '{$futureDate}' WHERE id = {$devRow['id']}");
+
+$payloadB64 = base64_encode(json_encode([
+    'type' => $testType,
+    'uid'  => $testUserId,
+    'tok'  => $rawToken,
+    'exp'  => $futureExp,
+]));
+$sig = hash_hmac('sha256', $payloadB64, tfa_get_app_secret());
+$_COOKIE['optibiz_trusted_device'] = $payloadB64 . '.' . $sig;
+
+// Verify device is trusted
+$isTrustedNow = tfa_is_device_trusted($conn, $testType, $testUserId);
+if (!$isTrustedNow) {
+    echo "FAIL: tfa_is_device_trusted returned false for valid signed 30-day token!\n";
+    exit(1);
+}
+echo "    -> Valid 30-day trusted device recognized successfully! (2FA will be skipped on this device)\n";
+
+// 10. Test Tampered Cookie Rejection
+echo "\n[10] Testing Rejection of Tampered Trusted Device Cookie...\n";
+$_COOKIE['optibiz_trusted_device'] = $payloadB64 . '.invalid_tampered_signature';
+$tamperedResult = tfa_is_device_trusted($conn, $testType, $testUserId);
+if ($tamperedResult) {
+    echo "FAIL: Tampered cookie was accepted!\n";
+    exit(1);
+}
+echo "    -> Tampered cookie signature was properly rejected.\n";
+
+// 11. Test Expired Device Rejection
+echo "\n[11] Testing Expired Device Rejection...\n";
+$conn->query("UPDATE user_trusted_devices SET expires_at = DATE_SUB(NOW(), INTERVAL 1 HOUR) WHERE id = {$devRow['id']}");
+$_COOKIE['optibiz_trusted_device'] = $payloadB64 . '.' . $sig; // restores valid sig but DB expired
+$expiredResult = tfa_is_device_trusted($conn, $testType, $testUserId);
+if ($expiredResult) {
+    echo "FAIL: Expired device was accepted!\n";
+    exit(1);
+}
+echo "    -> Expired 30-day device was properly rejected.\n";
+
+// 12. Test Revocation of User Devices
+echo "\n[12] Testing Revocation of User Devices...\n";
+tfa_revoke_user_devices($conn, $testType, $testUserId);
+$chkRevoked = $conn->query("SELECT COUNT(*) AS c FROM user_trusted_devices WHERE user_type = '{$testType}' AND user_id = {$testUserId}");
+$revCount = (int)$chkRevoked->fetch_assoc()['c'];
+if ($revCount !== 0) {
+    echo "FAIL: Expected 0 devices after revoke, found {$revCount}\n";
+    exit(1);
+}
+echo "    -> User devices successfully revoked and cleared from DB.\n";
+
+// 13. Test API 2FA Temp Token (JWT)
+echo "\n[13] Testing API 2FA JWT Flow...\n";
 $tempJwt = JWT::generate([
     'sub'       => $testUserId,
     'user_id'   => $testUserId,
@@ -177,10 +272,84 @@ if (!$decoded || ($decoded['type'] ?? '') !== '2fa_temp' || (int)$decoded['user_
 }
 echo "    -> API 2FA temp JWT generated & verified successfully.\n";
 
-// 9. Clean up test record
-echo "\n[9] Cleaning up test record...\n";
+// 14. Test WhatsApp 2FA Flows & Phone Collection
+echo "\n[14] Testing WhatsApp 2FA, Phone Masking & OTP Flow...\n";
+
+// Test phone masking
+$maskedPhone = tfa_mask_phone('+233241234567');
+if (strpos($maskedPhone, '•••') === false) {
+    echo "FAIL: Phone masking failed: {$maskedPhone}\n";
+    exit(1);
+}
+echo "    -> Phone masking verified: +233241234567 -> {$maskedPhone}\n";
+
+// Enable 2FA with method 'whatsapp'
+$codesWa = tfa_generate_backup_codes(8);
+$enabledWa = tfa_enable($conn, $testType, $testUserId, 'whatsapp', '', $codesWa['hashed'], '+233241234567');
+if (!$enabledWa) {
+    echo "FAIL: tfa_enable with whatsapp failed.\n";
+    exit(1);
+}
+$statusWa = tfa_get_status($conn, $testType, $testUserId);
+if (!$statusWa['is_enabled'] || $statusWa['method'] !== 'whatsapp') {
+    echo "FAIL: WhatsApp status mismatch: " . json_encode($statusWa) . "\n";
+    exit(1);
+}
+echo "    -> WhatsApp 2FA enabled in DB: method=whatsapp\n";
+
+// Test tfa_send_whatsapp_otp
+$sendWaRes = tfa_send_whatsapp_otp($conn, $testType, $testUserId, '+233241234567', 'Test Tenant');
+if (empty($sendWaRes['success']) || empty($sendWaRes['code'])) {
+    echo "FAIL: tfa_send_whatsapp_otp failed: " . json_encode($sendWaRes) . "\n";
+    exit(1);
+}
+$waCode = $sendWaRes['code'];
+echo "    -> WhatsApp OTP generated: {$waCode}, wa_url: {$sendWaRes['wa_url']}\n";
+
+// Test invalid code rejection
+$invalidWa = tfa_verify_whatsapp_otp($conn, $testType, $testUserId, '000000');
+if ($invalidWa) {
+    echo "FAIL: Invalid WhatsApp code '000000' accepted unexpectedly!\n";
+    exit(1);
+}
+echo "    -> Invalid WhatsApp OTP correctly rejected.\n";
+
+// Test valid code via unified tfa_verify_code
+$usedBackupWa = false;
+$validWa = tfa_verify_code($conn, $testType, $testUserId, $waCode, $usedBackupWa);
+if (!$validWa || $usedBackupWa) {
+    echo "FAIL: Valid WhatsApp code verification failed via tfa_verify_code.\n";
+    exit(1);
+}
+echo "    -> Valid WhatsApp OTP verified successfully via tfa_verify_code!\n";
+
+// Test single-use invalidation
+$reusedWa = tfa_verify_code($conn, $testType, $testUserId, $waCode, $usedBackupWa);
+if ($reusedWa) {
+    echo "FAIL: Consumed WhatsApp OTP was accepted again!\n";
+    exit(1);
+}
+echo "    -> Reused WhatsApp OTP properly invalidated.\n";
+
+// Test method switching to 'email' and back to 'whatsapp'
+$switchBack = tfa_switch_method($conn, $testType, $testUserId, 'email');
+if (!$switchBack || tfa_get_status($conn, $testType, $testUserId)['method'] !== 'email') {
+    echo "FAIL: Failed to switch from whatsapp to email.\n";
+    exit(1);
+}
+$switchToWa = tfa_switch_method($conn, $testType, $testUserId, 'whatsapp');
+if (!$switchToWa || tfa_get_status($conn, $testType, $testUserId)['method'] !== 'whatsapp') {
+    echo "FAIL: Failed to switch back to whatsapp.\n";
+    exit(1);
+}
+echo "    -> Switching to/from 'whatsapp' method verified.\n";
+
+// 15. Clean up test record
+echo "\n[15] Cleaning up test records...\n";
 tfa_disable($conn, $testType, $testUserId);
 $conn->query("DELETE FROM user_two_factor WHERE user_type = '{$testType}' AND user_id = {$testUserId}");
+$conn->query("DELETE FROM user_trusted_devices WHERE user_type = '{$testType}' AND user_id = {$testUserId}");
+unset($_COOKIE['optibiz_trusted_device']);
 $statusFinal = tfa_get_status($conn, $testType, $testUserId);
 if ($statusFinal['is_enabled']) {
     echo "FAIL: 2FA still marked enabled after disable.\n";
@@ -188,6 +357,6 @@ if ($statusFinal['is_enabled']) {
 }
 echo "    -> Cleaned up successfully.\n";
 
-echo "\n======================================================\n";
-echo " ALL 9 END-TO-END 2FA CHECKS PASSED WITH 100% SUCCESS! \n";
-echo "======================================================\n";
+echo "\n=========================================================\n";
+echo " ALL 14 END-TO-END 2FA & 30-DAY TRUST CHECKS PASSED (100%) \n";
+echo "=========================================================\n";
