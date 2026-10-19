@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/sa_helpers.php';
+require_once dirname(__DIR__) . '/includes/two_factor.php';
 
 requireSuperAdminLogin();
 require_sa_permission('settings');
@@ -339,6 +340,124 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ? 'Signed out of ' . $closed . ' other session' . ($closed === 1 ? '' : 's') . '. This browser stays signed in.'
             : 'No other session is live — this is the only one.');
         redirect('settings.php');
+    }
+
+    if (strpos($action, 'sa_tfa_') === 0) {
+        $sa_id = (int) ($_SESSION['super_admin_id'] ?? 0);
+        $sa_row = sa_one($conn, "SELECT username, email FROM super_admins WHERE id = " . $sa_id, 'super_admins');
+        $sa_email = $sa_row['email'] ?? '';
+        $sa_label = $sa_row['username'] ?? 'Super Admin';
+
+        if ($action === 'sa_tfa_enable_totp') {
+            $code = trim($_POST['code'] ?? '');
+            $secret = trim($_POST['secret'] ?? ($_SESSION['tfa_setup_secret'] ?? ''));
+
+            if ($code === '' || $secret === '') {
+                sa_flash('error', 'Verification code or setup secret missing. Please scan the QR code and enter the 6-digit code.');
+            } elseif (!tfa_verify_totp($secret, $code)) {
+                sa_flash('error', 'Invalid verification code. Please make sure your authenticator app time is synced and try again.');
+            } else {
+                $backup = tfa_generate_backup_codes(8);
+                if (tfa_enable($conn, 'superadmin', $sa_id, 'totp', $secret, $backup['hashed'])) {
+                    unset($_SESSION['tfa_setup_secret']);
+                    $_SESSION['tfa_sa_new_backup_codes'] = $backup['plain'];
+                    sa_flash('success', 'Two-Factor Authentication (Authenticator App) enabled! Please save your recovery backup codes.');
+                    if (function_exists('sa_log_activity')) {
+                        sa_log_activity($conn, '2fa_enabled', 'Enabled Two-Factor Authentication via Authenticator App');
+                    }
+                } else {
+                    sa_flash('error', 'Failed to activate 2FA in the database. Please try again.');
+                }
+            }
+            redirect('settings.php');
+        }
+
+        if ($action === 'sa_tfa_send_email_code') {
+            if (empty($sa_email) || !filter_var($sa_email, FILTER_VALIDATE_EMAIL)) {
+                sa_flash('error', 'No valid email address configured for your account. Please update your account email first.');
+            } else {
+                $sendRes = tfa_send_email_otp($conn, 'superadmin', $sa_id, $sa_email, $sa_label);
+                if (!empty($sendRes['success'])) {
+                    sa_flash('success', 'A 6-digit verification code was sent to ' . tfa_mask_email($sa_email) . '. Enter it below to enable Email 2FA.');
+                } else {
+                    sa_flash('error', 'Could not deliver email: ' . ($sendRes['message'] ?? 'Please check platform SMTP settings.'));
+                }
+            }
+            redirect('settings.php?setup=email');
+        }
+
+        if ($action === 'sa_tfa_confirm_email_otp') {
+            $code = trim($_POST['code'] ?? '');
+            if ($code === '') {
+                sa_flash('error', 'Please enter the 6-digit verification code sent to your email.');
+            } elseif (!tfa_verify_email_otp($conn, 'superadmin', $sa_id, $code)) {
+                sa_flash('error', 'Invalid or expired verification code. Please check your email or request a new code.');
+            } else {
+                $backup = tfa_generate_backup_codes(8);
+                if (tfa_enable($conn, 'superadmin', $sa_id, 'email', '', $backup['hashed'])) {
+                    $_SESSION['tfa_sa_new_backup_codes'] = $backup['plain'];
+                    sa_flash('success', 'Two-Factor Authentication (Email OTP) enabled! Please save your emergency recovery codes.');
+                    if (function_exists('sa_log_activity')) {
+                        sa_log_activity($conn, '2fa_enabled', 'Enabled Two-Factor Authentication via Email OTP');
+                    }
+                } else {
+                    sa_flash('error', 'Failed to activate Email 2FA in the database.');
+                }
+            }
+            redirect('settings.php');
+        }
+
+        if ($action === 'sa_tfa_disable') {
+            $currentPassword = (string)($_POST['current_password'] ?? '');
+            if (!tfa_verify_user_password($conn, 'superadmin', $sa_id, $currentPassword)) {
+                sa_flash('error', 'Incorrect password. Two-factor authentication was not disabled.');
+            } else {
+                if (tfa_disable($conn, 'superadmin', $sa_id)) {
+                    unset($_SESSION['tfa_setup_secret'], $_SESSION['tfa_sa_new_backup_codes']);
+                    sa_flash('success', 'Two-Factor Authentication has been disabled for your super admin account.');
+                    if (function_exists('sa_log_activity')) {
+                        sa_log_activity($conn, '2fa_disabled', 'Disabled Two-Factor Authentication');
+                    }
+                } else {
+                    sa_flash('error', 'Failed to disable 2FA.');
+                }
+            }
+            redirect('settings.php');
+        }
+
+        if ($action === 'sa_tfa_regenerate_backup_codes') {
+            $currentPassword = (string)($_POST['current_password'] ?? '');
+            if (!tfa_verify_user_password($conn, 'superadmin', $sa_id, $currentPassword)) {
+                sa_flash('error', 'Incorrect password. Backup codes were not regenerated.');
+            } else {
+                $newCodes = tfa_regenerate_backup_codes($conn, 'superadmin', $sa_id);
+                if ($newCodes !== false) {
+                    $_SESSION['tfa_sa_new_backup_codes'] = $newCodes;
+                    sa_flash('success', 'Fresh emergency recovery codes generated! Your previous recovery codes are now void.');
+                    if (function_exists('sa_log_activity')) {
+                        sa_log_activity($conn, '2fa_backup_regenerated', 'Regenerated emergency backup recovery codes');
+                    }
+                } else {
+                    sa_flash('error', 'Failed to regenerate backup codes.');
+                }
+            }
+            redirect('settings.php');
+        }
+
+        if ($action === 'sa_tfa_switch_method') {
+            $currentPassword = (string)($_POST['current_password'] ?? '');
+            $newMethod = ($_POST['new_method'] ?? 'totp') === 'email' ? 'email' : 'totp';
+            if (!tfa_verify_user_password($conn, 'superadmin', $sa_id, $currentPassword)) {
+                sa_flash('error', 'Incorrect password. Method was not switched.');
+            } else {
+                tfa_switch_method($conn, 'superadmin', $sa_id, $newMethod);
+                sa_flash('success', 'Primary 2FA method switched to ' . ($newMethod === 'email' ? 'Email OTP' : 'Authenticator App') . '.');
+                if (function_exists('sa_log_activity')) {
+                    sa_log_activity($conn, '2fa_method_switched', 'Switched 2FA method to ' . $newMethod);
+                }
+            }
+            redirect('settings.php');
+        }
     }
 }
 
@@ -903,6 +1022,8 @@ include __DIR__ . '/_shell.php';
         </section>
 
     </div>
+
+    <?php include dirname(__DIR__) . '/includes/two_factor_sa_component.php'; ?>
 
     <!-- Signed-in sessions -->
     <section class="sa-card">

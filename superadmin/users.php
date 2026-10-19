@@ -13,6 +13,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/sa_helpers.php';
+require_once dirname(__DIR__) . '/includes/two_factor.php';
 
 requireSuperAdminLogin();
 require_sa_permission('users');
@@ -251,6 +252,7 @@ include __DIR__ . '/_shell.php';
                     <th scope="col">Account</th>
                     <th scope="col">Email</th>
                     <th scope="col">Role</th>
+                    <th scope="col">2FA</th>
                     <th scope="col">May access</th>
                     <th scope="col">Sessions</th>
                     <th scope="col">Created</th>
@@ -278,6 +280,16 @@ include __DIR__ . '/_shell.php';
                         <span class="sa-badge <?php echo $is_owner_row ? 'sa-badge-lime' : 'sa-badge-plan'; ?>">
                             <?php echo $is_owner_row ? 'Owner' : 'Administrator'; ?>
                         </span>
+                    </td>
+<?php $u_tfa = tfa_get_status($conn, 'superadmin', (int)$u['id']); ?>
+                    <td>
+                        <?php if ($u_tfa['is_enabled']): ?>
+                            <span class="sa-badge sa-badge-active" title="2FA active (<?php echo htmlspecialchars($u_tfa['method']); ?>)">
+                                ● <?php echo $u_tfa['method'] === 'email' ? 'Email' : 'App'; ?>
+                            </span>
+                        <?php else: ?>
+                            <span class="sa-badge sa-badge-inactive" title="2FA not enabled">○ Off</span>
+                        <?php endif; ?>
                     </td>
                     <td>
                         <div class="sa-chips">

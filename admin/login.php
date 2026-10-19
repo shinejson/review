@@ -3,6 +3,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/login_attempts.php';
+require_once dirname(__DIR__) . '/includes/two_factor.php';
 
 ensureRealIdSchema($conn);
 
@@ -37,19 +38,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Reset failed attempts on successful login
                 resetFailedLoginAttempts($conn, 'tenants', (int)$tenant['id']);
                 
-                // Store tenant session data
-                $_SESSION['tenant_id'] = (int)$tenant['id'];
-                $_SESSION['tenant_name'] = $tenant['company_name'];
-                $_SESSION['tenant_logo'] = $tenant['logo'] ?? '';
-                $_SESSION['tenant_username'] = $tenant['username'];
-                $_SESSION['admin_username'] = $tenant['username'];
-                $_SESSION['tenant_email'] = $tenant['email'];
-                $_SESSION['tenant_plan_id'] = $tenant['plan_id'];
-                $_SESSION['tenant_status'] = $tenant['subscription_status'];
-                $_SESSION['tenant_subscription_end'] = $tenant['subscription_end_date'] ?? null;
-                $_SESSION['user_type'] = 'tenant';
-                auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['username'] ?: $tenant['company_name'], 'tenant');
-                redirect('index.php');
+                $sessionData = [
+                    'tenant_id'               => (int)$tenant['id'],
+                    'tenant_name'             => $tenant['company_name'],
+                    'tenant_logo'             => $tenant['logo'] ?? '',
+                    'tenant_username'         => $tenant['username'],
+                    'admin_username'          => $tenant['username'],
+                    'tenant_email'            => $tenant['email'],
+                    'tenant_plan_id'          => $tenant['plan_id'],
+                    'tenant_status'           => $tenant['subscription_status'],
+                    'tenant_subscription_end' => $tenant['subscription_end_date'] ?? null,
+                    'user_type'               => 'tenant',
+                    'auth_user_id'            => (int)$tenant['id'],
+                    'auth_label'              => $tenant['username'] ?: $tenant['company_name'],
+                    'auth_user_kind'          => 'tenant',
+                ];
+
+                if (tfa_is_enabled($conn, 'tenant', (int)$tenant['id'])) {
+                    $tfaRow = tfa_get_user_2fa($conn, 'tenant', (int)$tenant['id']);
+                    $method = $tfaRow['method'] ?? 'totp';
+                    tfa_start_pending_session('tenant', (int)$tenant['id'], $sessionData, $method, $tenant['email'], $tenant['company_name'], 'admin');
+                    if ($method === 'email') {
+                        tfa_send_email_otp($conn, 'tenant', (int)$tenant['id'], $tenant['email'], $tenant['company_name']);
+                    }
+                    redirect('2fa-verify.php');
+                } else {
+                    foreach ($sessionData as $k => $v) {
+                        $_SESSION[$k] = $v;
+                    }
+                    auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['username'] ?: $tenant['company_name'], 'tenant');
+                    redirect('index.php');
+                }
             } else {
                 // Record failed attempt
                 $attempt_result = recordFailedLoginAttempt($conn, 'tenants', (int)$tenant['id']);
@@ -79,25 +98,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // Reset failed attempts on successful login
                         resetFailedLoginAttempts($conn, 'team_members', (int)$member['id']);
                         
-                        $_SESSION['tenant_id'] = (int)$member['tenant_id'];
-                        $_SESSION['tenant_name'] = $member['company_name'];
-                        $_SESSION['tenant_logo'] = $member['logo'] ?? '';
-                        $_SESSION['tenant_username'] = $member['tenant_username'];
-                        $_SESSION['tenant_email'] = $member['tenant_email'];
-                        $_SESSION['tenant_plan_id'] = $member['plan_id'];
-                        $_SESSION['tenant_status'] = $member['subscription_status'];
-                        $_SESSION['tenant_subscription_end'] = $member['subscription_end_date'] ?? null;
-                        $_SESSION['user_type'] = 'tenant';
-                        $_SESSION['user_kind'] = 'team';
-                        $_SESSION['team_member_id'] = (int)$member['id'];
-                        $_SESSION['team_member_role'] = $member['role'];
-                        $_SESSION['team_permissions'] = teamMemberParsePerms($member['permissions']);
-                        $_SESSION['admin_username'] = $member['full_name'];
-                        $_SESSION['admin_email'] = $member['email'];
-                        auth_login_session($conn, 'admin', (int)$member['id'], $member['full_name'], 'team');
-                        $ll = $conn->prepare("UPDATE team_members SET last_login_at = NOW() WHERE id = ?");
-                        if ($ll) { $ll->bind_param("i", $member['id']); $ll->execute(); $ll->close(); }
-                        redirect('index.php');
+                        $sessionData = [
+                            'tenant_id'               => (int)$member['tenant_id'],
+                            'tenant_name'             => $member['company_name'],
+                            'tenant_logo'             => $member['logo'] ?? '',
+                            'tenant_username'         => $member['tenant_username'],
+                            'tenant_email'            => $member['tenant_email'],
+                            'tenant_plan_id'          => $member['plan_id'],
+                            'tenant_status'           => $member['subscription_status'],
+                            'tenant_subscription_end' => $member['subscription_end_date'] ?? null,
+                            'user_type'               => 'tenant',
+                            'user_kind'               => 'team',
+                            'team_member_id'          => (int)$member['id'],
+                            'team_member_role'        => $member['role'],
+                            'team_permissions'        => teamMemberParsePerms($member['permissions']),
+                            'admin_username'          => $member['full_name'],
+                            'admin_email'             => $member['email'],
+                            'auth_user_id'            => (int)$member['id'],
+                            'auth_label'              => $member['full_name'],
+                            'auth_user_kind'          => 'team',
+                            'touch_team_last_login'   => (int)$member['id'],
+                        ];
+
+                        if (tfa_is_enabled($conn, 'team_member', (int)$member['id'])) {
+                            $tfaRow = tfa_get_user_2fa($conn, 'team_member', (int)$member['id']);
+                            $method = $tfaRow['method'] ?? 'totp';
+                            tfa_start_pending_session('team_member', (int)$member['id'], $sessionData, $method, $member['email'], $member['full_name'], 'admin');
+                            if ($method === 'email') {
+                                tfa_send_email_otp($conn, 'team_member', (int)$member['id'], $member['email'], $member['full_name']);
+                            }
+                            redirect('2fa-verify.php');
+                        } else {
+                            foreach ($sessionData as $k => $v) {
+                                $_SESSION[$k] = $v;
+                            }
+                            auth_login_session($conn, 'admin', (int)$member['id'], $member['full_name'], 'team');
+                            $ll = $conn->prepare("UPDATE team_members SET last_login_at = NOW() WHERE id = ?");
+                            if ($ll) { $ll->bind_param("i", $member['id']); $ll->execute(); $ll->close(); }
+                            redirect('index.php');
+                        }
                     }
                 }
                 $stmtT->close();
@@ -113,12 +152,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($resAdmin && $resAdmin->num_rows === 1) {
                     $admin = $resAdmin->fetch_assoc();
                     if (password_verify($password, $admin['password'])) {
-                        $_SESSION['admin_id'] = (int)$admin['id'];
-                        $_SESSION['admin_username'] = $admin['username'];
-                        $_SESSION['admin_email'] = $admin['email'];
-                        $_SESSION['user_type'] = 'admin';
-                        auth_login_session($conn, 'admin', (int)$admin['id'], $admin['username'], 'admin');
-                        redirect('index.php');
+                        $sessionData = [
+                            'admin_id'       => (int)$admin['id'],
+                            'admin_username' => $admin['username'],
+                            'admin_email'    => $admin['email'],
+                            'user_type'      => 'admin',
+                            'auth_user_id'   => (int)$admin['id'],
+                            'auth_label'     => $admin['username'],
+                            'auth_user_kind' => 'admin',
+                        ];
+
+                        if (tfa_is_enabled($conn, 'admin', (int)$admin['id'])) {
+                            $tfaRow = tfa_get_user_2fa($conn, 'admin', (int)$admin['id']);
+                            $method = $tfaRow['method'] ?? 'totp';
+                            tfa_start_pending_session('admin', (int)$admin['id'], $sessionData, $method, $admin['email'] ?? '', $admin['username'], 'admin');
+                            if ($method === 'email' && !empty($admin['email'])) {
+                                tfa_send_email_otp($conn, 'admin', (int)$admin['id'], $admin['email'], $admin['username']);
+                            }
+                            redirect('2fa-verify.php');
+                        } else {
+                            foreach ($sessionData as $k => $v) {
+                                $_SESSION[$k] = $v;
+                            }
+                            auth_login_session($conn, 'admin', (int)$admin['id'], $admin['username'], 'admin');
+                            redirect('index.php');
+                        }
                     } else {
                         $error = 'Invalid credentials. Please verify your password.';
                     }

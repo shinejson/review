@@ -751,3 +751,22 @@ INSERT IGNORE INTO monetization_plans (plan_code, plan_name, stream, tier, price
 ('sms_500','SMS Growth 500','sms','500',200.00,0,'500 SMS credits\nGHS 0.40 per SMS — save 20%\nBulk CSV upload\nScheduled sends',9),
 ('sms_2000','SMS Scale 2000','sms','2000',600.00,0,'2,000 SMS credits\nGHS 0.30 per SMS — save 40%\nAPI automation\nDedicated sender ID*',10);
 ALTER TABLE payment_invoices MODIFY purpose ENUM('new','renewal','upgrade','downgrade','addon','premium_claim','premium_renewal','widget','sponsored','sms_credits') NOT NULL DEFAULT 'renewal';
+-- TWO-FACTOR AUTHENTICATION (2FA)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_two_factor (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_type VARCHAR(32) NOT NULL,
+    user_id INT NOT NULL,
+    is_enabled TINYINT(1) NOT NULL DEFAULT 0,
+    method VARCHAR(16) NOT NULL DEFAULT 'totp',
+    secret VARCHAR(64) NULL,
+    backup_codes TEXT NULL,
+    email_otp_hash VARCHAR(255) NULL,
+    email_otp_expires_at DATETIME NULL,
+    last_used_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_user_type_id (user_type, user_id),
+    INDEX idx_user_lookup (user_type, user_id, is_enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

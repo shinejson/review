@@ -12,6 +12,7 @@ require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/logging_helpers.php';
 require_once dirname(__DIR__) . '/includes/login_attempts.php';
+require_once dirname(__DIR__) . '/includes/two_factor.php';
 requireLogin();
 ensureTeamSchema($conn);
 
@@ -419,6 +420,7 @@ $is_at_seat_limit = ($seat_limit < 999 && count($team_members) >= $seat_limit);
                 <th style="padding:8px 10px;">Status</th>
                 <th style="padding:8px 10px;">Last login</th>
                 <th style="padding:8px 10px;">Lock Status</th>
+                <th style="padding:8px 10px;">2FA</th>
                 <th style="padding:8px 10px;text-align:right;">Actions</th>
             </tr>
         </thead>
@@ -467,6 +469,16 @@ $is_at_seat_limit = ($seat_limit < 999 && count($team_members) >= $seat_limit);
                     </span>
                     <?php else: ?>
                     <span style="font-size:11px;color:#888;">—</span>
+                    <?php endif; ?>
+                </td>
+                <?php $tm_tfa = tfa_get_status($conn, 'team_member', (int)$tm_row['id']); ?>
+                <td style="padding:10px;">
+                    <?php if ($tm_tfa['is_enabled']): ?>
+                        <span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;background:rgba(16,185,129,0.14);color:#047857;">
+                            ● <?php echo $tm_tfa['method'] === 'email' ? 'Email' : 'App'; ?>
+                        </span>
+                    <?php else: ?>
+                        <span style="font-size:11px;color:#94a3b8;">○ Off</span>
                     <?php endif; ?>
                 </td>
                 <td style="padding:10px;text-align:right;white-space:nowrap;">

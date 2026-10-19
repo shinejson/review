@@ -313,7 +313,13 @@ Notes:
    - Limit login attempts
    - Add CAPTCHA to public forms
 
-8. **Regular Backups**
+8. **Two-Factor Authentication (2FA)**
+   - The platform includes built-in RFC 6238 TOTP (Google Authenticator, Microsoft Authenticator, 1Password) and Email OTP verification.
+   - Enforce or encourage 2FA for all Workspace Owners, Team Members, and Super Admins via their respective Security / Account Settings tabs.
+   - 2FA includes 8 single-use emergency recovery backup codes with bcrypt protection.
+   - The REST API (`/api/v1/auth/login.php` & `/api/v1/auth/verify_2fa.php`) supports mobile & programmatic 2FA verification using temporary JWT session tokens.
+
+9. **Regular Backups**
    - Automate database backups
    - Backup uploaded files and configuration
 

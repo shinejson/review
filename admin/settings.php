@@ -3,6 +3,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/logging_helpers.php';
+require_once dirname(__DIR__) . '/includes/two_factor.php';
 
 requireLogin();
 requireTeamAccess('settings');
@@ -11,8 +12,9 @@ $tenant_id = getTenantId();
 $is_tenant = isTenant();
 $is_admin  = isAdmin();
 
-$success = '';
-$error   = '';
+$success = $_SESSION['success'] ?? '';
+$error   = $_SESSION['error'] ?? '';
+unset($_SESSION['success'], $_SESSION['error']);
 
 // Handle Profile Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_profile') {
@@ -238,6 +240,150 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         } else {
             $success = "No other session is live — this is the only one.";
         }
+    }
+}
+
+// ============================================================
+// Two-Factor Authentication (2FA) POST Actions
+// ============================================================
+$tfa_user_type  = !empty($_SESSION['team_member_id']) ? 'team_member' : ($is_tenant ? 'tenant' : 'admin');
+$tfa_user_id    = !empty($_SESSION['team_member_id']) ? (int)$_SESSION['team_member_id'] : ($is_tenant ? (int)$tenant_id : (int)($_SESSION['admin_id'] ?? 0));
+$tfa_user_email = $_SESSION['admin_email'] ?? ($_SESSION['tenant_email'] ?? '');
+$tfa_user_label = $_SESSION['admin_username'] ?? ($_SESSION['tenant_username'] ?? 'User');
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && strpos($_POST['action'], 'tfa_') === 0) {
+    if (!sa_csrf_ok()) {
+        $_SESSION['error'] = "Your session expired. Please refresh the page and try again.";
+        header('Location: settings.php?tab=security');
+        exit;
+    }
+
+    $tfa_action = $_POST['action'];
+
+    // 1. Confirm and Enable TOTP Authenticator App
+    if ($tfa_action === 'tfa_enable_totp') {
+        $code = trim($_POST['code'] ?? '');
+        $secret = trim($_POST['secret'] ?? ($_SESSION['tfa_setup_secret'] ?? ''));
+
+        if ($code === '' || $secret === '') {
+            $_SESSION['error'] = "Verification code or setup secret missing. Please scan the QR code and enter the 6-digit code.";
+        } elseif (!tfa_verify_totp($secret, $code)) {
+            $_SESSION['error'] = "Invalid verification code. Please make sure your authenticator app time is synced and try again.";
+        } else {
+            $backup = tfa_generate_backup_codes(8);
+            if (tfa_enable($conn, $tfa_user_type, $tfa_user_id, 'totp', $secret, $backup['hashed'])) {
+                unset($_SESSION['tfa_setup_secret']);
+                $_SESSION['tfa_just_enabled_backup_codes'] = $backup['plain'];
+                $_SESSION['success'] = "Two-Factor Authentication (Authenticator App) successfully enabled! Please copy and store your backup recovery codes.";
+                admin_log_activity($conn, '2fa_enabled', 'Enabled 2FA with Authenticator App');
+            } else {
+                $_SESSION['error'] = "Failed to activate 2FA in the database. Please try again.";
+            }
+        }
+        header('Location: settings.php?tab=security');
+        exit;
+    }
+
+    // 2. Request Email OTP setup code
+    if ($tfa_action === 'tfa_send_email_code') {
+        $targetEmail = trim($_POST['email'] ?? $tfa_user_email);
+        if (empty($targetEmail) && $is_tenant && $tenant_id) {
+            $tStmt = $conn->prepare("SELECT email FROM tenants WHERE id = ? LIMIT 1");
+            if ($tStmt) {
+                $tStmt->bind_param("i", $tenant_id);
+                $tStmt->execute();
+                $tRow = $tStmt->get_result()->fetch_assoc();
+                if ($tRow) $targetEmail = $tRow['email'] ?? '';
+                $tStmt->close();
+            }
+        }
+        if (empty($targetEmail) || !filter_var($targetEmail, FILTER_VALIDATE_EMAIL)) {
+            $_SESSION['error'] = "No valid email address configured for this account. Please update your profile email first.";
+        } else {
+            $sendRes = tfa_send_email_otp($conn, $tfa_user_type, $tfa_user_id, $targetEmail, $tfa_user_label);
+            if (!empty($sendRes['success'])) {
+                $_SESSION['tfa_email_setup_pending'] = true;
+                $_SESSION['success'] = "A 6-digit confirmation code was sent to " . tfa_mask_email($targetEmail) . ". Enter it below to enable Email 2FA.";
+            } else {
+                $_SESSION['error'] = "Could not deliver email: " . ($sendRes['message'] ?? 'Please check platform SMTP settings.');
+            }
+        }
+        header('Location: settings.php?tab=security&setup=email');
+        exit;
+    }
+
+    // 3. Confirm and Enable Email OTP
+    if ($tfa_action === 'tfa_confirm_email_otp') {
+        $code = trim($_POST['code'] ?? '');
+        if ($code === '') {
+            $_SESSION['error'] = "Please enter the 6-digit verification code sent to your email.";
+        } elseif (!tfa_verify_email_otp($conn, $tfa_user_type, $tfa_user_id, $code)) {
+            $_SESSION['error'] = "Invalid or expired verification code. Please check your email or request a new code.";
+        } else {
+            $backup = tfa_generate_backup_codes(8);
+            if (tfa_enable($conn, $tfa_user_type, $tfa_user_id, 'email', '', $backup['hashed'])) {
+                unset($_SESSION['tfa_email_setup_pending']);
+                $_SESSION['tfa_just_enabled_backup_codes'] = $backup['plain'];
+                $_SESSION['success'] = "Two-Factor Authentication (Email OTP) successfully enabled! Please copy and store your backup recovery codes.";
+                admin_log_activity($conn, '2fa_enabled', 'Enabled 2FA with Email OTP');
+            } else {
+                $_SESSION['error'] = "Failed to activate Email 2FA in the database. Please try again.";
+            }
+        }
+        header('Location: settings.php?tab=security');
+        exit;
+    }
+
+    // 4. Disable 2FA
+    if ($tfa_action === 'tfa_disable') {
+        $currentPassword = (string)($_POST['current_password'] ?? '');
+        if (!tfa_verify_user_password($conn, $tfa_user_type, $tfa_user_id, $currentPassword)) {
+            $_SESSION['error'] = "Incorrect password. Two-factor authentication was not disabled.";
+        } else {
+            if (tfa_disable($conn, $tfa_user_type, $tfa_user_id)) {
+                unset($_SESSION['tfa_setup_secret'], $_SESSION['tfa_email_setup_pending'], $_SESSION['tfa_just_enabled_backup_codes']);
+                $_SESSION['success'] = "Two-Factor Authentication has been disabled for your account.";
+                admin_log_activity($conn, '2fa_disabled', 'Disabled Two-Factor Authentication');
+            } else {
+                $_SESSION['error'] = "Failed to disable 2FA. Please try again.";
+            }
+        }
+        header('Location: settings.php?tab=security');
+        exit;
+    }
+
+    // 5. Regenerate Backup Recovery Codes
+    if ($tfa_action === 'tfa_regenerate_backup_codes') {
+        $currentPassword = (string)($_POST['current_password'] ?? '');
+        if (!tfa_verify_user_password($conn, $tfa_user_type, $tfa_user_id, $currentPassword)) {
+            $_SESSION['error'] = "Incorrect password. Backup codes were not regenerated.";
+        } else {
+            $newCodes = tfa_regenerate_backup_codes($conn, $tfa_user_type, $tfa_user_id);
+            if ($newCodes !== false) {
+                $_SESSION['tfa_just_enabled_backup_codes'] = $newCodes;
+                $_SESSION['success'] = "Fresh emergency recovery codes generated! Your previous recovery codes are now void.";
+                admin_log_activity($conn, '2fa_backup_regenerated', 'Regenerated emergency backup recovery codes');
+            } else {
+                $_SESSION['error'] = "Failed to regenerate backup codes.";
+            }
+        }
+        header('Location: settings.php?tab=security');
+        exit;
+    }
+
+    // 6. Switch Active Method (between 'totp' and 'email')
+    if ($tfa_action === 'tfa_switch_method') {
+        $currentPassword = (string)($_POST['current_password'] ?? '');
+        $newMethod = ($_POST['new_method'] ?? 'totp') === 'email' ? 'email' : 'totp';
+        if (!tfa_verify_user_password($conn, $tfa_user_type, $tfa_user_id, $currentPassword)) {
+            $_SESSION['error'] = "Incorrect password. Method was not switched.";
+        } else {
+            tfa_switch_method($conn, $tfa_user_type, $tfa_user_id, $newMethod);
+            $_SESSION['success'] = "Primary 2FA method switched to " . ($newMethod === 'email' ? 'Email OTP' : 'Authenticator App') . ".";
+            admin_log_activity($conn, '2fa_method_switched', 'Switched 2FA method to ' . $newMethod);
+        }
+        header('Location: settings.php?tab=security');
+        exit;
     }
 }
 
@@ -976,6 +1122,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
             </div>
         </div>
     </div>
+    <?php include dirname(__DIR__) . '/includes/two_factor_admin_component.php'; ?>
 </div>
 
 <!-- ============================================================

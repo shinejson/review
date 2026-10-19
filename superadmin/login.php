@@ -3,6 +3,7 @@ require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/sa_helpers.php';
+require_once dirname(__DIR__) . '/includes/two_factor.php';
 
 if (isSuperAdminLoggedIn()) {
     redirect('index.php');
@@ -33,11 +34,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
 
         if ($admin && password_verify($password, $admin['password'])) {
-            $_SESSION['super_admin_id']       = (int) $admin['id'];
-            $_SESSION['super_admin_username'] = $admin['username'];
-            $_SESSION['super_admin_email']    = $admin['email'];
-            auth_login_session($conn, 'superadmin', (int) $admin['id'], $admin['username'], 'super_admin');
-            redirect('index.php');
+            $adminId = (int) $admin['id'];
+            $sessionData = [
+                'super_admin_id'       => $adminId,
+                'super_admin_username' => $admin['username'],
+                'super_admin_email'    => $admin['email'],
+                'user_type'            => 'superadmin',
+                'auth_user_id'         => $adminId,
+                'auth_label'           => $admin['username'],
+                'auth_user_kind'       => 'super_admin',
+            ];
+
+            if (tfa_is_enabled($conn, 'superadmin', $adminId)) {
+                $tfaRow = tfa_get_user_2fa($conn, 'superadmin', $adminId);
+                $method = $tfaRow['method'] ?? 'totp';
+                tfa_start_pending_session('superadmin', $adminId, $sessionData, $method, $admin['email'] ?? '', $admin['username'], 'superadmin');
+                if ($method === 'email' && !empty($admin['email'])) {
+                    tfa_send_email_otp($conn, 'superadmin', $adminId, $admin['email'], $admin['username']);
+                }
+                redirect('2fa-verify.php');
+            } else {
+                foreach ($sessionData as $k => $v) {
+                    $_SESSION[$k] = $v;
+                }
+                auth_login_session($conn, 'superadmin', $adminId, $admin['username'], 'super_admin');
+                redirect('index.php');
+            }
         }
         $error = 'Invalid username or password. Please try again.';
     }
