@@ -93,6 +93,7 @@ if ($plan_result) {
 // canonical / Open Graph / Twitter / JSON-LD block for every public page)
 // ---------------------------------------------------------------------------
 $seo_title = 'Optibiz — All-in-One Review, Trust & Reputation Growth Platform';
+$seo_title_with_icon = '<i class="fa-solid fa-star-half-stroke"></i> Optibiz — All-in-One Review, Trust & Reputation Growth Platform';
 $seo_desc  = 'Collect more customer reviews with QR counter stands, WhatsApp requests and Google review boosting. Optibiz turns 5-star feedback into social proof.';
 
 // Cheapest active plan drives the "offers" price in the SoftwareApplication
@@ -275,22 +276,37 @@ $seo_faq_node = array(
         .nav-pill {
             display: flex;
             align-items: center;
-            gap: 26px;
+            gap: 22px;
         }
         .nav-pill a {
             color: #cbd5e1;
             text-decoration: none;
             font-size: 14px;
             font-weight: 500;
-            transition: color 0.25s ease;
+            transition: all 0.25s ease;
             padding: 6px 0;
             position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .nav-pill a i {
+            font-size: 13.5px;
+            color: #94a3b8;
+            transition: color 0.25s ease, transform 0.2s ease;
         }
         .nav-pill a:hover {
             color: var(--accent-lime);
         }
+        .nav-pill a:hover i {
+            color: var(--accent-lime);
+            transform: translateY(-1px);
+        }
         .nav-pill a.active {
             color: #ffffff;
+        }
+        .nav-pill a.active i {
+            color: var(--accent-lime);
         }
         .nav-pill a.active::after {
             content: '';
@@ -853,6 +869,177 @@ $seo_faq_node = array(
         }
         .routing-pill.google { color: #16a34a; }
         .routing-pill.private { color: #ea580c; }
+
+        /* Hero Carousel / Slider */
+        .hero-slider-container {
+            position: relative;
+            width: 100%;
+            max-width: 520px;
+            margin: 0 auto;
+        }
+        .hero-slider-track-wrap {
+            position: relative;
+            width: 100%;
+            border-radius: 22px;
+            overflow: hidden;
+            box-shadow: 0 25px 60px -10px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: #ffffff;
+        }
+        .hero-slide {
+            display: none;
+            width: 100%;
+            animation: heroFadeSlide 0.45s ease-in-out forwards;
+        }
+        .hero-slide.active {
+            display: block;
+        }
+        @keyframes heroFadeSlide {
+            from {
+                opacity: 0;
+                transform: scale(0.985);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        .hero-slide .hero-demo-card {
+            box-shadow: none;
+            border: none;
+            border-radius: 0;
+        }
+        .hero-slide-img-card {
+            position: relative;
+            background: #0f172a;
+            overflow: hidden;
+            height: 380px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .hero-slide-img-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: transform 0.6s ease;
+        }
+        .hero-slide-img-card:hover img {
+            transform: scale(1.04);
+        }
+        .hero-slide-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.15) 0%, rgba(15, 23, 42, 0.85) 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding: 24px 26px;
+            color: #ffffff;
+            pointer-events: none;
+        }
+        .hero-slide-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(194, 245, 66, 0.2);
+            color: var(--accent-lime);
+            border: 1px solid rgba(194, 245, 66, 0.4);
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            width: fit-content;
+            margin-bottom: 10px;
+            backdrop-filter: blur(4px);
+        }
+        .hero-slide-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #ffffff;
+            margin: 0 0 6px;
+            line-height: 1.3;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+        .hero-slide-desc {
+            font-size: 13px;
+            color: #e2e8f0;
+            margin: 0;
+            line-height: 1.45;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+        }
+        .hero-slide-badge {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: rgba(15, 36, 56, 0.88);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(6px);
+            color: #ffffff;
+            padding: 8px 14px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+            pointer-events: none;
+        }
+        .hero-slide-badge i {
+            color: var(--star-gold);
+        }
+
+        /* Slider Controls (Arrows & Dots) */
+        .hero-slider-nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 16px;
+            padding: 0 4px;
+        }
+        .slider-arrow-btn {
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            color: #ffffff;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+        .slider-arrow-btn:hover {
+            background: var(--accent-lime);
+            color: var(--primary-dark);
+            border-color: var(--accent-lime);
+            transform: scale(1.08);
+        }
+        .hero-slider-dots {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .hero-slider-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.3);
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+        .hero-slider-dot.active {
+            width: 26px;
+            background: var(--accent-lime);
+        }
 
         /* Trust Stats Bar */
         .trust-bar {
@@ -1725,19 +1912,18 @@ $seo_faq_node = array(
     <div class="top-bar-wrap" id="top">
         <header class="navbar">
             <a href="index.php" class="logo">
-                <span class="logo-icon"><i class="fa-solid fa-shapes"></i></span>
+                <span class="logo-icon"><i class="fa-solid fa-star-half-stroke"></i></span>
                 Optibiz
             </a>
             <nav class="nav-pill">
-                <a href="index.php" class="active">Home</a>
-                <a href="features.php">Features</a>
-                <a href="pricing.php">Pricing</a>
-                <a href="companies.php">Directory</a>
-                <a href="seo-checker.php">SEO Checker</a>
-                <a href="#how-it-works">How It Works</a>
+                <a href="index.php" class="active"><i class="fa-solid fa-house"></i> <span>Home</span></a>
+                <a href="features.php"><i class="fa-solid fa-layer-group"></i> <span>Features</span></a>
+                <a href="pricing.php"><i class="fa-solid fa-tags"></i> <span>Pricing</span></a>
+                <a href="companies.php"><i class="fa-solid fa-building"></i> <span>Directory</span></a>
+                <a href="seo-checker.php"><i class="fa-solid fa-magnifying-glass-chart"></i> <span>SEO Checker</span></a>
+                <a href="#how-it-works"><i class="fa-solid fa-circle-question"></i> <span>How It Works</span></a>
             </nav>
             <div class="nav-actions">
-                <a href="<?php echo admin_url('login.php'); ?>" class="btn-signin">Sign In</a>
                 <button type="button" class="btn-quote" onclick="openModal()">
                     <span>Get Started</span> <i class="fa-solid fa-arrow-right"></i>
                 </button>
@@ -1782,10 +1968,6 @@ $seo_faq_node = array(
                 <div class="mobile-nav-divider"></div>
 
                 <div class="mobile-nav-buttons">
-                    <a href="<?php echo admin_url('login.php'); ?>" class="mobile-btn-signin">
-                        <i class="fa-solid fa-arrow-right-to-bracket"></i>
-                        <span>Sign In to Portal</span>
-                    </a>
                     <button type="button" class="mobile-btn-quote" onclick="closeMobileNav(); openModal();">
                         <i class="fa-solid fa-rocket"></i>
                         <span>Get Started Free</span>
@@ -1809,7 +1991,7 @@ $seo_faq_node = array(
         <div class="hero-container">
             <div class="hero-left">
                 <div class="badge-tag">
-                    <i class="fa-solid fa-star"></i> Omnichannel Review &amp; Reputation Growth
+                    <i class="fa-solid fa-shield-check"></i> Omnichannel Review &amp; Reputation Growth
                 </div>
                 <h1 class="hero-title" id="hero-title">Turn Customer Reviews Into Your <span>#1 Growth Engine</span></h1>
                 <p class="hero-desc">
@@ -1850,47 +2032,112 @@ $seo_faq_node = array(
                 </div>
             </div>
 
-            <!-- Hero Interactive Live Demo Card -->
+            <!-- Hero Visual Carousel Slider -->
             <div class="hero-graphic-wrap">
-                <div class="hero-demo-card">
-                    <div class="demo-badge-top">
-                        <i class="fa-solid fa-bolt"></i> Live Interactive Preview
-                    </div>
-                    <div class="demo-biz-header">
-                        <div class="demo-biz-avatar"><?php echo htmlspecialchars($hero_demo_avatar); ?></div>
-                        <div class="demo-biz-info">
-                            <!-- Not a heading: this is a mock of the customer-facing
-                                 rating widget, so it must not inject an h3 into the
-                                 document outline between the h1 and the first h2. -->
-                            <p class="demo-biz-name"><?php echo htmlspecialchars($hero_demo_name); ?></p>
-                            <p>Powered by Optibiz Counter QR Stand</p>
+                <div class="hero-slider-container" id="heroSlider" aria-roledescription="carousel" aria-label="Optibiz Platform Highlights">
+                    <div class="hero-slider-track-wrap">
+                        <!-- Slide 1: Interactive Rating Demo Card -->
+                        <div class="hero-slide active" data-slide-index="0" role="group" aria-roledescription="slide" aria-label="1 of 4: Interactive Rating Demo">
+                            <div class="hero-demo-card">
+                                <div class="demo-badge-top">
+                                    <i class="fa-solid fa-bolt"></i> Live Interactive Preview
+                                </div>
+                                <div class="demo-biz-header">
+                                    <div class="demo-biz-avatar"><?php echo htmlspecialchars($hero_demo_avatar); ?></div>
+                                    <div class="demo-biz-info">
+                                        <p class="demo-biz-name"><?php echo htmlspecialchars($hero_demo_name); ?></p>
+                                        <p>Powered by Optibiz Counter QR Stand</p>
+                                    </div>
+                                </div>
+
+                                <div class="demo-question">How was your experience today?</div>
+
+                                <div class="interactive-stars" id="demoStars">
+                                    <?php for ($i = 1; $i <= 5; $i++): ?>
+                                    <button type="button" class="star-btn<?php echo $hero_demo_rating === $i ? ' active' : ''; ?>" data-score="<?php echo $i; ?>" title="<?php echo $i; ?> Star<?php echo $i > 1 ? 's' : ''; ?>"><i class="fa-solid fa-star"></i></button>
+                                    <?php endfor; ?>
+                                </div>
+
+                                <div class="demo-feedback-box" id="demoFeedback">
+                                    <?php if ($hero_demo_rating >= 4): ?>
+                                    <div class="routing-pill google">
+                                        <i class="fa-brands fa-google"></i> Google Review Booster Triggered!
+                                    </div>
+                                    <p style="color:#0f172a;font-size:12.5px;font-weight:600">
+                                        ★ <?php echo $hero_demo_rating; ?>-Star score detected: Customer is auto-redirected to Google Reviews &amp; an Instagram Social Proof Card is generated!
+                                    </p>
+                                    <?php else: ?>
+                                    <div class="routing-pill private">
+                                        <i class="fa-solid fa-shield-halved"></i> Private Feedback Shield Activated
+                                    </div>
+                                    <p style="color:#c2410c;font-size:12.5px;font-weight:600">
+                                        ⚠ <?php echo $hero_demo_rating; ?>-Star score caught: Routed privately to the manager before reaching Google or social media!
+                                    </p>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Slide 2: Real-Time Analytics & Growth Chart -->
+                        <div class="hero-slide" data-slide-index="1" role="group" aria-roledescription="slide" aria-label="2 of 4: Analytics and Performance Chart">
+                            <div class="hero-slide-img-card">
+                                <img src="assets/images/service_planning.jpg" alt="Optibiz Review Analytics and Performance Charts" width="520" height="380" loading="eager" decoding="async">
+                                <div class="hero-slide-badge">
+                                    <i class="fa-solid fa-chart-line"></i> +38% Growth
+                                </div>
+                                <div class="hero-slide-overlay">
+                                    <span class="hero-slide-tag"><i class="fa-solid fa-arrow-trend-up"></i> Live Analytics</span>
+                                    <h3 class="hero-slide-title">Real-Time Reputation Analytics</h3>
+                                    <p class="hero-slide-desc">Track customer satisfaction scores, review velocity, and branch performance in one dashboard.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Slide 3: Lady Taking Review & Customer Feedback -->
+                        <div class="hero-slide" data-slide-index="2" role="group" aria-roledescription="slide" aria-label="3 of 4: In-Person Customer Review">
+                            <div class="hero-slide-img-card">
+                                <img src="assets/images/about_consultants.jpg" alt="Client taking in-person customer review feedback" width="520" height="380" loading="lazy" decoding="async">
+                                <div class="hero-slide-badge">
+                                    <i class="fa-solid fa-star"></i> 5.0 Verified
+                                </div>
+                                <div class="hero-slide-overlay">
+                                    <span class="hero-slide-tag"><i class="fa-solid fa-comments"></i> In-Person Feedback</span>
+                                    <h3 class="hero-slide-title">Customer Review Interactions</h3>
+                                    <p class="hero-slide-desc">Capture genuine customer impressions on the spot before customers leave your premises.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Slide 4: Mobile App & QR Scanning -->
+                        <div class="hero-slide" data-slide-index="3" role="group" aria-roledescription="slide" aria-label="4 of 4: Mobile App and QR Scanning">
+                            <div class="hero-slide-img-card">
+                                <img src="assets/images/hero_phones.jpg" alt="Optibiz Mobile Rating and Portfolio App" width="520" height="380" loading="lazy" decoding="async">
+                                <div class="hero-slide-badge">
+                                    <i class="fa-solid fa-mobile-screen"></i> Instant Tap &amp; Scan
+                                </div>
+                                <div class="hero-slide-overlay">
+                                    <span class="hero-slide-tag"><i class="fa-solid fa-qrcode"></i> Seamless Experience</span>
+                                    <h3 class="hero-slide-title">Mobile-First Customer Journey</h3>
+                                    <p class="hero-slide-desc">Customers rate via QR codes or WhatsApp in seconds without needing to install any app.</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="demo-question">How was your experience today?</div>
-
-                    <div class="interactive-stars" id="demoStars">
-                        <?php for ($i = 1; $i <= 5; $i++): ?>
-                        <button type="button" class="star-btn<?php echo $hero_demo_rating === $i ? ' active' : ''; ?>" data-score="<?php echo $i; ?>" title="<?php echo $i; ?> Star<?php echo $i > 1 ? 's' : ''; ?>"><i class="fa-solid fa-star"></i></button>
-                        <?php endfor; ?>
-                    </div>
-
-                    <div class="demo-feedback-box" id="demoFeedback">
-                        <?php if ($hero_demo_rating >= 4): ?>
-                        <div class="routing-pill google">
-                            <i class="fa-brands fa-google"></i> Google Review Booster Triggered!
+                    <!-- Slider Controls: Prev / Dots / Next -->
+                    <div class="hero-slider-nav">
+                        <button type="button" class="slider-arrow-btn" id="heroSliderPrev" aria-label="Previous slide">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <div class="hero-slider-dots" id="heroSliderDots">
+                            <button type="button" class="hero-slider-dot active" data-slide-to="0" aria-label="Go to slide 1"></button>
+                            <button type="button" class="hero-slider-dot" data-slide-to="1" aria-label="Go to slide 2"></button>
+                            <button type="button" class="hero-slider-dot" data-slide-to="2" aria-label="Go to slide 3"></button>
+                            <button type="button" class="hero-slider-dot" data-slide-to="3" aria-label="Go to slide 4"></button>
                         </div>
-                        <p style="color:#0f172a;font-size:12.5px;font-weight:600">
-                            ★ <?php echo $hero_demo_rating; ?>-Star score detected: Customer is auto-redirected to Google Reviews &amp; an Instagram Social Proof Card is generated!
-                        </p>
-                        <?php else: ?>
-                        <div class="routing-pill private">
-                            <i class="fa-solid fa-shield-halved"></i> Private Feedback Shield Activated
-                        </div>
-                        <p style="color:#c2410c;font-size:12.5px;font-weight:600">
-                            ⚠ <?php echo $hero_demo_rating; ?>-Star score caught: Routed privately to the manager before reaching Google or social media!
-                        </p>
-                        <?php endif; ?>
+                        <button type="button" class="slider-arrow-btn" id="heroSliderNext" aria-label="Next slide">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -2312,7 +2559,7 @@ $seo_faq_node = array(
         <div class="footer-grid-container">
             <div class="footer-col-brand">
                 <a href="index.php" class="logo">
-                    <span class="logo-icon"><i class="fa-solid fa-shapes"></i></span>
+                    <span class="logo-icon"><i class="fa-solid fa-star-half-stroke"></i></span>
                     Optibiz
                 </a>
                 <p class="footer-brand-desc">
@@ -2387,7 +2634,6 @@ $seo_faq_node = array(
             <div style="display:flex;gap:20px">
                 <a href="pricing.php" style="color:#94a3b8;text-decoration:none">Pricing</a>
                 <a href="features.php" style="color:#94a3b8;text-decoration:none">Features</a>
-                <a href="<?php echo admin_url('login.php'); ?>" style="color:#94a3b8;text-decoration:none">Sign In</a>
             </div>
         </div>
     </footer>
@@ -2563,11 +2809,141 @@ $seo_faq_node = array(
                 </div>
                 <button type="button" class="btn-lime" id="quoteDoneBtn">Done</button>
             </div>
+
+            <!-- Terms & Conditions Acceptance View -->
+            <div id="quoteTermsView" hidden>
+                <div style="text-align:center;margin-bottom:28px;">
+                    <div style="width:64px;height:64px;background:linear-gradient(135deg, #c2f542, #a8e030);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 8px 24px rgba(194,245,66,0.3);">
+                        <i class="fa-solid fa-file-contract" style="font-size:28px;color:#0f172a;"></i>
+                    </div>
+                    <h2 style="font-size:24px;font-weight:800;color:var(--primary-dark);margin-bottom:8px;">One Last Step</h2>
+                    <p style="font-size:14px;color:var(--text-muted);">Please review and accept our Terms & Conditions to complete your registration</p>
+                </div>
+
+                <div style="max-width:520px;margin:0 auto 28px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;max-height:320px;overflow-y:auto;text-align:left;">
+                    <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 14px;">Terms & Conditions</h3>
+                    <div style="font-size:13px;line-height:1.7;color:#475569;">
+                        <p style="margin:0 0 12px;"><strong>1. Account Creation:</strong> By creating an Optibiz account, you agree to provide accurate business information and maintain the security of your credentials.</p>
+                        <p style="margin:0 0 12px;"><strong>2. Service Usage:</strong> You agree to use our platform for legitimate business purposes only, collecting genuine customer reviews and feedback.</p>
+                        <p style="margin:0 0 12px;"><strong>3. Data Privacy:</strong> We collect and process customer data in accordance with our Privacy Policy. You are responsible for obtaining consent from your customers.</p>
+                        <p style="margin:0 0 12px;"><strong>4. Payment Terms:</strong> Subscription fees are billed according to your selected plan. Cancellation policies apply as outlined in your plan details.</p>
+                        <p style="margin:0 0 12px;"><strong>5. Content Ownership:</strong> Customer reviews and ratings belong to your business. We provide the platform and tools to collect and display them.</p>
+                        <p style="margin:0 0 12px;"><strong>6. Prohibited Activities:</strong> You may not manipulate reviews, impersonate others, or use the platform for fraudulent purposes.</p>
+                        <p style="margin:0 0 12px;"><strong>7. Service Changes:</strong> We reserve the right to modify features, pricing, or terms with reasonable notice to users.</p>
+                        <p style="margin:0 0 0;"><strong>8. Termination:</strong> We may suspend or terminate accounts that violate these terms or engage in harmful activities.</p>
+                    </div>
+                </div>
+
+                <div style="max-width:520px;margin:0 auto 24px;">
+                    <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:14px;background:#ffffff;border:2px solid #e2e8f0;border-radius:10px;transition:all 0.2s ease;" id="termsCheckboxLabel">
+                        <input type="checkbox" id="termsCheckbox" style="width:20px;height:20px;margin-top:2px;cursor:pointer;accent-color:#c2f542;">
+                        <span style="font-size:13.5px;line-height:1.6;color:#334155;">
+                            I have read and agree to the <strong>Terms & Conditions</strong> and <strong>Privacy Policy</strong> of Optibiz. I understand that an account setup link will be sent to my email.
+                        </span>
+                    </label>
+                </div>
+
+                <div style="display:flex;gap:12px;justify-content:center;">
+                    <button type="button" class="btn-back" id="termsBackBtn">
+                        <i class="fa-solid fa-arrow-left"></i> Back
+                    </button>
+                    <button type="button" class="btn-lime" id="termsAcceptBtn" disabled style="opacity:0.5;cursor:not-allowed;">
+                        Accept & Send Setup Link <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Scripts -->
     <script>
+    // Hero Visual Carousel Slider
+    (function () {
+        var sliderWrap = document.getElementById('heroSlider');
+        if (!sliderWrap) return;
+
+        var slides = sliderWrap.querySelectorAll('.hero-slide');
+        var dots = sliderWrap.querySelectorAll('.hero-slider-dot');
+        var prevBtn = document.getElementById('heroSliderPrev');
+        var nextBtn = document.getElementById('heroSliderNext');
+        var currentIndex = 0;
+        var totalSlides = slides.length;
+        var timer = null;
+        var slideInterval = 5000; // 5 seconds per slide
+
+        if (!totalSlides) return;
+
+        function goToSlide(index) {
+            if (index < 0) {
+                index = totalSlides - 1;
+            } else if (index >= totalSlides) {
+                index = 0;
+            }
+            currentIndex = index;
+
+            slides.forEach(function (slide, i) {
+                slide.classList.toggle('active', i === currentIndex);
+            });
+
+            dots.forEach(function (dot, i) {
+                dot.classList.toggle('active', i === currentIndex);
+            });
+        }
+
+        function nextSlide() {
+            goToSlide(currentIndex + 1);
+        }
+
+        function prevSlide() {
+            goToSlide(currentIndex - 1);
+        }
+
+        function startAutoplay() {
+            stopAutoplay();
+            timer = setInterval(nextSlide, slideInterval);
+        }
+
+        function stopAutoplay() {
+            if (timer) {
+                clearInterval(timer);
+                timer = null;
+            }
+        }
+
+        if (nextBtn) {
+            nextBtn.addEventListener('click', function () {
+                nextSlide();
+                startAutoplay();
+            });
+        }
+
+        if (prevBtn) {
+            prevBtn.addEventListener('click', function () {
+                prevSlide();
+                startAutoplay();
+            });
+        }
+
+        dots.forEach(function (dot) {
+            dot.addEventListener('click', function () {
+                var targetIdx = parseInt(dot.getAttribute('data-slide-to'), 10);
+                if (!isNaN(targetIdx)) {
+                    goToSlide(targetIdx);
+                    startAutoplay();
+                }
+            });
+        });
+
+        // Pause autoplay while hovering over slider or interacting with demo card
+        sliderWrap.addEventListener('mouseenter', stopAutoplay);
+        sliderWrap.addEventListener('mouseleave', startAutoplay);
+        sliderWrap.addEventListener('focusin', stopAutoplay);
+        sliderWrap.addEventListener('focusout', startAutoplay);
+
+        // Start autoplay on load
+        startAutoplay();
+    })();
+
     // Live Interactive Demo Stars
     (function () {
         var starButtons = document.querySelectorAll('#demoStars .star-btn');
@@ -2660,6 +3036,7 @@ $seo_faq_node = array(
         var closeBtn    = document.getElementById('quoteModalClose');
         var formWrap    = document.getElementById('quoteFormWrap');
         var successView = document.getElementById('quoteSuccess');
+        var termsView   = document.getElementById('quoteTermsView');
         var form        = document.getElementById('quoteForm');
         var sections    = form.querySelectorAll('.form-section');
         var stepWraps   = document.querySelectorAll('#quoteProgress .step-wrap');
@@ -2669,10 +3046,14 @@ $seo_faq_node = array(
         var submitBtn   = document.getElementById('quoteSubmitBtn');
         var cancelBtn   = document.getElementById('quoteCancelBtn');
         var alertBox    = document.getElementById('quoteAlert');
+        var termsCheckbox = document.getElementById('termsCheckbox');
+        var termsAcceptBtn = document.getElementById('termsAcceptBtn');
+        var termsBackBtn = document.getElementById('termsBackBtn');
 
         var TOTAL_STEPS = sections.length;
         var currentStep = 1;
         var submitting  = false;
+        var pendingFormData = null;
 
         function hideAlert() {
             alertBox.hidden = true;
@@ -2747,6 +3128,7 @@ $seo_faq_node = array(
             hideAlert();
             formWrap.hidden = false;
             successView.hidden = true;
+            termsView.hidden = true;
             modal.classList.add('active');
             document.body.style.overflow = 'hidden';
             var firstInput = form.querySelector('.form-section.active input, .form-section.active select');
@@ -2756,6 +3138,7 @@ $seo_faq_node = array(
         function closeModal() {
             modal.classList.remove('active');
             document.body.style.overflow = '';
+            pendingFormData = null;
         }
 
         closeBtn.addEventListener('click', closeModal);
@@ -2786,14 +3169,46 @@ $seo_faq_node = array(
             if (submitting) return;
             if (!validateStep(currentStep)) return;
 
+            // Store form data and show terms view instead of submitting
+            pendingFormData = new FormData(form);
+            formWrap.hidden = true;
+            termsView.hidden = false;
+            termsCheckbox.checked = false;
+            termsAcceptBtn.disabled = true;
+            termsAcceptBtn.style.opacity = '0.5';
+            termsAcceptBtn.style.cursor = 'not-allowed';
+        });
+
+        // Enable accept button when checkbox is checked
+        termsCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                termsAcceptBtn.disabled = false;
+                termsAcceptBtn.style.opacity = '1';
+                termsAcceptBtn.style.cursor = 'pointer';
+            } else {
+                termsAcceptBtn.disabled = true;
+                termsAcceptBtn.style.opacity = '0.5';
+                termsAcceptBtn.style.cursor = 'not-allowed';
+            }
+        });
+
+        // Go back from terms to form
+        termsBackBtn.addEventListener('click', function() {
+            termsView.hidden = true;
+            formWrap.hidden = false;
+        });
+
+        // Accept terms and submit form
+        termsAcceptBtn.addEventListener('click', function() {
+            if (!termsCheckbox.checked || submitting || !pendingFormData) return;
+
             submitting = true;
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = 'Creating Workspace <i class="fa-solid fa-circle-notch fa-spin"></i>';
-            hideAlert();
+            this.disabled = true;
+            this.innerHTML = 'Sending Setup Link <i class="fa-solid fa-circle-notch fa-spin"></i>';
 
             fetch(form.action, {
                 method: 'POST',
-                body: new FormData(form),
+                body: pendingFormData,
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             })
             .then(function (res) { return res.json(); })
@@ -2843,9 +3258,13 @@ $seo_faq_node = array(
                             tenantEmailNotice.style.display = 'none';
                         }
                     }
-                    formWrap.hidden = true;
+                    termsView.hidden = true;
                     successView.hidden = false;
                 } else {
+                    // Show error in terms view
+                    alert(data.message || 'Something went wrong. Please try again.');
+                    termsView.hidden = true;
+                    formWrap.hidden = false;
                     if (data.duplicate) {
                         showDuplicateAlert(data);
                     } else {
@@ -2854,12 +3273,14 @@ $seo_faq_node = array(
                 }
             })
             .catch(function () {
-                showAlert('Could not connect to the server. Please try again.');
+                alert('Could not connect to the server. Please try again.');
+                termsView.hidden = true;
+                formWrap.hidden = false;
             })
             .finally(function () {
                 submitting = false;
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = 'Submit <i class="fa-solid fa-paper-plane"></i>';
+                termsAcceptBtn.disabled = false;
+                termsAcceptBtn.innerHTML = 'Accept & Send Setup Link <i class="fa-solid fa-paper-plane"></i>';
             });
         });
 

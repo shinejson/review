@@ -237,8 +237,19 @@ if ($existing_audit) {
             font-size: 14px;
             font-weight: 500;
             transition: color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .nav-links a i {
+            font-size: 13.5px;
+            color: #94a3b8;
+            transition: color 0.2s;
         }
         .nav-links a:hover, .nav-links a.active {
+            color: var(--accent-lime);
+        }
+        .nav-links a:hover i, .nav-links a.active i {
             color: var(--accent-lime);
         }
         .nav-badge-free {
@@ -994,10 +1005,11 @@ if ($existing_audit) {
                 <span>Optibiz <span style="font-weight:400;font-size:14px;color:var(--accent-lime);">SEO</span></span>
             </a>
             <nav class="nav-links">
-                <a href="index.php">Home</a>
-                <a href="features.php">Features</a>
-                <a href="pricing.php">Pricing</a>
-                <a href="seo-checker.php" class="active">SEO Checker <span class="nav-badge-free">Free Scan</span></a>
+                <a href="index.php"><i class="fa-solid fa-house"></i> <span>Home</span></a>
+                <a href="features.php"><i class="fa-solid fa-layer-group"></i> <span>Features</span></a>
+                <a href="pricing.php"><i class="fa-solid fa-tags"></i> <span>Pricing</span></a>
+                <a href="companies.php"><i class="fa-solid fa-building"></i> <span>Directory</span></a>
+                <a href="seo-checker.php" class="active"><i class="fa-solid fa-magnifying-glass-chart"></i> <span>SEO Checker</span> <span class="nav-badge-free">Free Scan</span></a>
             </nav>
             <div class="nav-actions">
                 <?php if ($is_tenant): ?>

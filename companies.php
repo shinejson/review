@@ -228,22 +228,37 @@ function sponsored_for_category_group($cat_title, $cat_id, $map) {
         .nav-pill {
             display: flex;
             align-items: center;
-            gap: 26px;
+            gap: 22px;
         }
         .nav-pill a {
             color: #cbd5e1;
             text-decoration: none;
             font-size: 14px;
             font-weight: 500;
-            transition: color 0.25s ease;
+            transition: all 0.25s ease;
             padding: 6px 0;
             position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .nav-pill a i {
+            font-size: 13.5px;
+            color: #94a3b8;
+            transition: color 0.25s ease, transform 0.2s ease;
         }
         .nav-pill a:hover {
             color: var(--accent-lime);
         }
+        .nav-pill a:hover i {
+            color: var(--accent-lime);
+            transform: translateY(-1px);
+        }
         .nav-pill a.active {
             color: #ffffff;
+        }
+        .nav-pill a.active i {
+            color: var(--accent-lime);
         }
         .nav-pill a.active::after {
             content: '';
@@ -1260,11 +1275,12 @@ function sponsored_for_category_group($cat_title, $cat_id, $map) {
                 Optibiz
             </a>
             <nav class="nav-pill">
-                <a href="index.php">Home</a>
-                <a href="features.php">Features</a>
-                <a href="pricing.php">Pricing</a>
-                <a href="companies.php" class="active">Directory</a>
-                <a href="index.php#how-it-works">How It Works</a>
+                <a href="index.php"><i class="fa-solid fa-house"></i> <span>Home</span></a>
+                <a href="features.php"><i class="fa-solid fa-layer-group"></i> <span>Features</span></a>
+                <a href="pricing.php"><i class="fa-solid fa-tags"></i> <span>Pricing</span></a>
+                <a href="companies.php" class="active"><i class="fa-solid fa-building"></i> <span>Directory</span></a>
+                <a href="seo-checker.php"><i class="fa-solid fa-magnifying-glass-chart"></i> <span>SEO Checker</span></a>
+                <a href="index.php#how-it-works"><i class="fa-solid fa-circle-question"></i> <span>How It Works</span></a>
             </nav>
             <div class="nav-actions">
                 <a href="<?php echo admin_url('login.php'); ?>" class="btn-signin">Sign In</a>

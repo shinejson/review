@@ -27,14 +27,29 @@ if ($tenant_id) {
     $cp = $conn->prepare("SELECT * FROM customers WHERE tenant_id=? ORDER BY id ASC");
     $cp->bind_param("i", $tenant_id); $cp->execute(); $res=$cp->get_result(); while($r=$res->fetch_assoc()) $companies[]=$r; $cp->close();
 }
-$activeId = getActiveCompanyId($conn, $tenant_id);
-$active = null; foreach($companies as $c) if((int)$c['id']===(int)$activeId) $active=$c;
+$activeId = 0;
+if (isset($_GET['company_id'])) {
+    $activeId = (int)$_GET['company_id'];
+} elseif (isset($_POST['company_id'])) {
+    $activeId = (int)$_POST['company_id'];
+}
+if (!$activeId) {
+    $activeId = getActiveCompanyId($conn, $tenant_id);
+}
+$active = null; 
+foreach($companies as $c) {
+    if((int)$c['id']===(int)$activeId) {
+        $active=$c;
+        break;
+    }
+}
 if(!$active) $active=$companies[0] ?? null;
 $company_id = (int)($active['id'] ?? 0);
 
 // handle claim / premium purchase
 if (($_SERVER['REQUEST_METHOD']??'')==='POST') {
-    if (!sa_csrf_ok()) { $_SESSION['error']='Session expired.'; header('Location: premium_profiles.php'); exit; }
+    $redirectUrl = 'premium_profiles.php' . ($company_id ? '?company_id='.$company_id : '');
+    if (!sa_csrf_ok()) { $_SESSION['error']='Session expired.'; header('Location: ' . $redirectUrl); exit; }
     $action = $_POST['action'] ?? '';
     if ($action==='claim' && $company_id) {
         $method = sanitize($_POST['claim_method'] ?? 'email_domain');
@@ -48,7 +63,7 @@ if (($_SERVER['REQUEST_METHOD']??'')==='POST') {
         $stmt->bind_param("iissssss", $company_id, $tenant_id, $cname, $email, $phone, $method, $token, $code);
         $stmt->execute(); $stmt->close();
         $_SESSION['success']='Claim submitted! Verification code: '.$code.' — Our team will verify within 24h. You can upgrade to Premium while we verify.';
-        header('Location: premium_profiles.php'); exit;
+        header('Location: ' . $redirectUrl); exit;
     }
     if ($action==='buy_premium' && $company_id) {
         $tier = in_array($_POST['tier'] ?? '', ['essential','growth','authority'], true) ? $_POST['tier'] : 'essential';
@@ -76,7 +91,7 @@ if (($_SERVER['REQUEST_METHOD']??'')==='POST') {
             header('Location: payment_checkout.php?invoice='.$iid); exit;
         } else {
             $_SESSION['error']=$res['message'];
-            header('Location: premium_profiles.php'); exit;
+            header('Location: ' . $redirectUrl); exit;
         }
     }
     if ($action==='update_premium_assets' && $company_id) {
@@ -94,7 +109,7 @@ if (($_SERVER['REQUEST_METHOD']??'')==='POST') {
             $stmt->execute(); $stmt->close();
             $_SESSION['success']='Premium assets updated — visible on your public profile.';
         }
-        header('Location: premium_profiles.php'); exit;
+        header('Location: ' . $redirectUrl); exit;
     }
 }
 
@@ -134,13 +149,26 @@ include __DIR__.'/_shell.php';
 <?php if($flash_success): ?><div class="alert alert-success"><?php echo htmlspecialchars($flash_success); ?></div><?php endif; ?>
 <?php if($flash_error): ?><div class="alert alert-error"><?php echo htmlspecialchars($flash_error); ?></div><?php endif; ?>
 
-<!-- Status bar -->
-<div class="form-card" style="padding:18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-left:4px solid <?php echo $premiumTier ? '#10b981' : '#f59e0b'; ?>;">
-  <div style="display:flex;align-items:center;gap:14px;">
-    <div style="width:44px;height:44px;border-radius:10px;background:<?php echo $premiumTier ? '#ecfdf5' : '#fffbeb'; ?>;display:grid;place-items:center;font-size:22px;"><?php echo $premiumTier ? '👑' : '🏢'; ?></div>
+<!-- Status bar & Company Switcher -->
+<div class="form-card" style="padding:18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;border-left:4px solid <?php echo $premiumTier ? '#10b981' : '#f59e0b'; ?>;">
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <div style="width:44px;height:44px;border-radius:10px;background:<?php echo $premiumTier ? '#ecfdf5' : '#fffbeb'; ?>;display:grid;place-items:center;font-size:22px;flex-shrink:0;"><?php echo $premiumTier ? '👑' : '🏢'; ?></div>
     <div>
-      <strong style="font-size:15px;"><?php echo htmlspecialchars($active['company_name'] ?? 'No company'); ?></strong>
-      <div style="font-size:12px;color:#64748b;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <strong style="font-size:16px;"><?php echo htmlspecialchars($active['company_name'] ?? 'No company'); ?></strong>
+        <?php if (count($companies) > 1): ?>
+        <form method="GET" style="display:inline-flex;margin:0;">
+          <select name="company_id" onchange="this.form.submit()" style="padding:4px 10px;border-radius:6px;border:1px solid #cbd5e1;background:#f8fafc;font-size:12px;font-weight:600;color:#0f172a;cursor:pointer;">
+            <?php foreach ($companies as $comp): ?>
+            <option value="<?php echo (int)$comp['id']; ?>" <?php echo $company_id === (int)$comp['id'] ? 'selected' : ''; ?>>
+              Switch: <?php echo htmlspecialchars($comp['company_name']); ?><?php echo ((int)$comp['id'] === (int)$activeId) ? '' : ''; ?>
+            </option>
+            <?php endforeach; ?>
+          </select>
+        </form>
+        <?php endif; ?>
+      </div>
+      <div style="font-size:12px;color:#64748b;margin-top:4px;">
         <?php if($premiumTier): ?>
           <span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:2px 8px;border-radius:99px;font-weight:700;">★ <?php echo htmlspecialchars(ucfirst($premiumTier)); ?> Premium Active</span>
           · Expires <?php echo !empty($premiumRow['premium_expires_at']) ? date('M j, Y', strtotime($premiumRow['premium_expires_at'])) : '—'; ?>
@@ -154,8 +182,13 @@ include __DIR__.'/_shell.php';
     </div>
   </div>
   <div style="text-align:right;">
-    <div style="font-size:11px;color:#94a3b8;">Company ID #<?php echo (int)$company_id; ?></div>
+    <div style="font-size:11px;color:#94a3b8;">Profile ID #<?php echo (int)$company_id; ?></div>
     <div style="font-size:12px;font-weight:700;color:#0f172a;"><?php echo htmlspecialchars($active['category_id'] ? 'Categorized' : 'Uncategorized'); ?></div>
+    <?php if($company_id): ?>
+      <a href="<?php echo htmlspecialchars(getCompanyPublicRatingUrl($company_id, $active['company_name'] ?? '')); ?>" target="_blank" style="font-size:11.5px;color:#0284c7;font-weight:600;text-decoration:none;display:inline-block;margin-top:2px;">
+        View Public Page ↗
+      </a>
+    <?php endif; ?>
   </div>
 </div>
 
@@ -204,6 +237,7 @@ include __DIR__.'/_shell.php';
       <form method="POST" style="margin-top:12px;">
         <?php echo sa_csrf_field(); ?>
         <input type="hidden" name="action" value="claim">
+        <input type="hidden" name="company_id" value="<?php echo (int)$company_id; ?>">
         <label style="font-size:12.5px;font-weight:600;">Verification method</label>
         <select name="claim_method" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;margin:6px 0 10px;">
           <option value="email_domain">Business email domain match (fastest)</option>
@@ -239,6 +273,7 @@ include __DIR__.'/_shell.php';
       <form method="POST">
         <?php echo sa_csrf_field(); ?>
         <input type="hidden" name="action" value="buy_premium">
+        <input type="hidden" name="company_id" value="<?php echo (int)$company_id; ?>">
         <input type="hidden" name="tier" value="<?php echo $key; ?>">
         <div style="display:flex;gap:6px;margin-bottom:8px;">
           <label style="flex:1;display:flex;align-items:center;gap:6px;font-size:12px;border:1px solid #cbd5e1;border-radius:8px;padding:6px 10px;cursor:pointer;"><input type="radio" name="cycle" value="monthly" checked> Monthly</label>
@@ -259,6 +294,7 @@ include __DIR__.'/_shell.php';
   <form method="POST" style="margin-top:14px;">
     <?php echo sa_csrf_field(); ?>
     <input type="hidden" name="action" value="update_premium_assets">
+    <input type="hidden" name="company_id" value="<?php echo (int)$company_id; ?>">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
       <div style="grid-column:1/-1;">
         <label style="font-size:12.5px;font-weight:600;">Custom Hero Banner URL (image — 1200×300 recommended)</label>

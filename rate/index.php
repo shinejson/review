@@ -867,6 +867,7 @@ if ($total_ratings > 0) {
             box-shadow: 0 12px 28px rgba(37, 211, 102, 0.36);
         }
         .rt-whatsapp-btn svg { width: 19px; height: 19px; fill: currentColor; }
+        .rt-whatsapp-btn i { font-size: 19px; }
         .rt-whatsapp-note {
             font-size: 12px;
             color: #64748b;
@@ -893,6 +894,7 @@ if ($total_ratings > 0) {
             box-shadow: 0 10px 24px rgba(15, 23, 42, 0.26);
         }
         .rt-link-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+        .rt-link-btn i { font-size: 16px; }
         .rt-link-btn.rt-gstore-btn {
             background: linear-gradient(135deg, #4285F4, #34A853);
             box-shadow: 0 6px 18px rgba(66, 133, 244, 0.28);
@@ -2811,14 +2813,12 @@ if ($total_ratings > 0) {
                 ?>
                 <?php if ($company_website !== ''): ?>
                 <a class="rt-link-btn" href="<?php echo htmlspecialchars($company_website); ?>" target="_blank" rel="noopener noreferrer" title="Visit <?php echo htmlspecialchars($brand_name); ?> website">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>
-                    Visit Website
+                    <i class="fa-solid fa-globe"></i> Visit Website
                 </a>
                 <?php endif; ?>
                 <?php if ($company_gstore !== '' && !empty($public_page_settings['show_gstore'])): ?>
                 <a class="rt-link-btn rt-gstore-btn" href="<?php echo htmlspecialchars($company_gstore); ?>" target="_blank" rel="noopener noreferrer" title="<?php echo htmlspecialchars($brand_name); ?> on Google Store">
-                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 20.5V3.5c0-.6.34-1.1.84-1.35L13.7 12 3.84 21.85c-.5-.25-.84-.75-.84-1.35zm13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27zm3.35-4.31c.34.27.59.68.59 1.19s-.22.9-.57 1.18l-2.29 1.32-2.5-2.5 2.5-2.5 2.27 1.31zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/></svg>
-                    Google Store
+                    <i class="fa-brands fa-google"></i> Google Store
                 </a>
                 <?php endif; ?>
             </div>
@@ -2827,8 +2827,7 @@ if ($total_ratings > 0) {
             <div class="rt-header-wa-wrap">
                 <a class="rt-whatsapp-btn" href="<?php echo htmlspecialchars($whatsapp_url); ?>"
                    target="_blank" rel="noopener noreferrer">
-                    <svg viewBox="0 0 448 512" aria-hidden="true" focusable="false"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7 .9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/></svg>
-                    Chat on WhatsApp
+                    <i class="fa-brands fa-whatsapp"></i> Chat on WhatsApp
                 </a>
                 <span class="rt-whatsapp-note">Questions or orders? Message <?php echo htmlspecialchars($brand_name); ?> directly.</span>
             </div>
@@ -3764,7 +3763,6 @@ if ($total_ratings > 0) {
     <?php else: ?>
     <!-- Premium: competitor suggestions removed -->
     <div style="margin-top:18px; text-align:center; font-size:11px; color:#94a3b8;">Premium profile — competitor suggestions hidden. <a href="<?php echo htmlspecialchars(($app_web_root!==''?$app_web_root:'').'/companies.php'); ?>" style="color:#64748b; text-decoration:underline;">Browse directory anyway</a></div>
-    <?php endif; ?>
     <?php endif; ?>
 
     <!-- Company Info Footer (configured by admin in Company Profile) -->
