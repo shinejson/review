@@ -129,6 +129,7 @@ $activeNav = $activeNav ?? 'dashboard';
   $can_settings    = teamHasAccess('settings');
   $has_sys_grp     = $can_backups || $can_logs || $can_settings;
   $active_sys      = in_array($activeNav, ['settings', 'logs', 'backups'], true);
+  $active_monetize = in_array($activeNav, ['premium_profiles','widgets','sponsored','sms_campaigns'], true);
   $is_customizer   = ($activeNav === 'settings' && (($_GET['tab'] ?? '') === 'customization'));
   $is_gen_settings = ($activeNav === 'settings' && empty($_GET['tab']));
 
@@ -291,6 +292,22 @@ $activeNav = $activeNav ?? 'dashboard';
       <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><span class="nav-label">Platform Support</span><?php if ($support_unread > 0): ?><span class="admin-nav-count"><?php echo $support_unread > 99 ? '99+' : (int)$support_unread; ?></span><?php endif; ?>
     </a>
     <?php endif; ?>
+
+    <!-- Grow & Monetize -->
+    <div class="nav-group <?php echo $active_monetize ? 'is-open' : ''; ?>" data-nav-group="monetize">
+      <button type="button" class="nav-group-toggle <?php echo $active_monetize ? 'is-active-parent' : ''; ?>" aria-expanded="<?php echo $active_monetize ? 'true' : 'false'; ?>" title="Grow & Monetize">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/><circle cx="12" cy="12" r="10"/></svg></span>
+        <span class="nav-label">Grow &amp; Monetize</span>
+        <span class="nav-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </button>
+      <div class="nav-group-menu">
+        <div class="nav-group-flyout-title">Grow &amp; Monetize</div>
+        <a class="nav-sub-link <?php echo $activeNav === 'premium_profiles' ? 'active' : ''; ?>" href="premium_profiles.php" title="Premium Profiles"><span class="sub-dot"></span><span class="nav-label">Premium Profiles</span><span style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:#f59e0b;color:#fff;margin-left:auto;">NEW</span></a>
+        <a class="nav-sub-link <?php echo $activeNav === 'widgets' ? 'active' : ''; ?>" href="widgets.php" title="Review Widgets"><span class="sub-dot"></span><span class="nav-label">Review Widgets</span></a>
+        <a class="nav-sub-link <?php echo $activeNav === 'sponsored' ? 'active' : ''; ?>" href="sponsored.php" title="Sponsored Listings"><span class="sub-dot"></span><span class="nav-label">Sponsored Ads</span></a>
+        <a class="nav-sub-link <?php echo $activeNav === 'sms_campaigns' ? 'active' : ''; ?>" href="sms_campaigns.php" title="SMS Campaigns"><span class="sub-dot"></span><span class="nav-label">SMS Campaigns</span></a>
+      </div>
+    </div>
 
     <?php if ($has_sys_grp): ?>
     <!-- Subgroup: Settings & System -->

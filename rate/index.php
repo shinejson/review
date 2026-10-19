@@ -422,6 +422,49 @@ $map_embed_src        = !empty($company['map_embed_code']) ? extractMapEmbedSrc(
 $location_description = trim((string)($company['location_description'] ?? ''));
 $social_links         = function_exists('getCompanySocialLinks') ? getCompanySocialLinks($company) : [];
 
+// --- Monetization: Premium profile (B2B claim) ---
+$premium_tier = 'none'; $premium_status = 'inactive'; $premium_expires = null; $custom_banner_url = ''; $custom_cta_label=''; $custom_cta_url=''; $remove_competitor_ads=false; $verified_badge=false; $pinned_review_id=0; $premium_badge_label='';
+$is_premium_active = false;
+if (file_exists(dirname(__DIR__).'/includes/monetization.php')) { require_once dirname(__DIR__).'/includes/monetization.php'; if(function_exists('monetization_ensure_schema')) @monetization_ensure_schema($conn); }
+$premium_row = null;
+if ($conn) {
+    // fetch premium columns safely (may not exist on old installs)
+    $pc = $conn->query("SELECT is_claimed, premium_tier, premium_status, premium_expires_at, custom_banner_url, custom_cta_label, custom_cta_url, remove_competitor_ads, verified_badge, pinned_review_id, premium_badge_label FROM customers WHERE id=".(int)$company_id." LIMIT 1");
+    if ($pc && $pr = $pc->fetch_assoc()) {
+        $premium_row = $pr;
+        $premium_tier = strtolower(trim($pr['premium_tier'] ?? 'none'));
+        $premium_status = strtolower(trim($pr['premium_status'] ?? 'inactive'));
+        $premium_expires = $pr['premium_expires_at'] ?? null;
+        $custom_banner_url = trim($pr['custom_banner_url'] ?? '');
+        $custom_cta_label = trim($pr['custom_cta_label'] ?? '');
+        $custom_cta_url = trim($pr['custom_cta_url'] ?? '');
+        $remove_competitor_ads = !empty($pr['remove_competitor_ads']);
+        $verified_badge = !empty($pr['verified_badge']);
+        $pinned_review_id = (int)($pr['pinned_review_id'] ?? 0);
+        $premium_badge_label = trim($pr['premium_badge_label'] ?? '');
+        if ($premium_status==='active') {
+            if (empty($premium_expires) || strtotime($premium_expires) > time()) $is_premium_active = true;
+            else { @$conn->query("UPDATE customers SET premium_status='expired' WHERE id=".(int)$company_id); $is_premium_active=false; }
+        }
+        if ($is_premium_active && $premium_tier==='none') $is_premium_active=false;
+    }
+}
+$pinned_review = null;
+if ($is_premium_active && $pinned_review_id > 0) {
+    $ps = $conn->prepare("SELECT * FROM ratings WHERE id=? AND company_id=? LIMIT 1");
+    if ($ps) { $ps->bind_param("ii",$pinned_review_id,$company_id); $ps->execute(); $pinned_review = $ps->get_result()->fetch_assoc(); $ps->close(); }
+    if (!$pinned_review) $pinned_review = null;
+}
+// competitors for upsell (non-premium only)
+$competitors = [];
+if (!$is_premium_active || !$remove_competitor_ads) {
+    if (!empty($company['category_id'])) {
+        $cid = (int)$company['category_id'];
+        $cs = $conn->prepare("SELECT c.id, c.company_name, c.address, (SELECT COUNT(*) FROM ratings r WHERE r.company_id=c.id AND r.reported=0) as rc, (SELECT AVG(r.rating) FROM ratings r WHERE r.company_id=c.id AND r.reported=0) as av FROM customers c WHERE c.category_id=? AND c.id != ? ORDER BY rc DESC, av DESC LIMIT 3");
+        if ($cs){ $cs->bind_param("ii",$cid,$company_id); $cs->execute(); $competitors=$cs->get_result()->fetch_all(MYSQLI_ASSOC); $cs->close(); }
+    }
+}
+
 // Ad Funnel Tracking & Pixels Configuration
 require_once dirname(__DIR__) . '/includes/ad_conversions.php';
 $ad_config = function_exists('getTenantAdConfig') ? getTenantAdConfig($conn, $tenant_id, $company_id) : null;
@@ -2698,6 +2741,17 @@ if ($total_ratings > 0) {
     </div>
     <?php endif; ?>
 
+    <?php if ($is_premium_active && $custom_banner_url !== ''): ?>
+    <!-- Premium Custom Banner (B2B Premium Profile) -->
+    <div class="rt-cover-banner-wrap" style="border:2.5px solid #f59e0b; box-shadow: 0 10px 30px rgba(245,158,11,0.18); position:relative;">
+        <img src="<?php echo htmlspecialchars($custom_banner_url); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> premium banner" class="rt-cover-banner" style="max-height:300px; object-fit:cover;">
+        <span style="position:absolute; top:12px; left:12px; background: linear-gradient(135deg,#f59e0b,#d97706); color:#fff; font-size:11px; font-weight:800; padding:5px 10px; border-radius:99px; letter-spacing:0.4px; box-shadow:0 4px 12px rgba(0,0,0,0.2);">★ <?php echo htmlspecialchars($premium_badge_label ?: strtoupper($premium_tier).' PREMIUM'); ?></span>
+        <?php if ($custom_cta_label !== '' && $custom_cta_url !== ''): ?>
+            <a href="<?php echo htmlspecialchars($custom_cta_url); ?>" target="_blank" rel="noopener noreferrer" style="position:absolute; bottom:16px; right:16px; background:#0f172a; color:#fff; font-size:13px; font-weight:700; padding:10px 16px; border-radius:10px; text-decoration:none; box-shadow:0 6px 18px rgba(0,0,0,0.2); display:inline-flex; align-items:center; gap:8px;"><?php echo htmlspecialchars($custom_cta_label); ?> ↗</a>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
     <!-- Top Branding Header -->
     <header class="rt-company-header">
         <div class="rt-brand-wrap">
@@ -2709,9 +2763,15 @@ if ($total_ratings > 0) {
             <div>
                 <h1>
                     ★ Rate <?php echo htmlspecialchars($brand_name); ?>
+                    <?php if ($is_premium_active): ?>
+                        <span style="font-size:11px; font-weight:800; vertical-align:middle; background: <?php echo $premium_tier==='authority' ? 'linear-gradient(135deg,#f59e0b,#d97706)' : ($premium_tier==='growth' ? 'linear-gradient(135deg,#8b5cf6,#7c3aed)' : 'linear-gradient(135deg,#0ea5e9,#0284c7)'); ?>; color:#fff; padding:4px 9px; border-radius:99px; margin-left:8px; letter-spacing:0.3px; display:inline-flex; align-items:center; gap:5px;" title="Premium <?php echo htmlspecialchars($premium_tier); ?> — verified business">
+                            <i class="fa-solid fa-crown"></i> <?php echo htmlspecialchars($premium_badge_label ?: ($premium_tier==='authority' ? 'Authority' : ($premium_tier==='growth' ? 'Premium' : 'Verified'))); ?> ✓
+                        </span>
+                    <?php endif; ?>
                 </h1>
                 <p class="rt-subtext" style="margin-bottom:0;">
                     Official client review and rating portal &middot; <?php echo htmlspecialchars($company['category_name'] ?? 'Verified Business'); ?>
+                    <?php if ($is_premium_active && $verified_badge): ?><span style="color:#059669; font-weight:700;"> &middot; <i class="fa-solid fa-circle-check"></i> Officially Claimed & Verified</span><?php endif; ?>
                 </p>
                 <?php if (!empty($company['address']) || !empty($sibling_branches)): ?>
                 <div class="rt-branch-location-bar" style="margin-top:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;">
@@ -3363,6 +3423,28 @@ if ($total_ratings > 0) {
                 </div>
             </div>
 
+            <?php if ($pinned_review): $pr_ts = date('M j, Y, g:i A', strtotime($pinned_review['created_at'])); ?>
+            <!-- Premium Pinned Review (Growth/Authority tier) -->
+            <div style="background: linear-gradient(135deg,#fffbeb 0%,#fef3c7 8%,#ffffff 100%); border:2px solid #f59e0b; border-radius:14px; padding:18px; margin-bottom:18px; position:relative; overflow:hidden;">
+                <div style="position:absolute; top:0; left:0; right:0; height:4px; background: linear-gradient(90deg,#f59e0b,#f97316,#f59e0b);"></div>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                    <span style="background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; font-size:11px; font-weight:800; padding:4px 10px; border-radius:99px; display:inline-flex; align-items:center; gap:6px;"><i class="fa-solid fa-thumbtack"></i> PINNED BY <?php echo htmlspecialchars($brand_name); ?></span>
+                    <span style="font-size:11px; color:#92400e; font-weight:600;">Featured positive review — chosen by the business</span>
+                </div>
+                <div class="rt-greview-top">
+                    <div class="rt-greview-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706);"><?php echo strtoupper(substr(trim($pinned_review['customer_name'] ?: 'A'),0,1)); ?></div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <span class="rt-greview-name"><?php echo htmlspecialchars($pinned_review['customer_name'] ?: 'Anonymous'); ?></span>
+                            <span class="rt-verified-badge"><svg viewBox="0 0 512 512"><path d="M504 256c0 137-111 248-248 248S8 393 8 256 119 8 256 8s248 111 248 248zM227.3 387.3l184-184c6.2-6.2 6.2-16.4 0-22.6l-22.6-22.6c-6.2-6.2-16.4-6.2-22.6 0L216 308.1l-70.1-70.1c-6.2-6.2-16.4-6.2-22.6 0l-22.6 22.6c-6.2 6.2-6.2 16.4 0 22.6l104 104c6.2 6.2 16.4 6.2 22.6 0z"/></svg> Featured</span>
+                            <span class="rt-greview-time"><?php echo htmlspecialchars($pr_ts); ?></span>
+                        </div>
+                        <div class="rt-greview-stars"><?php for($i=0;$i<(int)$pinned_review['rating'];$i++) echo '★'; for($i=(int)$pinned_review['rating'];$i<5;$i++) echo '☆'; ?></div>
+                        <?php if (!empty($pinned_review['comment'])): ?><p class="rt-greview-text" style="font-weight:500;"><?php echo htmlspecialchars($pinned_review['comment']); ?></p><?php else: ?><p class="rt-greview-text rt-greview-norv">The user didn’t write a review, and has left just a rating.</p><?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
             <?php if (!empty($general_reviews)): ?>
                 <div class="rt-greview-list" id="generalReviewsList">
                     <?php foreach ($general_reviews as $rv): $rv_ts = date('M j, Y, g:i A', strtotime($rv['created_at'])); ?>
@@ -3653,6 +3735,37 @@ if ($total_ratings > 0) {
         <?php endif; ?>
 
     </div>
+
+    <?php if (!$is_premium_active || !$remove_competitor_ads): ?>
+    <!-- Competitor discovery (suppressed for Premium Growth/Authority with remove_competitor_ads) -->
+    <?php if (!empty($competitors)): ?>
+    <section style="margin-top:28px; background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:18px; box-shadow:0 2px 10px rgba(15,23,42,0.03);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+            <h3 style="font-size:15px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-store" style="color:#64748b;"></i> Other businesses in <?php echo htmlspecialchars($company['category_name'] ?? 'this category'); ?></h3>
+            <a href="<?php echo htmlspecialchars(($app_web_root!==''?$app_web_root:'').'/companies.php#cat-'.strtolower(preg_replace('/[^a-z0-9]+/i','-', $company['category_name'] ?? ''))); ?>" style="font-size:12px; font-weight:700; color:#0ea5e9; text-decoration:none;">Browse full directory →</a>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:12px;">
+            <?php foreach ($competitors as $cc): ?>
+            <a href="<?php echo htmlspecialchars(getCompanyPublicRatingUrl($cc['id'], $cc['company_name'])); ?>" style="display:flex; flex-direction:column; gap:8px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; text-decoration:none; transition: all .2s ease;">
+                <strong style="font-size:13.5px; color:#0f172a; line-height:1.3;"><?php echo htmlspecialchars($cc['company_name']); ?></strong>
+                <?php if (!empty($cc['address'])): ?><span style="font-size:12px; color:#64748b;"><?php echo htmlspecialchars($cc['address']); ?></span><?php endif; ?>
+                <span style="font-size:12px; color:#0ea5e9; font-weight:700;"><?php echo (int)($cc['rc']??0); ?> reviews · ★ <?php echo number_format((float)($cc['av']??0),1); ?></span>
+            </a>
+            <?php endforeach; ?>
+        </div>
+        <?php if ($is_premium_active===false): ?>
+        <div style="margin-top:12px; padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; font-size:12px; color:#92400e; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+            <span><strong>Own this profile?</strong> Claim it from GHS 149/mo to remove competitor suggestions, pin reviews & add your banner.</span>
+            <a href="<?php echo htmlspecialchars(($app_web_root!==''?$app_web_root:'').'/admin/premium_profiles.php?company_id='.(int)$company_id); ?>" style="background:#0f172a; color:#fff; padding:6px 12px; border-radius:8px; text-decoration:none; font-weight:700;">Claim Profile →</a>
+        </div>
+        <?php endif; ?>
+    </section>
+    <?php endif; ?>
+    <?php else: ?>
+    <!-- Premium: competitor suggestions removed -->
+    <div style="margin-top:18px; text-align:center; font-size:11px; color:#94a3b8;">Premium profile — competitor suggestions hidden. <a href="<?php echo htmlspecialchars(($app_web_root!==''?$app_web_root:'').'/companies.php'); ?>" style="color:#64748b; text-decoration:underline;">Browse directory anyway</a></div>
+    <?php endif; ?>
+    <?php endif; ?>
 
     <!-- Company Info Footer (configured by admin in Company Profile) -->
     <footer class="rt-footer">
