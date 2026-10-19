@@ -63,7 +63,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $displayPhone = $res['phone'];
                 $maskedPhone  = $res['masked'];
                 $waDirectUrl  = $res['wa_url'] ?? '';
-                $success = 'A 6-digit verification code was sent to your WhatsApp at ' . htmlspecialchars($maskedPhone) . '.';
+                if (!empty($res['delivered'])) {
+                    $success = htmlspecialchars($res['message'] ?? 'A 6-digit verification code was sent to your WhatsApp.');
+                } else {
+                    $error = htmlspecialchars($res['message'] ?? 'The WhatsApp code could not be delivered automatically. Please use the Email or Authenticator app method instead.');
+                }
             } else {
                 $error = 'Could not send WhatsApp code: ' . htmlspecialchars($res['message'] ?? 'Please check number format.');
             }

@@ -121,12 +121,19 @@ if (tfa_is_enabled($conn, $targetUserType, $targetUserId)) {
     ];
     $tempToken = JWT::generate($tempClaims, 300, '2fa_temp');
 
+    $deliveryWarning = null;
     if ($method === 'email') {
-        tfa_send_email_otp($conn, $targetUserType, $targetUserId, (string)$authenticatedUser['email'], (string)$authenticatedUser['company_name']);
+        $tfaSend = tfa_send_email_otp($conn, $targetUserType, $targetUserId, (string)$authenticatedUser['email'], (string)$authenticatedUser['company_name']);
+        if (empty($tfaSend['success'])) {
+            $deliveryWarning = 'The verification email could not be sent. ' . ($tfaSend['message'] ?? 'Please check the SMTP configuration.');
+        }
     } elseif ($method === 'whatsapp') {
         $contact = tfa_get_user_contact($conn, $targetUserType, $targetUserId);
         $targetPhone = $contact['phone'] ?? ($tfaRow['phone'] ?? '');
-        tfa_send_whatsapp_otp($conn, $targetUserType, $targetUserId, $targetPhone, (string)$authenticatedUser['company_name']);
+        $tfaSend = tfa_send_whatsapp_otp($conn, $targetUserType, $targetUserId, $targetPhone, (string)$authenticatedUser['company_name']);
+        if (empty($tfaSend['delivered'])) {
+            $deliveryWarning = $tfaSend['message'] ?? 'The WhatsApp verification code could not be delivered automatically.';
+        }
     }
 
     $maskedPhone = null;
@@ -141,6 +148,7 @@ if (tfa_is_enabled($conn, $targetUserType, $targetUserId)) {
             'temp_token'          => $tempToken,
             'masked_email'        => ($method === 'email') ? tfa_mask_email((string)$authenticatedUser['email']) : null,
             'masked_phone'        => $maskedPhone,
+            'delivery_warning'    => $deliveryWarning,
         ], 'Two-factor authentication code required', 200);
     }
 } else {

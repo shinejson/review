@@ -33,6 +33,8 @@ if (empty($displayEmail) && !empty($userContact['email'])) {
 
 $error   = '';
 $success = '';
+$deliveryWarning = (string)($pending['delivery_warning'] ?? '');
+unset($_SESSION['2fa_pending']['delivery_warning']);
 
 // Handle cancel request
 if (isset($_GET['action']) && $_GET['action'] === 'cancel') {
@@ -55,8 +57,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         } else {
             $_SESSION['2fa_pending']['last_resend'] = $now;
             $res = tfa_send_whatsapp_otp($conn, $userType, $userId, $displayPhone, $displayName);
-            if (!empty($res['success'])) {
+            if (!empty($res['success']) && !empty($res['delivered'])) {
                 $success = 'A fresh 6-digit verification code was sent to WhatsApp at ' . htmlspecialchars($maskedPhone) . '.';
+            } elseif (!empty($res['success'])) {
+                $error = htmlspecialchars($res['message'] ?? 'The WhatsApp code could not be delivered automatically.');
             } else {
                 $error = 'Could not send WhatsApp code: ' . htmlspecialchars($res['message'] ?? 'Please check number format.');
             }
@@ -114,10 +118,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $error = 'No WhatsApp phone number registered for this account.';
     } else {
         $res = tfa_send_whatsapp_otp($conn, $userType, $userId, $displayPhone, $displayName);
-        if (!empty($res['success'])) {
+        if (!empty($res['success']) && !empty($res['delivered'])) {
             $_SESSION['2fa_pending']['method'] = 'whatsapp';
             $method = 'whatsapp';
             $success = 'Verification method switched! A 6-digit code was sent to WhatsApp at ' . htmlspecialchars($maskedPhone) . '.';
+        } elseif (!empty($res['success'])) {
+            $_SESSION['2fa_pending']['method'] = 'whatsapp';
+            $method = 'whatsapp';
+            $error = htmlspecialchars($res['message'] ?? 'The WhatsApp code could not be delivered automatically.');
         } else {
             $error = 'Could not send WhatsApp code: ' . htmlspecialchars($res['message'] ?? 'Check phone number format.');
         }
@@ -269,9 +277,9 @@ include dirname(__DIR__) . '/includes/header.php';
             <!-- Header Description -->
             <p class="otp-instruction-text" id="otpInstruction">
                 <?php if ($method === 'whatsapp'): ?>
-                    We've sent a 6-digit verification code to your WhatsApp at <strong><?php echo htmlspecialchars($maskedPhone); ?></strong>. Please enter it below.
+                    Enter the 6-digit verification code for your WhatsApp at <strong><?php echo htmlspecialchars($maskedPhone); ?></strong> below. If it has not arrived within a minute, use the resend or email options below.
                 <?php elseif ($method === 'email'): ?>
-                    We've sent an OTP to <strong><?php echo htmlspecialchars($maskedEmail); ?></strong>. Please enter it below.
+                    Enter the 6-digit verification code for <strong><?php echo htmlspecialchars($maskedEmail); ?></strong> below. If it has not arrived within a minute, check your spam folder or resend.
                 <?php else: ?>
                     Enter the 6-digit verification code from your authenticator app below.
                 <?php endif; ?>
@@ -288,6 +296,13 @@ include dirname(__DIR__) . '/includes/header.php';
                 <div class="auth-alert is-info" role="status" style="background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.3);color:#4ade80;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                     <span><?php echo htmlspecialchars($success); ?></span>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($deliveryWarning && !$error && !$success): ?>
+                <div class="auth-alert" role="alert" style="background:rgba(245,158,11,0.1);border-color:rgba(245,158,11,0.35);color:#fbbf24;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    <span><?php echo htmlspecialchars($deliveryWarning); ?></span>
                 </div>
             <?php endif; ?>
 
