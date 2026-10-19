@@ -197,6 +197,17 @@ $sa_nav_sections = [
                 ],
             ],
             [
+                'group_key' => 'monetize',
+                'label'     => 'Revenue & Growth',
+                'icon'      => 'dollar',
+                'items'     => [
+                    ['key' => 'monetization',   'label' => 'Revenue Dashboard',  'href' => 'monetization.php'],
+                    ['key' => 'premium_claims', 'label' => 'Premium Claims',     'href' => 'premium_claims.php'],
+                    ['key' => 'sponsored_mgr',  'label' => 'Sponsored Listings', 'href' => 'sponsored.php'],
+                    ['key' => 'sms_gateways',   'label' => 'SMS Gateways',       'href' => 'sms_providers.php'],
+                ],
+            ],
+            [
                 'group_key' => 'system',
                 'label'     => 'System & Security',
                 'icon'      => 'settings',

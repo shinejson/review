@@ -92,6 +92,50 @@ if ($r_all) {
         $total_companies_count++;
     }
 }
+
+// --- Monetization: sponsored/featured listings map (per category) ---
+$sponsored_by_cat = []; // cat_id => [ rows ]
+$sponsored_company_ids = []; // company_id => true for badge
+$has_monetization = false;
+if (file_exists(__DIR__ . '/includes/monetization.php')) {
+    require_once __DIR__ . '/includes/monetization.php';
+    if (function_exists('monetization_ensure_schema')) { @monetization_ensure_schema($conn); $has_monetization = true; }
+    $sp_rows = @sa_query($conn, "SELECT s.*, c.company_name, c.tenant_id as cust_tenant, c.phone, c.address, c.location_description, c.website, c.email, c.whatsapp_number, cat.name as category_name, t.company_name as tenant_name, t.logo as tenant_logo, t.banner as tenant_banner, (SELECT COUNT(*) FROM ratings r WHERE r.company_id=c.id AND r.reported=0) as rating_count, (SELECT AVG(r.rating) FROM ratings r WHERE r.company_id=c.id AND r.reported=0) as avg_rating, (SELECT COUNT(*) FROM analytics_events a WHERE a.company_id=c.id AND a.event_type IN ('page_view','whatsapp_click','qr_scan','company_click')) as total_clicks FROM sponsored_listings s JOIN customers c ON c.id=s.company_id LEFT JOIN categories cat ON c.category_id=cat.id LEFT JOIN tenants t ON c.tenant_id=t.id WHERE s.status='active' AND s.ends_at > NOW() ORDER BY FIELD(s.tier,'featured','sponsored'), s.starts_at ASC", 'sponsored_listings');
+    if (!empty($sp_rows) && is_array($sp_rows)) {
+        foreach ($sp_rows as $sp) {
+            $cid = (int)($sp['category_id'] ?? $sp['cat_id'] ?? 0);
+            // fallback: resolve via customers.category_id if listing has no explicit category
+            if ($cid === 0 && isset($sp['category_id'])) {
+                // try customer category from query
+                $cid = (int)($sp['category_id'] ?? 0);
+            }
+            // bucket by category_id for quick lookup; also bucket by category_name
+            $key = $cid ? ('id:'.$cid) : 'id:0';
+            $sponsored_by_cat[$key][] = $sp;
+            $catNameKey = 'name:' . strtolower(trim($sp['category_name'] ?? ''));
+            if ($catNameKey !== 'name:') $sponsored_by_cat[$catNameKey][] = $sp;
+            $sponsored_company_ids[(int)$sp['company_id']] = $sp['tier'];
+        }
+    }
+}
+function sponsored_for_category_group($cat_title, $cat_id, $map) {
+    if (empty($map)) return [];
+    $keys = [];
+    if ($cat_id) $keys[] = 'id:'.(int)$cat_id;
+    if ($cat_title) $keys[] = 'name:'.strtolower(trim($cat_title));
+    $out = [];
+    $seen = [];
+    foreach ($keys as $k) {
+        if (empty($map[$k])) continue;
+        foreach ($map[$k] as $row) {
+            $sid = (int)$row['id'];
+            if (isset($seen[$sid])) continue;
+            $seen[$sid]=true;
+            $out[]=$row;
+        }
+    }
+    return $out;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en-GH">
@@ -1185,6 +1229,19 @@ if ($r_all) {
             .podium-card.rank-1:hover { transform: translateY(-8px); }
             .footer-grid-container { grid-template-columns: 1fr 1fr; }
         }
+        /* Sponsored / Featured slot */
+        .cmp-sponsored-strip { margin-bottom: 22px; border-radius: 18px; overflow: hidden; border: 2px solid #f59e0b; background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%); box-shadow: 0 8px 28px rgba(245,158,11,0.14); }
+        .cmp-sponsored-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px; background: linear-gradient(90deg, #f59e0b, #f97316); color:#fff; font-size:12px; font-weight:800; letter-spacing:0.4px; text-transform:uppercase; }
+        .cmp-sponsored-head span { display:inline-flex; align-items:center; gap:8px; }
+        .cmp-sponsored-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap:18px; padding:18px; }
+        .cmp-sponsored-card { position:relative; border-radius:16px; overflow:hidden; border:2px solid #f59e0b; background:#fff; display:flex; flex-direction:column; box-shadow:0 6px 18px rgba(15,23,42,0.07); transition: transform .25s ease, box-shadow .25s ease; }
+        .cmp-sponsored-card:hover { transform: translateY(-4px); box-shadow:0 16px 36px rgba(15,23,42,0.14); }
+        .cmp-sponsored-card.is-featured { border-color:#d97706; box-shadow:0 10px 28px rgba(245,158,11,0.22); }
+        .cmp-sponsored-badge { position:absolute; top:10px; left:10px; z-index:4; padding:5px 10px; border-radius:99px; font-size:11px; font-weight:800; display:inline-flex; align-items:center; gap:6px; color:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.16); }
+        .cmp-sponsored-badge.featured { background: linear-gradient(135deg,#f59e0b,#d97706); }
+        .cmp-sponsored-badge.sponsored { background: linear-gradient(135deg,#0ea5e9,#2563eb); }
+        .cmp-sponsored-cta { display:inline-flex; align-items:center; gap:8px; background:#0f2438; color:#fff; padding:10px 14px; border-radius:10px; font-size:13px; font-weight:700; text-decoration:none; }
+        .cmp-sponsored-cta.featured { background: linear-gradient(135deg,#f59e0b,#d97706); color:#fff; }
         @media (max-width: 640px) {
             .directory-hero h1 { font-size: 32px; }
             .leaderboard-title { font-size: 22px; }
@@ -1489,6 +1546,61 @@ if ($r_all) {
                         </a>
                     </div>
 
+                    <?php
+                    // --- Sponsored/Featured strip at top of category (Lead Gen stream) ---
+                    $cat_first = !empty($comps_in_cat[0]) ? $comps_in_cat[0] : null;
+                    $cat_id_for_sponsored = $cat_first ? (int)($cat_first['cat_id'] ?? 0) : 0;
+                    $sponsored_in_cat = sponsored_for_category_group($cat_title, $cat_id_for_sponsored, $sponsored_by_cat ?? []);
+                    if (!empty($sponsored_in_cat)):
+                    ?>
+                    <div class="cmp-sponsored-strip" aria-label="Sponsored listings">
+                        <div class="cmp-sponsored-head">
+                            <span><i class="fa-solid fa-crown"></i> Featured & Sponsored — Top in <?php echo htmlspecialchars($cat_title); ?></span>
+                            <span style="background:rgba(255,255,255,0.18);padding:3px 9px;border-radius:99px;font-size:11px;">Ad &middot; pay-per-month top slot</span>
+                        </div>
+                        <div class="cmp-sponsored-grid">
+                            <?php foreach ($sponsored_in_cat as $sp):
+                                $sp_name = (string)($sp['company_name'] ?? '');
+                                $sp_logo = (string)($sp['tenant_logo'] ?? '');
+                                $sp_banner = (string)($sp['tenant_banner'] ?? '');
+                                $sp_initials = getInitials($sp_name);
+                                $sp_wa = whatsappChatUrl($sp['whatsapp_number'] ?? '', $sp_name);
+                                $sp_reviews = (int)($sp['rating_count'] ?? 0);
+                                $sp_avg = (float)($sp['avg_rating'] ?? 0);
+                                $sp_tier = strtolower($sp['tier'] ?? 'sponsored');
+                                $sp_is_featured = $sp_tier === 'featured';
+                                $sp_badge = $sp_is_featured ? 'featured' : 'sponsored';
+                                $sp_badge_label = $sp_is_featured ? '★ Featured' : '● Sponsored';
+                                // premium CTA if set else default
+                                $sp_cta_label = !empty($sp['cta_label']) ? $sp['cta_label'] : ($sp_is_featured ? 'View Featured Profile' : 'View Sponsored');
+                                $sp_cta_url = !empty($sp['cta_url']) ? $sp['cta_url'] : getCompanyPublicRatingUrl((int)$sp['company_id'], $sp_name);
+                                if ($has_monetization && function_exists('monetization_increment_impression')) { @monetization_increment_impression($conn, (int)$sp['id']); }
+                            ?>
+                            <article class="cmp-sponsored-card <?php echo $sp_is_featured ? 'is-featured' : ''; ?>" data-sponsored-id="<?php echo (int)$sp['id']; ?>">
+                                <span class="cmp-sponsored-badge <?php echo $sp_badge; ?>"><?php echo htmlspecialchars($sp_badge_label); ?></span>
+                                <div class="cmp-card-banner">
+                                    <?php if ($sp_banner !== ''): ?><img src="<?php echo htmlspecialchars($sp_banner); ?>" alt="<?php echo htmlspecialchars($sp_name); ?> banner"><?php else: ?><div class="cmp-banner-fallback"><i class="fa-solid fa-building"></i></div><?php endif; ?>
+                                    <span class="cmp-card-category"><i class="fa-solid <?php echo $meta['icon']; ?>"></i> <?php echo htmlspecialchars($cat_title); ?></span>
+                                </div>
+                                <div class="cmp-card-logo-wrap"><div class="cmp-card-logo"><?php if ($sp_logo !== ''): ?><img src="<?php echo htmlspecialchars($sp_logo); ?>" alt="<?php echo htmlspecialchars($sp_name); ?> logo"><?php else: ?><span class="cmp-initials"><?php echo htmlspecialchars($sp_initials); ?></span><?php endif; ?></div></div>
+                                <div class="cmp-card-body">
+                                    <h3 class="cmp-company-name"><i class="fa-solid fa-circle-check" style="color:#f59e0b;"></i> <?php echo htmlspecialchars($sp_name); ?> <?php if ($sp_is_featured): ?><span style="font-size:11px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;padding:3px 8px;border-radius:99px;">#1 IN CATEGORY</span><?php endif; ?></h3>
+                                    <?php if (!empty($sp['tenant_name'])): ?><div class="cmp-tenant-name"><i class="fa-solid fa-briefcase"></i> <?php echo htmlspecialchars($sp['tenant_name']); ?></div><?php endif; ?>
+                                    <?php if ($sp_reviews > 0): ?><div class="cmp-card-rating"><span class="cmp-stars">★</span> <span><?php echo number_format($sp_avg,1); ?> score</span><span class="cmp-rating-count"><?php echo number_format($sp_reviews); ?> reviews</span></div><?php else: ?><div class="cmp-card-rating" style="background:#fef3c7;color:#92400e;">New sponsor &middot; be first to review</div><?php endif; ?>
+                                    <div class="cmp-company-info">
+                                        <?php if (!empty($sp['location_description']) || !empty($sp['address'])): ?><div class="cmp-info-item"><i class="fa-solid fa-location-dot"></i><span class="cmp-info-link"><?php echo htmlspecialchars($sp['location_description'] ?: $sp['address']); ?></span></div><?php endif; ?>
+                                    </div>
+                                    <div class="cmp-card-actions">
+                                        <a class="cmp-sponsored-cta <?php echo $sp_is_featured ? 'featured' : ''; ?>" href="<?php echo htmlspecialchars($sp_cta_url); ?>" onclick="trackCompanyClick(<?php echo (int)$sp['company_id']; ?>, 'sponsored_click'); if(typeof trackSponsoredClick==='function') trackSponsoredClick(<?php echo (int)$sp['id']; ?>);"><i class="fa-solid fa-arrow-up-right-from-square"></i> <?php echo htmlspecialchars($sp_cta_label); ?></a>
+                                        <?php if ($sp_wa !== ''): ?><a class="cmp-btn cmp-btn-whatsapp" href="<?php echo htmlspecialchars($sp_wa); ?>" target="_blank" rel="noopener noreferrer" onclick="trackCompanyClick(<?php echo (int)$sp['company_id']; ?>, 'whatsapp_click')"><i class="fa-brands fa-whatsapp"></i> Chat</a><?php endif; ?>
+                                    </div>
+                                </div>
+                            </article>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
                     <div class="cmp-companies-grid">
                         <?php foreach ($comps_in_cat as $c): 
                             $c_name      = (string)($c['company_name'] ?? '');
@@ -1760,9 +1872,13 @@ if ($r_all) {
                 } else {
                     fetch('api/submit_event.php', { method: 'POST', body: payload, keepalive: true });
                 }
-            } catch (e) {
-                // Ignore analytics transmission failures
-            }
+            } catch (e) {}
+        };
+        window.trackSponsoredClick = function(sponsoredId){
+            try {
+                var fd=new FormData(); fd.append('sponsored_id', sponsoredId); fd.append('event_type','sponsored_click');
+                if(navigator.sendBeacon) navigator.sendBeacon('api/submit_event.php', fd); else fetch('api/submit_event.php',{method:'POST',body:fd,keepalive:true});
+            } catch(e){}
         };
 
         // 2. Client-Side Real-Time Filter

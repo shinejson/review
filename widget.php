@@ -23,16 +23,77 @@ if (!headers_sent()) {
 
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/functions.php';
+if (file_exists(__DIR__.'/includes/monetization.php')) { require_once __DIR__.'/includes/monetization.php'; if(function_exists('monetization_ensure_schema')) @monetization_ensure_schema($conn); }
 
-// Request Parameters
+// Request Parameters - supports both legacy tenant/company and new widget key
+$widget_key = trim($_GET['key'] ?? $_GET['widget_key'] ?? $_GET['k'] ?? '');
 $tenant_id    = isset($_GET['tenant']) ? (int)$_GET['tenant'] : 0;
 $company_id   = isset($_GET['company']) ? (int)$_GET['company'] : 0;
-$theme        = isset($_GET['theme']) && strtolower(trim($_GET['theme'])) === 'dark' ? 'dark' : 'light';
-$layout       = isset($_GET['layout']) && strtolower(trim($_GET['layout'])) === 'badge' ? 'badge' : 'card';
+$theme_q      = strtolower(trim($_GET['theme'] ?? 'light'));
+$layout_q     = strtolower(trim($_GET['layout'] ?? 'card'));
+$widget_cfg   = null;
+$entitlement_error = '';
+if ($widget_key !== '') {
+    // key-based entitlement: widget_configs is source of truth
+    $wk_esc = $conn->real_escape_string($widget_key);
+    $wc = @sa_one($conn, "SELECT * FROM widget_configs WHERE widget_key='".$wk_esc."' LIMIT 1", 'widget_configs');
+    if (!$wc) { $entitlement_error = 'Invalid widget key.'; }
+    elseif (($wc['status'] ?? '') !== 'active') { $entitlement_error = 'Widget suspended — contact workspace owner.'; }
+    elseif (!empty($wc['expires_at']) && strtotime($wc['expires_at']) < time()) { $entitlement_error='Widget subscription expired — renew to keep embedding.'; }
+    else {
+        $widget_cfg = $wc;
+        // domain allowlist check
+        $allowed = trim($wc['allowed_domains'] ?? '');
+        if ($allowed !== '') {
+            $referer = $_SERVER['HTTP_REFERER'] ?? '';
+            $host = parse_url($referer, PHP_URL_HOST) ?: '';
+            $allow_list = array_filter(array_map('trim', preg_split('/[,\s]+/', $allowed)));
+            $ok=false; foreach($allow_list as $d){ if($d!=='' && ($host===$d || str_ends_with($host, '.'.$d))) {$ok=true; break;}}
+            if (!$ok && $host !== '' && !empty($allow_list)) { $entitlement_error='Domain not allowed for this widget.'; }
+        }
+        // views quota for free tier
+        $tier = strtolower($wc['tier'] ?? 'free');
+        if ($tier==='free') {
+            $views = (int)($wc['views_total'] ?? 0);
+            if ($views >= 1000) { $entitlement_error='Free tier monthly view limit reached (1,000). Upgrade to Pro for unlimited.'; }
+        }
+        if ($entitlement_error==='') {
+            // override query params with widget config
+            $tenant_id = (int)$wc['tenant_id'];
+            $company_id = (int)$wc['company_id'];
+            $theme_q = strtolower($wc['theme'] ?? $theme_q);
+            $layout_q = strtolower($wc['layout'] ?? $layout_q);
+            // increment view counter (safe)
+            @$conn->query("UPDATE widget_configs SET views_total = views_total + 1, updated_at = NOW() WHERE id=".(int)$wc['id']);
+            // analytics with widget tier tagging
+            if (!empty($wc['widget_key'])) { @logAnalyticsEvent($conn, (int)$wc['tenant_id'], (int)$wc['company_id'], 'widget_view', 'embed_widget', $tier.'_'.$layout_q, $wc['widget_key']); }
+        }
+    }
+}
+$theme        = $theme_q === 'dark' || $theme_q === 'brand' ? $theme_q : 'light';
+if ($theme==='brand' && $widget_cfg) {
+    // brand theme resolved later via tenant colors — fallback to light variables for now
+    $theme='light';
+}
+$layout_raw   = $layout_q;
+if (in_array($layout_raw, ['carousel','grid'], true)) {
+    // premium layouts require pro/agency tier
+    $cfg_tier = strtolower($widget_cfg['tier'] ?? 'free');
+    if (!in_array($cfg_tier, ['pro','agency'], true)) {
+        // downgrade silently to card for free tier
+        $layout_raw = 'card';
+        $entitlement_error = $entitlement_error ?: ''; // no hard error, just downgrade
+    }
+}
+$layout       = $layout_raw === 'badge' ? 'badge' : ($layout_raw === 'carousel' ? 'carousel' : ($layout_raw === 'grid' ? 'grid' : 'card'));
 if (!empty($_GET['compact'])) {
     $layout = 'badge';
 }
 $show_reviews = empty($_GET['hide_reviews']);
+if ($widget_cfg) {
+    // widget config controls snippet quantity & filters
+    $show_reviews = $layout !== 'badge'; // badge never shows reviews
+}
 
 $company     = null;
 $tenant_info = null;
@@ -68,6 +129,13 @@ if (!$company && !$tenant_info) {
     echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;background:transparent;color:#94a3b8;text-align:center;padding:20px;font-size:13px;}</style></head><body>No review profile found for this widget.</body></html>';
     exit;
 }
+if ($entitlement_error !== '') {
+    http_response_code(402);
+    $msg = htmlspecialchars($entitlement_error);
+    $key_hint = htmlspecialchars(substr($widget_key,0,10));
+    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:-apple-system,sans-serif;background:#fff8f0;color:#92400e;text-align:center;padding:18px;font-size:13px;border:1.5px solid #fde68a;border-radius:12px;}a{color:#b45309;text-decoration:underline;font-weight:700;}</style></head><body>⚠️ '.$msg.'<br><small style="color:#a16207;">Widget key: '.$key_hint.'… — manage in Optibiz → Grow & Monetize → Review Widgets.</small></body></html>';
+    exit;
+}
 
 // Brand Details
 $brand_name     = !empty($tenant_info['company_name']) ? $tenant_info['company_name'] : ($company['company_name'] ?? 'Verified Business');
@@ -84,24 +152,30 @@ $actual_company_id = $company ? (int)$company['id'] : 0;
 $avg_rating        = $actual_company_id > 0 ? getAverageRating($actual_company_id, $conn) : 5.0;
 $total_ratings     = $actual_company_id > 0 ? getRatingCount($actual_company_id, $conn) : 0;
 
-// Top Testimonials (Prefer Verified Reviews with Comments)
+// Top Testimonials (Prefer Verified Reviews with Comments) — respects widget tier filters
 $top_reviews = [];
 if ($actual_company_id > 0 && $show_reviews) {
-    $r_stmt = $conn->prepare("SELECT customer_name, rating, comment, is_verified, verification_type, created_at 
-                              FROM ratings 
-                              WHERE company_id = ? AND comment != '' AND comment IS NOT NULL 
-                              ORDER BY is_verified DESC, rating DESC, created_at DESC 
-                              LIMIT 2");
-    $r_stmt->bind_param("i", $actual_company_id);
-    $r_stmt->execute();
-    $top_reviews = $r_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $limit_count = 2;
+    $where_extra = '';
+    if ($widget_cfg) {
+        $limit_count = max(1, min(10, (int)($widget_cfg['limit_count'] ?? 2)));
+        if (!empty($widget_cfg['hide_low_rating'])) $where_extra .= ' AND rating >= 4';
+        if (!empty($widget_cfg['show_verified_only'])) $where_extra .= ' AND is_verified = 1';
+        // grid shows more, carousel shows more
+        if ($layout==='grid') $limit_count = max($limit_count, 4);
+        if ($layout==='carousel') $limit_count = max($limit_count, 6);
+    }
+    $limit_count = max(1, min(10, $limit_count));
+    $sql = "SELECT customer_name, rating, comment, is_verified, verification_type, created_at FROM ratings WHERE company_id = ? AND comment != '' AND comment IS NOT NULL ".$where_extra." ORDER BY is_verified DESC, rating DESC, created_at DESC LIMIT ".$limit_count;
+    $r_stmt = $conn->prepare($sql);
+    if ($r_stmt) { $r_stmt->bind_param("i", $actual_company_id); $r_stmt->execute(); $top_reviews = $r_stmt->get_result()->fetch_all(MYSQLI_ASSOC); $r_stmt->close(); }
 }
 
 // Target URL for clicks (tagged with &src=widget for analytics)
 $public_url = getCompanyPublicRatingUrl($actual_company_id, $target_name, ['src' => 'widget']);
 
-// Log widget view event
-if ($actual_company_id > 0) {
+// Log widget view event (skip if already counted via widget key entitlement path)
+if ($actual_company_id > 0 && empty($widget_cfg)) {
     @logAnalyticsEvent($conn, (int)($tenant_info['id'] ?? $tenant_id), $actual_company_id, 'widget_view', 'embed_widget', $layout, 'widget');
 }
 ?>
@@ -403,7 +477,16 @@ if ($actual_company_id > 0) {
             background: var(--w-btn-hover);
             transform: translateY(-1px);
         }
+        /* Premium layouts: grid & carousel */
+        .widget-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap:12px; }
+        .widget-grid .review-snippet { min-height: 90px; }
+        .widget-carousel { display:flex; gap:12px; overflow-x:auto; scroll-snap-type:x mandatory; padding-bottom:6px; -webkit-overflow-scrolling: touch; }
+        .widget-carousel::-webkit-scrollbar { height:6px; }
+        .widget-carousel::-webkit-scrollbar-thumb { background: var(--w-border); border-radius:99px; }
+        .widget-carousel .review-snippet { min-width: 260px; max-width:320px; scroll-snap-align:start; flex:0 0 auto; }
+        .w-custom-css { /* placeholder for injected custom css */ }
     </style>
+    <?php if ($widget_cfg && !empty($widget_cfg['custom_css'])): ?><style><?php echo $widget_cfg['custom_css']; ?></style><?php endif; ?>
 </head>
 <body>
 
@@ -486,9 +569,10 @@ if ($actual_company_id > 0) {
             </div>
         </div>
 
-        <!-- Verified Reviews Stream -->
+        <!-- Verified Reviews Stream — layout-aware (card | grid | carousel) -->
         <?php if (!empty($top_reviews)): ?>
-            <div class="reviews-stream">
+            <?php $stream_class = $layout==='grid' ? 'widget-grid' : ($layout==='carousel' ? 'widget-carousel' : 'reviews-stream'); ?>
+            <div class="<?php echo $stream_class; ?>">
                 <?php foreach ($top_reviews as $rev): ?>
                     <div class="review-snippet">
                         <div class="review-snippet-head">
@@ -510,16 +594,51 @@ if ($actual_company_id > 0) {
 
         <!-- Footer -->
         <div class="card-footer">
+            <?php $tier_label = strtolower($widget_cfg['tier'] ?? ''); ?>
+            <?php if ($tier_label === 'agency'): ?>
+                <span class="trust-tag" style="opacity:0.9;">Powered by <?php echo htmlspecialchars($brand_name); ?></span>
+            <?php else: ?>
             <span class="trust-tag">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                 Verified by <strong>Optibiz</strong>
             </span>
-            <a href="<?php echo htmlspecialchars($public_url); ?>" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--w-muted);text-decoration:underline;">
+            <?php endif; ?>
+            <a href="<?php echo htmlspecialchars($public_url); ?>" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--w-muted);text-decoration:underline;" onclick="if(navigator.sendBeacon){var fd=new FormData(); fd.append('company_id', <?php echo (int)$actual_company_id; ?>); fd.append('event_type','widget_click'); navigator.sendBeacon('api/submit_event.php', fd);} <?php if(!empty($widget_cfg['id'])): ?>try{fetch('api/widget_click.php?key=<?php echo htmlspecialchars($widget_cfg['widget_key']); ?>',{method:'POST',keepalive:true});}catch(e){}<?php endif; ?>">
                 See all <?php echo number_format($total_ratings); ?> reviews &rarr;
             </a>
         </div>
     </div>
 <?php endif; ?>
 
+<script>
+// Auto-resize for JS embed (widget.js) + click tracking helper
+(function(){
+  function sendH(){
+    try{
+      var h = Math.ceil(document.documentElement.scrollHeight || document.body.scrollHeight || 320);
+      var k = <?php echo json_encode($widget_key ?: ($widget_cfg['widget_key'] ?? '')); ?>;
+      if (window.parent && window.parent !== window) window.parent.postMessage({source:'optibiz-widget', key: k, height: h}, '*');
+    }catch(e){}
+  }
+  window.addEventListener('load', function(){ setTimeout(sendH, 200); });
+  window.addEventListener('message', function(ev){
+    try{ if(ev.data && ev.data.source==='optibiz-widget-resize') sendH(); }catch(e){}
+  });
+  // click beacon for any link inside widget
+  document.addEventListener('click', function(e){
+    var a = e.target.closest('a');
+    if (!a) return;
+    try{
+      var k = <?php echo json_encode($widget_key ?: ($widget_cfg['widget_key'] ?? '')); ?>;
+      if (k && navigator.sendBeacon) {
+        var fd=new FormData(); fd.append('widget_key', k); fd.append('event','click');
+        var u = location.pathname.replace(/widget\.php.*$/,'api/widget_click.php');
+        // fallback relative
+        navigator.sendBeacon('api/widget_click.php', fd);
+      }
+    }catch(err){}
+  });
+})();
+</script>
 </body>
 </html>

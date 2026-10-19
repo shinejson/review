@@ -649,6 +649,108 @@ ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS last_failed_attempt_at DA
 ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS account_locked_until DATETIME NULL;
 
 -- ============================================================
+-- MONETIZATION ENGINE (4 Revenue Streams)
+-- ============================================================
+-- Extend customers with premium columns (idempotent via ADD COLUMN IF NOT EXISTS)
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_claimed TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS claimed_tenant_id INT NULL;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS claimed_at DATETIME NULL;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS premium_tier ENUM('none','essential','growth','authority') NOT NULL DEFAULT 'none';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS premium_status ENUM('inactive','active','expired','cancelled') NOT NULL DEFAULT 'inactive';
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS premium_expires_at DATETIME NULL;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS premium_price DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS custom_banner_url VARCHAR(500) NULL;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS custom_cta_label VARCHAR(80) NULL;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS custom_cta_url VARCHAR(500) NULL;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS remove_competitor_ads TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS verified_badge TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS pinned_review_id INT NULL;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS premium_badge_label VARCHAR(40) NULL;
+
+CREATE TABLE IF NOT EXISTS premium_claims (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  company_id INT NOT NULL, claimant_tenant_id INT NOT NULL,
+  claimant_name VARCHAR(190) NULL, claimant_email VARCHAR(160) NULL, claimant_phone VARCHAR(40) NULL,
+  claim_method ENUM('email_domain','phone_match','document','manual') NOT NULL DEFAULT 'email_domain',
+  claim_status ENUM('pending','verified','approved','rejected') NOT NULL DEFAULT 'pending',
+  verification_token VARCHAR(64) NULL, verification_code VARCHAR(12) NULL, proof_document VARCHAR(500) NULL,
+  reviewer_note TEXT NULL, reviewed_by VARCHAR(120) NULL, verified_at DATETIME NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_claim_company (company_id), INDEX idx_claim_tenant (claimant_tenant_id), INDEX idx_claim_status (claim_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS premium_subscriptions (
+  id INT AUTO_INCREMENT PRIMARY KEY, company_id INT NOT NULL, tenant_id INT NOT NULL,
+  tier ENUM('essential','growth','authority') NOT NULL DEFAULT 'essential',
+  status ENUM('pending','active','expired','cancelled') NOT NULL DEFAULT 'pending',
+  price DECIMAL(10,2) NOT NULL DEFAULT 0.00, currency VARCHAR(8) NOT NULL DEFAULT 'GHS',
+  billing_cycle ENUM('monthly','yearly') NOT NULL DEFAULT 'monthly',
+  invoice_id INT NULL, payment_id INT NULL, starts_at DATETIME NULL, expires_at DATETIME NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_prem_company (company_id), INDEX idx_prem_tenant (tenant_id), INDEX idx_prem_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS sponsored_listings (
+  id INT AUTO_INCREMENT PRIMARY KEY, tenant_id INT NOT NULL, company_id INT NOT NULL, category_id INT NULL,
+  tier ENUM('sponsored','featured') NOT NULL DEFAULT 'sponsored', badge_label VARCHAR(40) NOT NULL DEFAULT 'Sponsored',
+  title VARCHAR(190) NULL, cta_label VARCHAR(60) NULL, cta_url VARCHAR(500) NULL,
+  price DECIMAL(10,2) NOT NULL DEFAULT 0.00, currency VARCHAR(8) NOT NULL DEFAULT 'GHS', duration_days INT NOT NULL DEFAULT 30,
+  starts_at DATETIME NULL, ends_at DATETIME NULL,
+  status ENUM('pending','active','expired','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  invoice_id INT NULL, payment_id INT NULL, impressions INT NOT NULL DEFAULT 0, clicks INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_spons_company (company_id), INDEX idx_spons_category (category_id), INDEX idx_spons_status (status), INDEX idx_spons_ends (ends_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS widget_configs (
+  id INT AUTO_INCREMENT PRIMARY KEY, tenant_id INT NOT NULL, company_id INT NOT NULL,
+  widget_key VARCHAR(32) NOT NULL, tier ENUM('free','pro','agency') NOT NULL DEFAULT 'free',
+  status ENUM('active','suspended','expired') NOT NULL DEFAULT 'active',
+  theme ENUM('light','dark','brand') NOT NULL DEFAULT 'light', layout ENUM('card','badge','carousel','grid') NOT NULL DEFAULT 'card',
+  limit_count INT NOT NULL DEFAULT 5, hide_low_rating TINYINT(1) NOT NULL DEFAULT 1, show_verified_only TINYINT(1) NOT NULL DEFAULT 0,
+  custom_css TEXT NULL, allowed_domains TEXT NULL, api_key VARCHAR(64) NULL,
+  views_total INT NOT NULL DEFAULT 0, clicks_total INT NOT NULL DEFAULT 0, expires_at DATETIME NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_widget_key (widget_key),
+  INDEX idx_widget_tenant (tenant_id), INDEX idx_widget_company (company_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS sms_providers (
+  id INT AUTO_INCREMENT PRIMARY KEY, provider_key VARCHAR(40) NOT NULL, display_name VARCHAR(100) NOT NULL,
+  is_enabled TINYINT(1) NOT NULL DEFAULT 0, api_url VARCHAR(500) NULL, api_key VARCHAR(255) NULL, api_secret VARCHAR(255) NULL,
+  sender_id VARCHAR(32) NULL, connection_status VARCHAR(20) NOT NULL DEFAULT 'unverified', connection_note VARCHAR(255) NULL,
+  last_tested_at DATETIME NULL, sort_order INT NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_provider_key (provider_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+INSERT IGNORE INTO sms_providers (provider_key, display_name, is_enabled, api_url, sender_id, connection_status, connection_note, sort_order) VALUES
+('hubtel','Hubtel SMS',0,'https://sms.hubtel.com/v1/messages/send','Optibiz','unverified','Ghana leading gateway — high deliverability for MTN, Vodafone, AirtelTigo.',1),
+('mnotify','mNotify',0,'https://api.mnotify.com/api/sms/quick','Optibiz','unverified','Reliable Ghana bulk SMS with Sender ID registration.',2),
+('africastalking','Africa\'s Talking',0,'https://api.africastalking.com/version1/messaging','Optibiz','unverified','Pan-African SMS & Voice, strong in Kenya, Nigeria, Ghana.',3),
+('nalo','Nalo Solutions',0,'https://sms.nalosolutions.com/sms/backend/sendsms/','Optibiz','unverified','Ghana mobile money & SMS aggregator.',4),
+('twilio','Twilio',0,'https://api.twilio.com/2010-04-01/Accounts','Optibiz','unverified','Global SMS fallback for international numbers.',5),
+('manual','Manual / Offline',0,'','Optibiz','unverified','Log SMS sent outside platform & track review conversion.',9);
+CREATE TABLE IF NOT EXISTS sms_credits_wallet (
+  id INT AUTO_INCREMENT PRIMARY KEY, tenant_id INT NOT NULL, balance INT NOT NULL DEFAULT 0, total_purchased INT NOT NULL DEFAULT 0, total_used INT NOT NULL DEFAULT 0, last_topup_at DATETIME NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_wallet_tenant (tenant_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS sms_campaigns (
+  id INT AUTO_INCREMENT PRIMARY KEY, tenant_id INT NOT NULL, company_id INT NOT NULL, provider_key VARCHAR(40) NOT NULL DEFAULT '', campaign_name VARCHAR(190) NOT NULL, message_body TEXT NOT NULL, template_key VARCHAR(40) NULL, recipient_count INT NOT NULL DEFAULT 0, recipients_json MEDIUMTEXT NULL, audience_filter VARCHAR(40) NULL, status ENUM('draft','queued','sending','sent','failed','cancelled') NOT NULL DEFAULT 'draft', cost DECIMAL(10,2) NOT NULL DEFAULT 0.00, credits_used INT NOT NULL DEFAULT 0, sms_price_per DECIMAL(10,4) NOT NULL DEFAULT 0.00, invoice_id INT NULL, scheduled_at DATETIME NULL, sent_at DATETIME NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_sms_tenant (tenant_id), INDEX idx_sms_company (company_id), INDEX idx_sms_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS sms_delivery_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY, campaign_id INT NULL, tenant_id INT NOT NULL, company_id INT NOT NULL, provider_key VARCHAR(40) NULL, recipient_phone VARCHAR(40) NOT NULL, recipient_name VARCHAR(190) NULL, message_body TEXT NULL, provider_message_id VARCHAR(120) NULL, status ENUM('queued','sent','delivered','failed','undelivered') NOT NULL DEFAULT 'queued', failure_reason VARCHAR(255) NULL, cost DECIMAL(10,4) NOT NULL DEFAULT 0.00, sent_at DATETIME NULL, delivered_at DATETIME NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_smslog_campaign (campaign_id), INDEX idx_smslog_tenant (tenant_id), INDEX idx_smslog_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS monetization_settings (
+  id INT AUTO_INCREMENT PRIMARY KEY, setting_key VARCHAR(80) NOT NULL, setting_value TEXT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, UNIQUE KEY uniq_monet_key (setting_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS monetization_plans (
+  id INT AUTO_INCREMENT PRIMARY KEY, plan_code VARCHAR(40) NOT NULL, plan_name VARCHAR(100) NOT NULL, stream ENUM('premium','widget','sponsored','sms') NOT NULL, tier VARCHAR(40) NOT NULL, price DECIMAL(10,2) NOT NULL DEFAULT 0.00, annual_discount_percent INT NOT NULL DEFAULT 0, features TEXT NULL, is_active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_plan_code (plan_code), INDEX idx_mplan_stream (stream)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+INSERT IGNORE INTO monetization_plans (plan_code, plan_name, stream, tier, price, annual_discount_percent, features, sort_order) VALUES
+('premium_essential','Essential Claim','premium','essential',149.00,15,'Claim your business profile\nRemove competitor ads\nVerified badge\nCustom banner upload',1),
+('premium_growth','Growth Premium','premium','growth',299.00,20,'Everything in Essential\nPin 3 positive reviews to top\nPriority in category ranking\nCustom CTA button\nMonthly performance report',2),
+('premium_authority','Authority+','premium','authority',499.00,20,'Everything in Growth\nUnlimited pinned reviews\nRemove all competitor suggestions\nFeatured category placement (1 week/mo)\nDedicated account manager',3),
+('widget_pro','Widget Pro','widget','pro',79.00,15,'Unlimited widget views\n3 active widgets\nCarousel & Grid layouts\nHide low ratings filter\nCustom CSS',4),
+('widget_agency','Widget Agency','widget','agency',149.00,20,'Unlimited widgets & domains\nWhite-label (no Optibiz badge)\nVerified-only filter\nPriority support\nAnalytics dashboard',5),
+('sponsored_boost','Sponsored Boost','sponsored','sponsored',299.00,0,'Top 3 in category for 30 days\n\"Sponsored\" badge\nCTR analytics\nUp to 2 slots per category',6),
+('sponsored_featured','Featured Crown','sponsored','featured',599.00,0,'#1 fixed position in category\nGold \"Featured\" crown badge\nHomepage spotlight (rotating)\nMax 1 slot per category\nVerified priority',7),
+('sms_100','SMS Starter 100','sms','100',50.00,0,'100 SMS credits\nGHS 0.50 per SMS\nAll local providers\nDelivery reports',8),
+('sms_500','SMS Growth 500','sms','500',200.00,0,'500 SMS credits\nGHS 0.40 per SMS — save 20%\nBulk CSV upload\nScheduled sends',9),
+('sms_2000','SMS Scale 2000','sms','2000',600.00,0,'2,000 SMS credits\nGHS 0.30 per SMS — save 40%\nAPI automation\nDedicated sender ID*',10);
+ALTER TABLE payment_invoices MODIFY purpose ENUM('new','renewal','upgrade','downgrade','addon','premium_claim','premium_renewal','widget','sponsored','sms_credits') NOT NULL DEFAULT 'renewal';
 -- TWO-FACTOR AUTHENTICATION (2FA)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS user_two_factor (

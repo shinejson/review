@@ -1165,6 +1165,15 @@ if (!function_exists('pay_invoice_apply')) {
             return true; // already applied
         }
 
+        // Monetization add-on invoices should not masquerade as base plan extensions — just fulfill the addon
+        $monetization_purposes = ['premium_claim','premium_renewal','widget','sponsored','sms_credits','addon','widget_sub','premium'];
+        if (in_array(strtolower(trim($invoice['purpose'] ?? '')), $monetization_purposes, true)) {
+            $iid = (int)$invoice['id'];
+            pay_invoice_set_status($conn, $iid, 'paid', ['paid_at'=>date('Y-m-d H:i:s'),'confirmed_by'=>$actor !== '' ? $actor : 'Super Admin']);
+            if (function_exists('monetization_on_invoice_paid')) { @monetization_on_invoice_paid($conn, $iid, 0); }
+            pay_log_event($conn, ['gateway_key'=>(string)($invoice['gateway_key'] ?? ''),'event_type'=>'invoice.applied.monetization','reference'=>(string)($invoice['checkout_reference'] ?? ''),'invoice_id'=>$iid,'payload'=>'Monetization invoice '.$invoice['invoice_number'].' fulfilled (purpose: '.($invoice['purpose'] ?? '').').']);
+            return true;
+        }
         $tenant_id = (int) $invoice['tenant_id'];
         $months    = max(1, (int) $invoice['months']);
         $plan_id   = (int) $invoice['plan_id'];
@@ -1190,6 +1199,8 @@ if (!function_exists('pay_invoice_apply')) {
                 'paid_at'      => date('Y-m-d H:i:s'),
                 'confirmed_by' => $actor !== '' ? $actor : 'Super Admin',
             ]);
+            // Monetization fulfillment on auto-apply path (covers gateway callbacks)
+            if (function_exists('monetization_on_invoice_paid')) { @monetization_on_invoice_paid($conn, (int)$invoice['id'], 0); }
             $end = sa_scalar($conn, "SELECT subscription_end_date FROM tenants WHERE id = " . $tenant_id, '', 'tenants');
             $note = 'Subscription activated from invoice ' . $invoice['invoice_number']
                 . ($end ? ' — active through ' . $end : '') . '.';
@@ -1360,10 +1371,14 @@ if (!function_exists('pay_confirm_payment')) {
         if (!empty($payment['invoice_id'])) {
             $invoice = pay_invoice($conn, (int) $payment['invoice_id']);
             if ($invoice) {
-                // Extend by whatever the invoice sold, so an upgrade and a
-                // renewal behave the same way.
                 $applied = pay_invoice_apply($conn, $invoice, $actor);
             }
+        }
+        // Monetization fulfillment: premium/sponsored/widget/SMS credits auto-activation
+        if (!empty($payment['invoice_id']) && function_exists('monetization_on_invoice_paid')) {
+            @monetization_on_invoice_paid($conn, (int)$payment['invoice_id'], (int)$payment_id);
+        } elseif (function_exists('monetization_on_invoice_paid') && !empty($invoice)) {
+            @monetization_on_invoice_paid($conn, (int)$invoice['id'], (int)$payment_id);
         }
 
         pay_log_event($conn, [
