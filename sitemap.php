@@ -83,6 +83,7 @@ $static_pages = array(
     array('pricing.php',  'weekly',  '0.9'),
     array('companies.php', 'daily',  '0.9'),
     array('seo-checker.php', 'monthly', '0.7'),
+    array('privacy.php',   'yearly',  '0.4'),
 );
 
 $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";

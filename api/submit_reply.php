@@ -4,6 +4,8 @@
  */
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/review_trust.php';
+require_once dirname(__DIR__) . '/includes/push.php';
 
 if (!headers_sent()) {
     header('Content-Type: application/json');
@@ -97,6 +99,30 @@ if ($stmt->execute()) {
     $cnt_stmt->execute();
     $total_replies = (int)$cnt_stmt->get_result()->fetch_assoc()['cnt'];
     $cnt_stmt->close();
+
+    // Mirror an official reply onto the review row (the public page and the
+    // app read `admin_reply`) and notify the customer when we know who they
+    // are. Both are best-effort: a failure here must not lose the reply.
+    if ($is_official) {
+        $upd = $conn->prepare("UPDATE ratings SET admin_reply = ?, responded_at = NOW() WHERE id = ?");
+        if ($upd) {
+            $upd->bind_param("si", $reply_text, $rating_id);
+            $upd->execute();
+            $upd->close();
+        }
+        if (function_exists('push_notify_review_reply')) {
+            $who = $conn->prepare("SELECT customer_user_id FROM ratings WHERE id = ? LIMIT 1");
+            if ($who) {
+                $who->bind_param("i", $rating_id);
+                $who->execute();
+                $row = $who->get_result()->fetch_assoc();
+                $who->close();
+                if (!empty($row['customer_user_id'])) {
+                    push_notify_review_reply($conn, (int) $row['customer_user_id'], (int) $rating_id, $customer_name ?? '');
+                }
+            }
+        }
+    }
 
     echo json_encode([
         'success' => true,

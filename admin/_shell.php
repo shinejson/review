@@ -104,7 +104,7 @@ $activeNav = $activeNav ?? 'dashboard';
   $can_social_card = $is_tenant && teamHasAccess('social_card');
   $can_qa          = $is_tenant && teamHasAccess('qa');
   $has_reviews_grp = $can_ratings || $can_whatsapp || $can_social_card || $can_qa;
-  $active_reviews  = in_array($activeNav, ['ratings', 'whatsapp_sender', 'social_card', 'qa'], true);
+  $active_reviews  = in_array($activeNav, ['ratings', 'moderation', 'whatsapp_sender', 'social_card', 'qa'], true);
 
   $can_qr          = $is_tenant && teamHasAccess('qr_stand');
   $can_social      = teamHasAccess('social');
@@ -170,6 +170,10 @@ $activeNav = $activeNav ?? 'dashboard';
         <a class="nav-sub-link <?php echo $activeNav === 'ratings' ? 'active' : ''; ?>" href="ratings.php" title="Ratings & Reviews">
           <span class="sub-dot"></span>
           <span class="nav-label">All Reviews</span>
+        </a>
+        <a class="nav-sub-link <?php echo $activeNav === 'moderation' ? 'active' : ''; ?>" href="moderation.php" title="Review Moderation">
+          <span class="sub-dot"></span>
+          <span class="nav-label">Moderation</span>
         </a>
         <?php endif; ?>
         <?php if ($can_whatsapp): ?>

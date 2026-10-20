@@ -564,7 +564,7 @@ function main() {
             'company_id=51&rating=9&customer_name=Test&customer_email=t@example.com&comment=x',
             { post: true, anonymous: true, badCsrf: true },
             // the endpoint refuses the value; wording differs between revisions
-            (r) => r.writes.length === 0 && /Invalid rating|valid rating between 1 and 5/i.test(r.html),
+            (r) => !r.writes.some((w) => /^INSERT INTO ratings/i.test(w)) && /Invalid rating|valid rating between 1 and 5/i.test(r.html),
             'rejected with no insert',
         ],
         [

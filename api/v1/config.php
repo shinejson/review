@@ -32,6 +32,11 @@ define('API_JWT_AUDIENCE', 'optibiz-mobile-app');
 define('API_JWT_ACCESS_EXPIRY', 86400);        // 24 Hours
 define('API_JWT_REFRESH_EXPIRY', 2592000);     // 30 Days
 
+// App-customer tokens are shorter-lived than workspace tokens: a stolen
+// phone-only token should not stay useful for a day.
+define('API_JWT_APP_ACCESS_EXPIRY', 3600);     // 1 Hour
+define('API_JWT_APP_REFRESH_EXPIRY', 2592000); // 30 Days
+
 // Rate Limiting Defaults
 define('API_RATE_LIMIT_SUBMIT_MAX', 5);        // 5 submissions
 define('API_RATE_LIMIT_SUBMIT_WINDOW', 600);   // per 10 minutes (600s)

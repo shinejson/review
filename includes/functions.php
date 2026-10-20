@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/sa_helpers.php';
+require_once __DIR__ . '/password.php';
 
 function sanitize($data) {
     if (is_array($data)) {
@@ -528,7 +529,19 @@ function timeAgo($datetime) {
 }
 
 function getReviews($company_id, $conn, $sort = 'newest', $filter = 0, $limit = 10, $offset = 0) {
-    $sql = "SELECT r.*, c.company_name FROM ratings r JOIN customers c ON r.company_id = c.id WHERE r.company_id = ? AND r.reported = 0";
+    // Reviews that moderation hid must never reappear in the public list,
+    // and the trust columns must exist before the filter can reference them.
+    if (!function_exists('review_trust_ensure_schema')) {
+        $trustFile = __DIR__ . '/review_trust.php';
+        if (is_file($trustFile)) {
+            require_once $trustFile;
+        }
+    }
+    if (function_exists('review_trust_ensure_schema')) {
+        review_trust_ensure_schema($conn);
+    }
+
+    $sql = "SELECT r.*, c.company_name FROM ratings r JOIN customers c ON r.company_id = c.id WHERE r.company_id = ? AND r.reported = 0 AND r.moderation_status = 'published'";
     $params = [$company_id];
     $types = "i";
     
@@ -666,6 +679,18 @@ function public_rate_limit_respond($retry_after) {
 function markHelpful($rating_id, $conn) {
     $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
     $rating_id = (int)$rating_id;
+
+    // Prefer the trust helper: it recognises signed-in app users, keeps the
+    // counter and the votes table in step, and creates its schema if needed.
+    if (!function_exists('review_toggle_helpful')) {
+        $trustFile = __DIR__ . '/review_trust.php';
+        if (is_file($trustFile)) {
+            require_once $trustFile;
+        }
+    }
+    if (function_exists('review_toggle_helpful')) {
+        return review_toggle_helpful($conn, $rating_id, 0, $ip);
+    }
     
     $check = $conn->prepare("SELECT id FROM helpful_votes WHERE rating_id = ? AND voter_ip = ?");
     $check->bind_param("is", $rating_id, $ip);
@@ -696,7 +721,17 @@ function markHelpful($rating_id, $conn) {
 }
 
 function reportReview($rating_id, $reason, $conn) {
-    $ip = $_SERVER['REMOTE_ADDR'];
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+
+    if (!function_exists('review_report')) {
+        $trustFile = __DIR__ . '/review_trust.php';
+        if (is_file($trustFile)) {
+            require_once $trustFile;
+        }
+    }
+    if (function_exists('review_report')) {
+        return review_report($conn, (int) $rating_id, (string) $reason, '', 0, $ip, '');
+    }
 
     $check = $conn->prepare("SELECT id FROM reported_reviews WHERE rating_id = ? AND reporter_ip = ?");
     $check->bind_param("is", $rating_id, $ip);
@@ -3613,6 +3648,19 @@ if (!function_exists('hasCustomerReviewedThisMonth')) {
         $email      = trim(strtolower((string)$email));
         if ($company_id <= 0 || $email === '' || !is_object($conn)) {
             return false;
+        }
+
+        // Trust layer: rolling window (30 days by default) plus account and
+        // device matching, so legacy and v1 endpoints agree.
+        if (!function_exists('review_find_recent_by_customer')) {
+            $trustFile = __DIR__ . '/review_trust.php';
+            if (is_file($trustFile)) {
+                require_once $trustFile;
+            }
+        }
+        if (function_exists('review_find_recent_by_customer')
+            && review_find_recent_by_customer($conn, $company_id, 0, $email, '')) {
+            return true;
         }
 
         $stmt = $conn->prepare("

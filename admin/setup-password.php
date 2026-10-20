@@ -70,17 +70,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tenant && !$expired && $error === 
     } elseif (!preg_match('/[A-Z]/', $password) || !preg_match('/[a-z]/', $password) || !preg_match('/[0-9]/', $password)) {
         $error = 'Password must contain at least one uppercase letter, one lowercase letter, and one number.';
     } else {
-        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $hash = optibiz_hash_password($password);
         $now = date('Y-m-d H:i:s');
+        $ok = false;
 
-        $upd = $conn->prepare("UPDATE tenants SET password = ?, setup_token = NULL, setup_token_expires = NULL, email_verified_at = ? WHERE id = ?");
-        if ($upd) {
-            $upd->bind_param("ssi", $hash, $now, $tenant['id']);
-            $ok = $upd->execute();
-            $upd->close();
+        if ($hash === null) {
+            $error = 'That password cannot be used. Please choose another one.';
         } else {
-            $escHash = $conn->real_escape_string($hash);
-            $ok = (bool)@$conn->query("UPDATE tenants SET password = '$escHash', setup_token = NULL, setup_token_expires = NULL, email_verified_at = '$now' WHERE id = " . (int)$tenant['id']);
+            $upd = $conn->prepare("UPDATE tenants SET password = ?, setup_token = NULL, setup_token_expires = NULL, email_verified_at = ? WHERE id = ?");
+            if ($upd) {
+                $upd->bind_param("ssi", $hash, $now, $tenant['id']);
+                $ok = $upd->execute();
+                $upd->close();
+            } else {
+                $escHash = $conn->real_escape_string($hash);
+                $ok = (bool)@$conn->query("UPDATE tenants SET password = '$escHash', setup_token = NULL, setup_token_expires = NULL, email_verified_at = '$now' WHERE id = " . (int)$tenant['id']);
+            }
         }
 
         if ($ok) {

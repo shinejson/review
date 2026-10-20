@@ -487,7 +487,7 @@ include __DIR__ . '/_shell.php';
                            value="<?php echo htmlspecialchars($company_profile['website'] ?? ''); ?>">
                 </div>
 
-                <!-- Google Review Booster & Sentiment Gating -->
+                <!-- Google review link & low-score alerts -->
                 <div class="collapsible-card" style="grid-column:1/-1;background:var(--bg, #f8fafc);border:1px solid var(--line, #e2e8f0);border-radius:12px;padding:20px;margin:6px 0 10px;">
                     <div class="collapsible-header" onclick="toggleSection(this)" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;cursor:pointer;">
                         <div style="display:flex;align-items:center;gap:10px;">
@@ -495,8 +495,8 @@ include __DIR__ . '/_shell.php';
                                 G
                             </div>
                             <div>
-                                <h4 style="margin:0;font-size:14.5px;color:var(--ink);font-weight:700;">Google Review Booster &amp; Sentiment Routing</h4>
-                                <p class="muted" style="margin:2px 0 0;font-size:12px;">Boost Google stars from happy customers while gating complaints away from public search.</p>
+                                <h4 style="margin:0;font-size:14.5px;color:var(--ink);font-weight:700;">Google Review Link &amp; Low-Score Alerts</h4>
+                                <p class="muted" style="margin:2px 0 0;font-size:12px;">Offer the same optional Google prompt to every reviewer. Low scores raise a private alert for your team.</p>
                             </div>
                         </div>
                         <div style="display:flex;align-items:center;gap:8px;">
@@ -530,18 +530,18 @@ include __DIR__ . '/_shell.php';
                         <div style="display:flex;align-items:flex-start;gap:10px;">
                             <input type="checkbox" id="booster_enabled" name="booster_enabled" value="1" <?php echo $booster_enabled ? 'checked' : ''; ?> style="margin-top:3px;cursor:pointer;width:18px;height:18px;accent-color:#1a73e8;">
                             <label for="booster_enabled" style="font-size:13px;cursor:pointer;font-weight:600;color:var(--ink);line-height:1.4;">
-                                Enable Review Booster
-                                <span class="muted" style="display:block;font-size:11.5px;font-weight:normal;margin-top:2px;">Prompt positive reviews to be shared to Google with 1 click.</span>
+                                Offer the Google review link
+                                <span class="muted" style="display:block;font-size:11.5px;font-weight:normal;margin-top:2px;">Shown to every customer after feedback, whatever their score. Asking only happy customers is review gating and is not allowed.</span>
                             </label>
                         </div>
 
                         <div>
-                            <label for="booster_min_stars" style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px;color:var(--ink);">Routing Threshold</label>
+                            <label for="booster_min_stars" style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px;color:var(--ink);">Low-score alert threshold</label>
                             <select id="booster_min_stars" name="booster_min_stars" style="padding:7px 10px;font-size:13px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;width:100%;color:var(--ink);">
-                                <option value="4" <?php echo $booster_min_stars == 4 ? 'selected' : ''; ?>>4 Stars &amp; Above (Recommended)</option>
-                                <option value="5" <?php echo $booster_min_stars == 5 ? 'selected' : ''; ?>>5 Stars Only (Strict)</option>
+                                <option value="4" <?php echo $booster_min_stars == 4 ? 'selected' : ''; ?>>Alert me for 1–3 star reviews (Recommended)</option>
+                                <option value="5" <?php echo $booster_min_stars == 5 ? 'selected' : ''; ?>>Alert me for 1–4 star reviews</option>
                             </select>
-                            <small class="muted" style="display:block;font-size:11px;margin-top:3px;">Reviews below this score are gated for private resolution.</small>
+                            <small class="muted" style="display:block;font-size:11px;margin-top:3px;">Reviews below this score trigger a private alert for your team. They still receive the same optional Google prompt as everyone else.</small>
                         </div>
                     </div>
 
@@ -806,14 +806,14 @@ include __DIR__ . '/_shell.php';
         <!-- Google Review Booster status card -->
         <div class="form-card" style="padding:22px;<?php echo $booster_active ? 'border-left:3px solid #4285F4;' : ''; ?>">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
-                <h3 style="margin:0;font-size:15px;">⭐ Google Review Booster</h3>
+                <h3 style="margin:0;font-size:15px;">⭐ Google Reviews</h3>
                 <?php echo $booster_active
                     ? '<span class="status-badge-replied" style="font-size:11px;">● Active</span>'
                     : '<span class="status-badge-pending" style="font-size:11px;">● Off / Missing Link</span>'; ?>
             </div>
             <?php if ($booster_active): ?>
                 <p class="muted" style="margin:0 0 14px;font-size:12.5px;line-height:1.5;">
-                    Happy customers rating <strong><?php echo $booster_min_stars; ?>★ or higher</strong> are prompted with a 1-click button to copy their review directly to your Google Business Profile.
+                    Every reviewer is offered the same optional 1-click Google prompt. Reviews below <?php echo $booster_min_stars; ?>★ additionally raise a private alert for your team.
                 </p>
                 <a href="<?php echo htmlspecialchars($google_store_url); ?>" target="_blank" rel="noopener noreferrer"
                    style="display:inline-flex;align-items:center;gap:8px;background:#4285F4;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:10px 16px;border-radius:99px;">
@@ -821,7 +821,7 @@ include __DIR__ . '/_shell.php';
                 </a>
             <?php else: ?>
                 <p class="muted" style="margin:0;font-size:12.5px;line-height:1.6;">
-                    Paste your Google Business review link to enable review boosting. 4–5 star reviews get sent to Google, while 1–3 star complaints are gated internally.
+                    Paste your Google Business review link to show the optional prompt after every review. Scores below the alert threshold also notify your team, but every reviewer sees the same link.
                 </p>
             <?php endif; ?>
         </div>

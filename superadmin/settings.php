@@ -316,14 +316,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $confirm = (string) ($_POST['confirm_password'] ?? '');
 
         $hash = (string) sa_scalar($conn, "SELECT password FROM super_admins WHERE id = " . $id, '', 'super_admins');
-        if (!$id || $hash === '' || !password_verify($current, $hash)) {
+        if (!$id || $hash === '' || !optibiz_login_check($conn, 'super_admins', $id, $current, $hash)) {
             sa_flash('error', 'Your current password is not correct.');
         } elseif (strlen($new) < 8) {
             sa_flash('error', 'The new password must be at least 8 characters.');
         } elseif ($new !== $confirm) {
             sa_flash('error', 'The two new passwords do not match.');
         } else {
-            $new_hash = password_hash($new, PASSWORD_DEFAULT);
+            $new_hash = optibiz_hash_password($new);
             $stmt = $conn->prepare("UPDATE super_admins SET password = ? WHERE id = ?");
             $stmt->bind_param("si", $new_hash, $id);
             $stmt->execute();

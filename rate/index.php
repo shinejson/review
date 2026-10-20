@@ -405,6 +405,10 @@ if (empty($public_page_settings['show_qa']) && $active_tab === 'qa') {
     $active_tab = !empty($questions) ? 'questions' : 'feedbacks';
 }
 
+// QR visit token from a printed counter stand or receipt. It is
+// forwarded to the submission endpoint and verified server-side.
+$review_qr_token = isset($_GET['qv']) && is_string($_GET['qv']) ? trim($_GET['qv']) : '';
+
 // WhatsApp click-to-chat: fallback to company phone or tenant phone if whatsapp_number is not explicitly specified
 $wa_target_number = !empty($company['whatsapp_number']) ? $company['whatsapp_number'] : (!empty($company['phone']) ? $company['phone'] : ($tenant_info['phone'] ?? ''));
 if (!empty($wa_target_number)) {
@@ -2971,6 +2975,7 @@ if ($total_ratings > 0) {
 
             <form id="generalRatingForm" action="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/api/submit_rating.php'); ?>" method="POST" enctype="multipart/form-data" onsubmit="return validateGeneralForm()">
                 <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
+                <input type="hidden" name="qr_token" value="<?php echo htmlspecialchars($review_qr_token); ?>">
                 <input type="hidden" name="question_id" value="">
 
                 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px;">
@@ -3112,6 +3117,7 @@ if ($total_ratings > 0) {
                 <form class="rt-service-review-form" action="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/api/submit_rating.php'); ?>" method="POST" onsubmit="return validateServiceReview(<?php echo $svc_id; ?>)">
                     <input type="hidden" name="service_id" value="<?php echo $svc_id; ?>">
                     <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
+                <input type="hidden" name="qr_token" value="<?php echo htmlspecialchars($review_qr_token); ?>">
                     <label class="rt-review-form-label">Rate this service</label>
                     <div class="rt-service-form-stars">
                         <input type="radio" name="rating" value="5" id="svc_<?php echo $svc_id; ?>_5"><label for="svc_<?php echo $svc_id; ?>_5" title="5 Stars">★</label>
@@ -3175,6 +3181,7 @@ if ($total_ratings > 0) {
                 <?php endif; ?>
                 <form action="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/api/submit_rating.php'); ?>" method="POST" id="specificReviewsForm" onsubmit="return validateReviewsForm(this)">
                 <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
+                <input type="hidden" name="qr_token" value="<?php echo htmlspecialchars($review_qr_token); ?>">
                 <div class="rt-question-list">
                     <?php foreach ($questions as $idx => $q): $q_id = (int)$q['id']; ?>
                         <article class="rt-question-card" id="question-card-<?php echo $q_id; ?>">
@@ -3381,6 +3388,7 @@ if ($total_ratings > 0) {
                                         <form class="rt-reply-form" onsubmit="return submitReviewReply(event, <?php echo (int)$rv['id']; ?>, this)">
                                             <input type="hidden" name="rating_id" value="<?php echo (int)$rv['id']; ?>">
                                             <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
+                <input type="hidden" name="qr_token" value="<?php echo htmlspecialchars($review_qr_token); ?>">
                                             <div class="rt-reply-form-row">
                                                 <input type="text" name="user_name" class="rt-reply-input" placeholder="Your name (optional)" style="flex:1;">
                                                 <input type="email" name="user_email" class="rt-reply-input" placeholder="Your email (optional)" style="flex:1;">
@@ -3565,6 +3573,7 @@ if ($total_ratings > 0) {
                                         <form class="rt-reply-form" onsubmit="return submitReviewReply(event, <?php echo (int)$rv['id']; ?>, this)">
                                             <input type="hidden" name="rating_id" value="<?php echo (int)$rv['id']; ?>">
                                             <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
+                <input type="hidden" name="qr_token" value="<?php echo htmlspecialchars($review_qr_token); ?>">
                                             <div class="rt-reply-form-row">
                                                 <input type="text" name="user_name" class="rt-reply-input" placeholder="Your name (optional)" style="flex:1;">
                                                 <input type="email" name="user_email" class="rt-reply-input" placeholder="Your email (optional)" style="flex:1;">
@@ -3622,6 +3631,7 @@ if ($total_ratings > 0) {
                 </div>
                 <form id="qaSubmitForm" onsubmit="return submitCommunityQaForm(event, this)">
                     <input type="hidden" name="company_id" value="<?php echo $company_id; ?>">
+                <input type="hidden" name="qr_token" value="<?php echo htmlspecialchars($review_qr_token); ?>">
                     <input type="hidden" name="action" value="ask_question">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
                         <div>

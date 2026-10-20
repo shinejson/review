@@ -1485,7 +1485,7 @@ if ($cat_res) {
             <div class="engine-nav-wrap">
                 <a href="#qr-stands" class="engine-pill"><i class="fa-solid fa-qrcode"></i> Counter QR Stands</a>
                 <a href="#whatsapp" class="engine-pill"><i class="fa-brands fa-whatsapp"></i> WhatsApp Requester</a>
-                <a href="#google-booster" class="engine-pill"><i class="fa-brands fa-google"></i> Google Booster &amp; Shield</a>
+                <a href="#google-booster" class="engine-pill"><i class="fa-brands fa-google"></i> Google Reviews &amp; Alerts</a>
                 <a href="#social-proof" class="engine-pill"><i class="fa-solid fa-wand-magic-sparkles"></i> Social Proof Studio</a>
                 <a href="#community-qa" class="engine-pill"><i class="fa-solid fa-comments"></i> Community Q&amp;A</a>
                 <a href="#ad-funnel" class="engine-pill"><i class="fa-solid fa-bullhorn"></i> Ad Retargeting Funnels</a>
@@ -1594,30 +1594,30 @@ if ($cat_res) {
     <section class="feature-block" id="google-booster">
         <div class="feature-row">
             <div>
-                <div class="feature-tag"><i class="fa-brands fa-google"></i> Engine 03 • Google Boost &amp; Negative Shield</div>
-                <h2 class="feature-title">Smart Google Review Routing &amp; Feedback Shield</h2>
+                <div class="feature-tag"><i class="fa-brands fa-google"></i> Engine 03 • Google Reviews &amp; Private Follow-up</div>
+                <h2 class="feature-title">Ask Every Customer for an Honest Google Review</h2>
                 <p class="feature-lead">
-                    Stop bad days from wrecking your public Google rating. Optibiz intelligently routes glowing reviews to Google while resolving complaints privately behind closed doors.
+                    Every customer sees the same optional Google review prompt — positive, mixed or negative. Low scores also raise a private alert so your team can fix the problem. This is the policy-safe way to grow your Google rating.
                 </p>
                 <ul class="feature-points">
                     <li>
                         <i class="fa-solid fa-check"></i>
-                        <div><strong>Direct Google Booster (4 &amp; 5 Stars):</strong> Delighted customers are directed directly to your verified Google Business Profile review dialog to leave 5-star praise.</div>
+                        <div><strong>Same prompt for everyone:</strong> Every reviewer gets an optional link to your Google Business Profile. Asking only happy customers is review gating, which Google prohibits.</div>
                     </li>
                     <li>
                         <i class="fa-solid fa-check"></i>
-                        <div><strong>Internal Shield (1, 2 &amp; 3 Stars):</strong> Unhappy customers are routed to a private resolution form so they can vent directly to management instead of writing a public 1-star rant.</div>
+                        <div><strong>Private follow-up, not suppression:</strong> Low scores alert your team and open a resolution thread, while the review still appears publicly on Optibiz.</div>
                     </li>
                     <li>
                         <i class="fa-solid fa-check"></i>
-                        <div><strong>Instant Manager Alerts:</strong> Receive immediate email &amp; WhatsApp alerts whenever low scores occur, enabling your team to resolve issues within minutes.</div>
+                        <div><strong>Verified visits:</strong> A QR code tied to your counter or a receipt marks genuine customers as verified, so readers can tell real visits from drive-by reviews.</div>
                     </li>
                     <li>
                         <i class="fa-solid fa-check"></i>
-                        <div><strong>Turn Detractors Into Champions:</strong> Over 70% of unhappy customers return when their grievance is acknowledged and remedied swiftly by management.</div>
+                        <div><strong>Instant manager alerts:</strong> A push notification reaches the owner when a 1–2 star review arrives, so a bad day can be fixed before it becomes a lost customer.</div>
                     </li>
                 </ul>
-                <button type="button" class="btn-lime" onclick="openModal()">Try Google Booster</button>
+                <button type="button" class="btn-lime" onclick="openModal()">See Google Review Tools</button>
             </div>
 
             <div class="feature-visual">
@@ -1625,19 +1625,19 @@ if ($cat_res) {
                     <div class="route-branch route-high">
                         <div class="route-stars">★★★★★</div>
                         <div class="route-desc">
-                            <strong>4 &amp; 5 Stars: Public Google Boost</strong>
-                            Directs reviewer to Google Maps review dialog to boost local SEO ranking.
+                            <strong>Every score: optional Google prompt</strong>
+                            The same link is offered to every reviewer after feedback.
                         </div>
-                        <div class="route-badge">Boost Google</div>
+                        <div class="route-badge">One prompt</div>
                     </div>
 
                     <div class="route-branch route-low">
                         <div class="route-stars">★☆☆☆☆</div>
                         <div class="route-desc">
-                            <strong>1 to 3 Stars: Negative Shield</strong>
-                            Captures private feedback internally. Alerts manager instantly to resolve issues.
+                            <strong>Low scores: private alert</strong>
+                            Your team is notified and can reply, while the review stays public.
                         </div>
-                        <div class="route-badge">Shield Public</div>
+                        <div class="route-badge">Private alert</div>
                     </div>
                 </div>
             </div>
@@ -1975,6 +1975,8 @@ if ($cat_res) {
                 <a href="pricing.php" style="color:#94a3b8;text-decoration:none">Pricing</a>
                 <a href="features.php" style="color:#94a3b8;text-decoration:none">Features</a>
                 <a href="<?php echo admin_url('login.php'); ?>" style="color:#94a3b8;text-decoration:none">Sign In</a>
+                <a href="privacy.php" style="color:#94a3b8;text-decoration:none">Privacy</a>
+                <a href="account-deletion.php" style="color:#94a3b8;text-decoration:none">Delete account</a>
             </div>
         </div>
     </footer>

@@ -607,6 +607,9 @@ include __DIR__ . '/_shell.php';
         <p class="muted">Create, edit, and moderate customer ratings (CRUD) or inspect in-depth customer feedback and responses.</p>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <a href="moderation.php" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;font-weight:700;background:#fff7ed;color:#9a3412;border:1px solid #fdba74;">
+            🛡️ Moderation Queue
+        </a>
         <a href="whatsapp_sender.php" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;text-decoration:none;font-weight:700;background:#dcfce7;color:#15803d;border:1px solid #86efac;">
             💬 Ask for Reviews
         </a>

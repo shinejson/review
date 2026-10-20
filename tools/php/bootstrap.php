@@ -1,4 +1,11 @@
 <?php
+// Harness-only file. Refuse to execute over HTTP so a deployment that
+// copies the repository verbatim cannot expose preview data or accounts.
+if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
+    http_response_code(404);
+    exit;
+}
+
 /**
  * Prepares a CLI/WebAssembly PHP environment so the real superadmin
  * pages can be rendered without Apache or MySQL.

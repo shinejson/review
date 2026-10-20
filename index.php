@@ -2634,6 +2634,8 @@ $seo_faq_node = array(
             <div style="display:flex;gap:20px">
                 <a href="pricing.php" style="color:#94a3b8;text-decoration:none">Pricing</a>
                 <a href="features.php" style="color:#94a3b8;text-decoration:none">Features</a>
+                <a href="privacy.php" style="color:#94a3b8;text-decoration:none">Privacy</a>
+                <a href="account-deletion.php" style="color:#94a3b8;text-decoration:none">Delete account</a>
             </div>
         </div>
     </footer>

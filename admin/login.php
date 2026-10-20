@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Check if account is locked
             if (isAccountLocked($conn, 'tenants', (int)$tenant['id'])) {
                 $error = 'This account is temporarily locked. Please try again in 30 minutes or contact support to unlock it.';
-            } elseif (password_verify($password, $tenant['password'])) {
+            } elseif (optibiz_login_check($conn, 'tenants', (int) $tenant['id'], $password, (string) $tenant['password'])) {
                 // Reset failed attempts on successful login
                 resetFailedLoginAttempts($conn, 'tenants', (int)$tenant['id']);
                 
@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error = 'This team account is disabled. Contact your workspace owner.';
                     } elseif (isAccountLocked($conn, 'team_members', (int)$member['id'])) {
                         $error = 'This account is temporarily locked. Please try again in 30 minutes or contact your workspace owner to unlock it.';
-                    } elseif (!password_verify($password, (string)$member['password'])) {
+                    } elseif (!optibiz_login_check($conn, 'team_members', (int) $member['id'], $password, (string) $member['password'])) {
                         // Record failed attempt
                         $attempt_result = recordFailedLoginAttempt($conn, 'team_members', (int)$member['id']);
                         $error = $attempt_result['message'];
@@ -193,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($resAdmin && $resAdmin->num_rows === 1) {
                     $admin = $resAdmin->fetch_assoc();
-                    if (password_verify($password, $admin['password'])) {
+                    if (optibiz_login_check($conn, 'admins', (int) $admin['id'], $password, (string) $admin['password'])) {
                         $sessionData = [
                             'admin_id'       => (int)$admin['id'],
                             'admin_username' => $admin['username'],
