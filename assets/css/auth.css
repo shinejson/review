@@ -351,9 +351,9 @@ body {
 .auth-form input:not([type="checkbox"]):not([type="radio"]):not(.otp-box):not([type="hidden"]):focus,
 .auth-input-wrap input:focus {
     outline: none;
-    border-color: var(--ob-lime);
+    border-color: var(--ob-lime) !important;
     background: rgba(15, 36, 56, 0.72);
-    box-shadow: 0 0 0 3px rgba(194, 245, 66, 0.16);
+    box-shadow: 0 0 0 3px rgba(194, 245, 66, 0.22), 0 0 12px rgba(194, 245, 66, 0.15);
 }
 
 .auth-has-toggle input {
@@ -740,8 +740,8 @@ body {
 :root[data-theme='light'] .auth-form input:not([type="checkbox"]):not([type="radio"]):not(.otp-box):not([type="hidden"]):focus,
 :root[data-theme='light'] .auth-input-wrap input:focus {
     background: #ffffff;
-    border-color: #0a7a3e;
-    box-shadow: 0 0 0 3px rgba(10, 122, 62, 0.12);
+    border-color: var(--ob-lime) !important;
+    box-shadow: 0 0 0 3px rgba(194, 245, 66, 0.25), 0 0 12px rgba(194, 245, 66, 0.2);
 }
 
 :root[data-theme='light'] .auth-input-icon {

@@ -408,7 +408,7 @@ $activeNav = $activeNav ?? 'dashboard';
       <?php if ($is_tenant && !empty($tenant_all_branches)): ?>
       <!-- Active Branch Switcher -->
       <div class="admin-branch-switcher-wrap" style="position:relative;">
-        <button type="button" class="admin-branch-btn" onclick="toggleBranchDropdown(this)" aria-expanded="false" style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:9px;background:#ffffff;border:1px solid var(--line);color:var(--ink);font-size:12.5px;font-weight:700;cursor:pointer;transition:all 0.15s;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+        <button type="button" class="admin-branch-btn" onclick="toggleBranchDropdown(this)" aria-expanded="false" style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:9px;background:var(--card-bg, #ffffff);border:1px solid var(--line);color:var(--ink);font-size:12.5px;font-weight:700;cursor:pointer;transition:all 0.15s;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
           <span style="width:20px;height:20px;border-radius:5px;background:rgba(194,245,66,0.22);color:#15803d;display:flex;align-items:center;justify-content:center;font-size:11px;">🏢</span>
           <span style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo htmlspecialchars($active_company_row['company_name'] ?? 'Primary'); ?>">
             <?php echo htmlspecialchars($active_company_row['company_name'] ?? 'Primary'); ?>
@@ -416,8 +416,8 @@ $activeNav = $activeNav ?? 'dashboard';
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--muted);"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         
-        <div class="admin-branch-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;width:280px;background:#ffffff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.15);z-index:1000;overflow:hidden;">
-          <div style="padding:10px 14px;border-bottom:1px solid var(--line);background:var(--bg);display:flex;align-items:center;justify-content:space-between;">
+        <div class="admin-branch-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;width:280px;background:var(--card-bg, #ffffff);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.15);z-index:1000;overflow:hidden;">
+          <div style="padding:10px 14px;border-bottom:1px solid var(--line);background:var(--card-sub, #f8fafc);display:flex;align-items:center;justify-content:space-between;">
             <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);">Workspace Branches</span>
             <span style="font-size:11px;font-weight:800;background:rgba(194,245,66,0.25);color:var(--ink);padding:1px 7px;border-radius:99px;"><?php echo count($tenant_all_branches); ?></span>
           </div>
