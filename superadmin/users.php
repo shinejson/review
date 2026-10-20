@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 . $conn->real_escape_string($username) . "'", 0, 'super_admins') > 0) {
             sa_flash('error', 'The username “' . $username . '” is already taken.');
         } else {
-            $hash = password_hash($password, PASSWORD_DEFAULT);
+            $hash = optibiz_hash_password($password);
             $json = json_encode($perms);
             $stmt = $conn->prepare('INSERT INTO super_admins (username, password, email, permissions) VALUES (?, ?, ?, ?)');
             $stmt->bind_param('ssss', $username, $hash, $email, $json);
@@ -139,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $json = json_encode($perms);
                 if ($password !== '') {
-                    $hash = password_hash($password, PASSWORD_DEFAULT);
+                    $hash = optibiz_hash_password($password);
                     $stmt = $conn->prepare('UPDATE super_admins SET username = ?, email = ?, password = ?, permissions = ? WHERE id = ?');
                     $stmt->bind_param('ssssi', $username, $email, $hash, $json, $id);
                 } else {

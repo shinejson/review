@@ -1,4 +1,11 @@
 <?php
+// Harness-only file. Refuse to execute over HTTP so a deployment that
+// copies the repository verbatim cannot expose preview data or accounts.
+if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
+    http_response_code(404);
+    exit;
+}
+
 /**
  * ============================================================
  *  Sample dataset for the PHP render harness (tools/)

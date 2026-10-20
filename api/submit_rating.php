@@ -1,6 +1,8 @@
 <?php
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/admin_helpers.php';
+require_once dirname(__DIR__) . '/includes/review_trust.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     die('Invalid request method');
@@ -24,6 +26,7 @@ if ($company_id <= 0) {
 // Auto-ensure booster and sentiment routing columns exist
 ensureBoosterColumns($conn);
 ensureRatingsServiceColumn($conn);
+review_trust_ensure_schema($conn);
 
 // Fetch company details, booster configuration & social follow targets
 $c_stmt = $conn->prepare("SELECT tenant_id, company_name, website, google_store_url, booster_enabled, booster_min_stars,
@@ -217,7 +220,7 @@ if (isset($_POST['rating']) && is_array($_POST['rating'])) {
     $stmt->close();
 
     if ($inserted > 0) {
-        $batch_booster_eligible = (!$has_low_score && $high_score_count > 0 && $booster_enabled && !empty($google_store_url));
+        $batch_booster_eligible = ($booster_enabled && !empty($google_store_url));
         ?>
         <!DOCTYPE html>
         <html lang="en">
@@ -295,7 +298,7 @@ if (isset($_POST['rating']) && is_array($_POST['rating'])) {
                                 <span style="display:block;font-size:11.5px;color:#64748b;">Takes only 10 seconds</span>
                             </div>
                         </div>
-                        <p style="font-size:12.5px;color:#475569;margin:0 0 12px;line-height:1.5;">Would you also share a quick star rating on our Google Business Profile?</p>
+                        <p style="font-size:12.5px;color:#475569;margin:0 0 12px;line-height:1.5;">Would you also share your honest experience on our Google Business Profile?</p>
                         <a href="<?php echo htmlspecialchars($google_store_url); ?>" target="_blank" rel="noopener noreferrer" style="display:block;text-align:center;padding:12px;background:#1a73e8;color:#fff;border-radius:8px;font-weight:700;text-decoration:none;font-size:13.5px;">
                             ⭐ Post Quick Rating on Google ↗
                         </a>
@@ -350,6 +353,33 @@ if ($rating < 1 || $rating > 5) {
     die('Please select a valid rating between 1 and 5 stars.');
 }
 
+// A QR token from a printed counter stand or a per-visit receipt proves the
+// reviewer was at the business. It is verified server-side and consumed
+// after the row is stored.
+$qr_token_raw = review_qr_from_input($_POST);
+$qr_trust = null;
+if ($qr_token_raw !== '') {
+    $qr_trust = review_qr_verify($conn, $qr_token_raw, $company_id);
+    if (!$qr_trust) {
+        render_submit_notice(
+            'That QR Code Has Expired',
+            'This review code is no longer valid. Scan the code at the counter again, or submit your feedback without it.',
+            '⌛',
+            '#fef3c7',
+            '#d97706',
+            '← Back to ' . htmlspecialchars($company_name),
+            $company_rating_url
+        );
+        exit;
+    }
+    $is_verified = 1;
+    $verification_type = $qr_trust['kind'] === 'visit' ? 'qr_visit' : 'qr_location';
+}
+$qr_token_id = $qr_trust && !empty($qr_trust['token_id']) ? (int) $qr_trust['token_id'] : null;
+
+// Optional 1-5 category scores (service, cleanliness, value, speed).
+$categories = review_categories_from_input($_POST);
+
 // Name is required for general reviews. Question and service submissions
 // collect no name or email - they are stored anonymously.
 if (empty($customer_name)) {
@@ -396,10 +426,12 @@ if ($is_question || $is_service) {
     $customer_email = '';
 }
 
-// Determine sentiment escalation and Google booster eligibility
+// Low scores get a private follow-up for the owner. They do NOT lose the
+// public Google prompt: offering it only to happy customers is review
+// gating, which Google's policies prohibit.
 $is_escalated        = ($rating < $booster_min_stars) ? 1 : 0;
 $escalation_status   = $is_escalated ? 'pending' : 'none';
-$is_booster_eligible = ($rating >= $booster_min_stars) && $booster_enabled && !empty($google_store_url);
+$is_booster_eligible = $booster_enabled && !empty($google_store_url);
 
 // Validate the target service belongs to the same company before linking it
 if ($is_service) {
@@ -417,11 +449,14 @@ if ($is_service) {
 }
 
 // Insert rating with verification metadata and escalation tracking
-$stmt = $conn->prepare("INSERT INTO ratings (company_id, question_id, service_id, rating, customer_name, customer_email, comment, is_verified, verification_type, momo_ref, is_escalated, escalation_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-$stmt->bind_param("iiiisssissis", $company_id, $question_id, $service_id, $rating, $customer_name, $customer_email, $comment, $is_verified, $verification_type, $momo_ref, $is_escalated, $escalation_status);
+$stmt = $conn->prepare("INSERT INTO ratings (company_id, question_id, service_id, rating, customer_name, customer_email, comment, is_verified, verification_type, momo_ref, is_escalated, escalation_status, qr_token_id, category_service, category_cleanliness, category_value, category_speed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+$stmt->bind_param("iiiisssissisiiiii", $company_id, $question_id, $service_id, $rating, $customer_name, $customer_email, $comment, $is_verified, $verification_type, $momo_ref, $is_escalated, $escalation_status, $qr_token_id, $categories['service'], $categories['cleanliness'], $categories['value'], $categories['speed']);
 
 if ($stmt->execute()) {
     $rating_id = $conn->insert_id;
+    if ($qr_trust) {
+        review_qr_consume($conn, $qr_trust);
+    }
     
         // Handle receipt photo upload. The photo is stored and the review stays
     // pending until the tenant confirms the proof in the admin panel.
@@ -603,9 +638,9 @@ if ($stmt->execute()) {
     <body>
         <div class="success-card">
 
-            <?php if ($is_booster_eligible): ?>
+            <?php if ($is_booster_eligible && !$is_escalated): ?>
                 <!-- ============================================================
-                     PATH A: GOOGLE REVIEW BOOSTER (4-5 Stars)
+                     PATH A: GOOGLE REVIEW PROMPT (no score filter)
                      Amplify positive reputation onto Google Business Profile
                      ============================================================ -->
                 <div class="stars-gold"><?php echo str_repeat('★', $rating); ?></div>
@@ -679,8 +714,10 @@ if ($stmt->execute()) {
 
             <?php elseif ($is_escalated): ?>
                 <!-- ============================================================
-                     PATH B: SENTIMENT GATING & PRIVATE ESCALATION (1-3 Stars)
-                     Prevent public damage, show empathy, route to private ticket
+                     PATH B: PRIVATE FOLLOW-UP (1–3 stars)
+                     The owner is alerted, but the reviewer still gets the same
+                     optional public Google prompt below. Only asking happy
+                     customers is review gating.
                      ============================================================ -->
                 <div style="width:72px;height:72px;border-radius:50%;background:#fef3c7;color:#d97706;font-size:34px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
                     🛡️
@@ -688,8 +725,8 @@ if ($stmt->execute()) {
                 <h2>We Value Your Candid Feedback</h2>
                 <p class="lead">We're truly sorry that your experience with <strong><?php echo htmlspecialchars($company_name); ?></strong> didn't meet your expectations.</p>
 
-                <!-- Private Resolution Card (No Google Link) -->
-                <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:16px;padding:22px 20px;margin-bottom:26px;text-align:left;">
+                <!-- Private Resolution Card -->
+                <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:16px;padding:22px 20px;margin-bottom:20px;text-align:left;">
                     <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
                         <span style="font-size:16px;">⚠️</span>
                         <strong style="font-size:14px;color:#92400e;">Escalated for Private Management Resolution</strong>
@@ -703,6 +740,17 @@ if ($stmt->execute()) {
                         </p>
                     <?php endif; ?>
                 </div>
+
+                <?php if (!empty($google_store_url)): ?>
+                <!-- Offered to every reviewer, regardless of score. -->
+                <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:26px;text-align:left;">
+                    <strong style="font-size:14px;color:#0f172a;display:block;margin-bottom:6px;">Would you also share your honest experience on Google?</strong>
+                    <p style="font-size:12.5px;color:#64748b;margin:0 0 12px;line-height:1.55;">Positive or negative, your feedback helps other customers choose with confidence.</p>
+                    <a href="<?php echo htmlspecialchars($google_store_url); ?>" target="_blank" rel="noopener noreferrer" style="display:block;text-align:center;padding:12px;background:#1a73e8;color:#fff;border-radius:8px;font-weight:700;text-decoration:none;font-size:13.5px;">
+                        Open Google Business Profile ↗
+                    </a>
+                </div>
+                <?php endif; ?>
 
             <?php else: ?>
                 <!-- ============================================================

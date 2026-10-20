@@ -1,8 +1,10 @@
-# Block all direct HTTP access to migration scripts
+# The render harness and its fixtures are development-only. Never serve
+# them from a production deployment, even if the folder is copied there.
 <IfModule mod_authz_core.c>
     Require all denied
 </IfModule>
 <IfModule !mod_authz_core.c>
     Order allow,deny
     Deny from all
+    Satisfy All
 </IfModule>

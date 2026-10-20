@@ -80,7 +80,7 @@ function isAccountLocked($conn, $table, $user_id) {
         return false;
     }
     
-    $locked_until = $row['account_locked_until'];
+    $locked_until = $row['account_locked_until'] ?? null;
     if ($locked_until && strtotime($locked_until) > time()) {
         return true;
     }

@@ -45,7 +45,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             $public_id = generateRealPublicId($conn, 'tenants', 'public_id', 'OPT-', 8);
             $setup_token = generateSecureToken(32);
             $setup_expires = date('Y-m-d H:i:s', strtotime('+48 hours'));
-            $placeholder_hash = password_hash(generateSecureToken(16), PASSWORD_DEFAULT);
+            $placeholder_hash = optibiz_hash_password(generateSecureToken(16));
             $start = date('Y-m-d');
             $end = $months > 0 ? date('Y-m-d', strtotime('+' . $months . ' month')) : null;
 
@@ -199,7 +199,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         if (!$id || strlen($raw_pw) < 6) {
             sa_flash('error', 'Choose a tenant and use a password of at least 6 characters.');
         } else {
-            $hash = password_hash($raw_pw, PASSWORD_DEFAULT);
+            $hash = optibiz_hash_password($raw_pw);
             $stmt = $conn->prepare("UPDATE tenants SET password = ?, setup_token = NULL, setup_token_expires = NULL, email_verified_at = NOW() WHERE id = ?");
             $stmt->bind_param("si", $hash, $id);
             $stmt->execute();

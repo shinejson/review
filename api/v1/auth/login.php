@@ -9,6 +9,7 @@ require_once dirname(__DIR__) . '/helpers/jwt.php';
 require_once dirname(__DIR__) . '/helpers/rate_limiter.php';
 require_once RATE_ROOT_PATH . '/config/database.php';
 require_once RATE_ROOT_PATH . '/includes/two_factor.php';
+require_once RATE_ROOT_PATH . '/includes/password.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     api_send_error('Method Not Allowed. Use POST.', 405);
@@ -41,7 +42,7 @@ $stmt->close();
 $authenticatedUser = null;
 $userRole = 'tenant_admin';
 
-if ($tenant && password_verify($password, $tenant['password'])) {
+if ($tenant && optibiz_login_check($conn, 'tenants', (int) $tenant['id'], $password, (string) $tenant['password'])) {
     $authenticatedUser = $tenant;
 } else {
     // 2. Check team_members if tenant wasn't matched
@@ -56,7 +57,7 @@ if ($tenant && password_verify($password, $tenant['password'])) {
         $tm = $tmRes->fetch_assoc();
         $tmStmt->close();
 
-        if ($tm && password_verify($password, $tm['password'])) {
+        if ($tm && optibiz_login_check($conn, 'team_members', (int) $tm['id'], $password, (string) $tm['password'])) {
             if ((int)$tm['is_active'] !== 1) {
                 api_send_error('Forbidden: This staff account has been disabled.', 403);
             }

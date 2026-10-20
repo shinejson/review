@@ -8,6 +8,7 @@
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/config/database.php';
 require_once dirname(__DIR__) . '/includes/functions.php';
+require_once dirname(__DIR__) . '/includes/review_trust.php';
 requireLogin();
 
 $tenant_id = getTenantId();
@@ -55,7 +56,10 @@ $wa_number      = $company_profile['whatsapp_number'] ?? '';
 $wa_display     = function_exists('whatsappDisplay') ? whatsappDisplay($wa_number) : $wa_number;
 
 if ($company_id > 0) {
-    $public_url = getCompanyPublicRatingUrl($company_id, $brand_name, ['src' => 'qr']);
+    $public_url = getCompanyPublicRatingUrl($company_id, $brand_name, [
+        'src' => 'qr',
+        'qv'  => review_qr_location_token($company_id, (int)$tenant_id, $brand_name . ' counter stand'),
+    ]);
 } else {
     $public_url = getCompanyPublicRatingUrl(0, $brand_name, ['tenant' => (int)$tenant_id, 'src' => 'qr']);
 }

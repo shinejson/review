@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $plan = sa_one($conn, "SELECT price FROM subscription_plans WHERE id = " . $plan_id, 'subscription_plans');
             $price = $plan ? (float) $plan['price'] : 0.0;
             $username = sa_unique_username($conn, $company);
-            $placeholder_hash = password_hash(generateSecureToken(16), PASSWORD_DEFAULT);
+            $placeholder_hash = optibiz_hash_password(generateSecureToken(16));
             $public_id = generateRealPublicId($conn, 'tenants', 'public_id', 'OPT-', 8);
             $setup_token = generateSecureToken(32);
             $setup_expires = date('Y-m-d H:i:s', strtotime('+48 hours'));

@@ -233,15 +233,64 @@ Requires: `Authorization: Bearer <access_token>`
     "company_id": 4,
     "company_name": "Acme Bistro",
     "rating": 5,
-    "created_at": "2026-09-16 21:40:00",
+    "categories": { "service": 5, "cleanliness": 4, "value": 5, "speed": 4 },
+    "is_verified": true,
+    "verification_type": "qr_visit",
+    "published": true,
+    "under_review": false,
+    "created_at": "2026-10-19 21:40:00",
     "routing": {
-      "routing": "google_booster",
-      "score": 5,
-      "booster_eligible": true,
       "google_review_url": "https://search.google.com/local/writereview?placeid=ChIJ...",
-      "routing_message": "Thank you for your 5-star rating! We would greatly appreciate it if you could share this review on Google as well."
+      "google_prompt": true,
+      "private_followup": false,
+      "review_gating": false,
+      "message": "Thank you for your feedback. You can also share your honest experience on Google."
     }
   }
 }
 ```
-*(When a low score e.g. 1-3 stars is received, `routing` will be `"private_shield"` with `google_review_url: null` and the review is routed privately to management.)*
+*(Every submission receives the same optional Google prompt — `review_gating` is always `false`. Low scores additionally set `routing.escalated = true` so the business is alerted, but the public link is never withheld. Withholding it from unhappy customers is review gating, which Google prohibits.)*
+
+---
+
+## 5. QR verification and discovery (added in the trust merge)
+
+| Endpoint | Auth | Purpose |
+| --- | --- | --- |
+| `POST /qr/issue.php` | workspace bearer, `qr_stand` | Issue a reusable **location** token (counter stand) or a single-use **visit** token (receipt/SMS). |
+| `GET /reviews/public.php` | none | Published reviews only, approved photos only, with summary, distribution and category averages. |
+| `GET /businesses/search.php` | none | Category/rating/verified filters, radius via Haversine distance, relevance/rating/reviews/distance/newest sorting. |
+| `POST /reviews/report.php` | optional app token | Reasons: spam, fake, conflict of interest, offensive, personal info, wrong business, other. 10/hour/IP. |
+| `POST /reviews/helpful.php` | optional app token | Toggle a helpful vote; one per identity per review. |
+| `POST /business/reply.php` | workspace bearer, `ratings` | Official reply; mirrors `admin_reply`, notifies the reviewer. |
+| `POST /business/dispute.php` | workspace bearer, `ratings` | Dispute a review; enters the moderation queue without hiding it. |
+
+### Review submission body
+
+```json
+{
+  "company_id": 4,
+  "rating": 5,
+  "customer_name": "Michael Doe",
+  "customer_email": "michael@gmail.com",
+  "comment": "Excellent food and quick table turnaround!",
+  "categories": { "service": 5, "cleanliness": 4, "value": 5, "speed": 4 },
+  "qr_token": "obq_…",
+  "device_fingerprint": "mobile_app_uuid_99218"
+}
+```
+
+A signed-in customer may omit name/email (identity comes from the token). Guests
+must supply a name and at least an email or phone. One review per customer per
+business inside `OPTIBIZ_REVIEW_WINDOW_DAYS` (default 30); the response is
+`409 customer_review_window`.
+
+## 6. Customer notifications
+
+| Endpoint | Auth | Purpose |
+| --- | --- | --- |
+| `POST /auth/otp/request.php` | none | Send a 6-digit code for login, recovery, signup or account deletion. |
+| `POST /auth/otp/verify.php` | none | Verify the code; returns tokens, a reset token or a deletion token depending on `purpose`. |
+| `GET /notifications/list.php` | app bearer | Inbox, newest first, `limit`, `after_id`, `before_id`, `unread=1`. |
+| `POST /notifications/read.php` | app bearer | `{ "ids": [1,2] }` or `{ "all": true }`. |
+| `POST /auth/customer/delete.php` | app bearer **or** `delete_token` | Anonymises the account after password or one-time-code proof. |

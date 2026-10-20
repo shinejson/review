@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "php-cli": "^0.1.5"
+  }
+}

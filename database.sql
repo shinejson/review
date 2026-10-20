@@ -188,12 +188,15 @@ CREATE TABLE IF NOT EXISTS customers (
     whatsapp_number VARCHAR(30) NULL COMMENT 'Click-to-chat number shown as a WhatsApp button on the public pages',
     website VARCHAR(255),
     google_store_url VARCHAR(500) NULL COMMENT 'Google Business Profile review link',
-    booster_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1 = route 4-5 star reviews to Google Business Profile',
-    booster_min_stars TINYINT(1) NOT NULL DEFAULT 4 COMMENT 'Minimum rating threshold to trigger Google review prompt',
+    booster_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1 = show the optional Google review link after feedback (all scores; never gate it)',
+    booster_min_stars TINYINT(1) NOT NULL DEFAULT 4 COMMENT 'Scores below this raise a private owner alert; they still receive the same Google prompt',
     address VARCHAR(500) NULL,
     google_map_url VARCHAR(1000) NULL COMMENT 'Google Maps direction / location URL',
     map_embed_code TEXT NULL COMMENT 'Google Map embed iframe code or embed URL',
     location_description TEXT NULL COMMENT 'Location directions and landmark description',
+    latitude DECIMAL(10,7) NULL COMMENT 'Optional, powers distance search',
+    longitude DECIMAL(10,7) NULL COMMENT 'Optional, powers distance search',
+    photos_approved TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = profile photos reviewed by moderation',
     facebook_url VARCHAR(255) NULL,
     instagram_url VARCHAR(255) NULL,
     twitter_url VARCHAR(255) NULL,
@@ -244,6 +247,21 @@ CREATE TABLE IF NOT EXISTS ratings (
     receipt_photo VARCHAR(255) NULL,
     is_escalated TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = flagged for private resolution (1-3 stars)',
     escalation_status VARCHAR(20) NOT NULL DEFAULT 'none' COMMENT 'none, pending, resolved',
+    customer_user_id BIGINT UNSIGNED NULL COMMENT 'app_users.id when the reviewer was signed in',
+    category_service TINYINT UNSIGNED NULL COMMENT '1-5, optional',
+    category_cleanliness TINYINT UNSIGNED NULL COMMENT '1-5, optional',
+    category_value TINYINT UNSIGNED NULL COMMENT '1-5, optional',
+    category_speed TINYINT UNSIGNED NULL COMMENT '1-5, optional',
+    qr_token_id BIGINT UNSIGNED NULL COMMENT 'review_qr_tokens.id for a per-visit QR',
+    source VARCHAR(20) NOT NULL DEFAULT 'web',
+    device_hash CHAR(64) NULL,
+    ip_hash CHAR(64) NULL,
+    abuse_score TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    abuse_flags VARCHAR(255) NULL,
+    moderation_status ENUM('published','queued','removed') NOT NULL DEFAULT 'published',
+    photos_approved TINYINT(1) NOT NULL DEFAULT 0,
+    photos TEXT NULL COMMENT 'JSON array of photo paths',
+    helpful_count INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (company_id) REFERENCES customers(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES rating_questions(id) ON DELETE SET NULL
@@ -789,4 +807,156 @@ CREATE TABLE IF NOT EXISTS user_trusted_devices (
     INDEX idx_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ============================================================
+-- Review trust: QR visits, moderation, helpful votes, reports
+-- (mirrors includes/review_trust.php::review_trust_ensure_schema)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS review_qr_tokens (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL DEFAULT 0,
+    company_id INT NOT NULL,
+    token_hash CHAR(64) NOT NULL,
+    kind ENUM('location','visit') NOT NULL DEFAULT 'visit',
+    label VARCHAR(120) NOT NULL DEFAULT '',
+    staff_ref VARCHAR(120) NULL,
+    max_uses INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '0 = unlimited',
+    uses INT UNSIGNED NOT NULL DEFAULT 0,
+    expires_at DATETIME NOT NULL,
+    created_by_kind VARCHAR(20) NULL,
+    created_by_id BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME NULL,
+    UNIQUE KEY uniq_qr_hash (token_hash),
+    KEY idx_qr_company (company_id),
+    KEY idx_qr_expiry (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS review_moderation_queue (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    rating_id INT NOT NULL,
+    source ENUM('auto','report','business','photo') NOT NULL DEFAULT 'auto',
+    reason VARCHAR(120) NOT NULL,
+    details VARCHAR(500) NULL,
+    status ENUM('open','approved','removed','dismissed') NOT NULL DEFAULT 'open',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME NULL,
+    resolved_by_kind VARCHAR(20) NULL,
+    resolved_by_id BIGINT UNSIGNED NULL,
+    resolution_note VARCHAR(500) NULL,
+    KEY idx_mod_status (status, created_at),
+    KEY idx_mod_rating (rating_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS helpful_votes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    rating_id INT NOT NULL,
+    voter_ip VARCHAR(64) NOT NULL,
+    voter_user_id BIGINT UNSIGNED NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_vote (rating_id, voter_ip),
+    KEY idx_vote_user (voter_user_id),
+    KEY idx_vote_rating (rating_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS reported_reviews (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    rating_id INT NOT NULL,
+    reason VARCHAR(255) NOT NULL,
+    details VARCHAR(500) NULL,
+    reporter_ip VARCHAR(45) NOT NULL,
+    reporter_user_id BIGINT UNSIGNED NULL,
+    status ENUM('open','actioned','dismissed') NOT NULL DEFAULT 'open',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_report_rating (rating_id),
+    KEY idx_report_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- Customer accounts (mobile app): identity, OTP, devices, deletion
+-- ============================================================
+CREATE TABLE IF NOT EXISTS app_users (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    public_id VARCHAR(32) NOT NULL,
+    full_name VARCHAR(120) NOT NULL DEFAULT '',
+    email VARCHAR(190) NULL,
+    phone VARCHAR(30) NULL,
+    password_hash VARCHAR(255) NULL,
+    google_sub VARCHAR(255) NULL,
+    avatar_url VARCHAR(500) NULL,
+    email_verified_at DATETIME NULL,
+    phone_verified_at DATETIME NULL,
+    status ENUM('active','pending','suspended','deleted') NOT NULL DEFAULT 'active',
+    marketing_opt_in TINYINT(1) NOT NULL DEFAULT 0,
+    token_version INT UNSIGNED NOT NULL DEFAULT 0,
+    last_login_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at DATETIME NULL,
+    UNIQUE KEY uniq_app_public_id (public_id),
+    UNIQUE KEY uniq_app_email (email),
+    UNIQUE KEY uniq_app_phone (phone),
+    UNIQUE KEY uniq_app_google (google_sub),
+    KEY idx_app_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS app_otp_codes (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NULL,
+    channel ENUM('email','sms') NOT NULL,
+    destination_hash CHAR(64) NOT NULL,
+    destination_masked VARCHAR(190) NOT NULL DEFAULT '',
+    purpose VARCHAR(32) NOT NULL,
+    code_hash CHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    max_attempts TINYINT UNSIGNED NOT NULL DEFAULT 5,
+    consumed_at DATETIME NULL,
+    ip_hash CHAR(64) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_otp_lookup (destination_hash, purpose, consumed_at),
+    KEY idx_otp_user (user_id),
+    KEY idx_otp_expiry (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS app_devices (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    device_hash CHAR(64) NOT NULL,
+    platform ENUM('android','ios','web','other') NOT NULL DEFAULT 'other',
+    fcm_token VARCHAR(512) NULL,
+    app_version VARCHAR(32) NULL,
+    push_enabled TINYINT(1) NOT NULL DEFAULT 1,
+    last_seen_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_app_device (user_id, device_hash),
+    KEY idx_app_device_token (fcm_token(191)),
+    CONSTRAINT fk_app_device_user FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS app_notifications (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    type VARCHAR(40) NOT NULL DEFAULT 'system',
+    title VARCHAR(190) NOT NULL,
+    body VARCHAR(500) NULL,
+    link VARCHAR(255) NULL,
+    data_json TEXT NULL,
+    read_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_app_notif_user (user_id, read_at, created_at),
+    CONSTRAINT fk_app_notif_user FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS account_deletion_requests (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NULL,
+    destination_hash CHAR(64) NOT NULL,
+    channel ENUM('app','email','sms','support') NOT NULL DEFAULT 'app',
+    status ENUM('requested','completed','denied') NOT NULL DEFAULT 'requested',
+    reason VARCHAR(255) NULL,
+    ip_hash CHAR(64) NULL,
+    requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME NULL,
+    KEY idx_del_status (status),
+    KEY idx_del_destination (destination_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

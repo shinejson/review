@@ -83,7 +83,7 @@ if ($dupStmt) {
     $dupStmt->close();
 
     if ($dupRow) {
-        $dupRef  = $dupRow['public_id'] ?: ('#' . $dupRow['id']);
+        $dupRef  = !empty($dupRow['public_id']) ? $dupRow['public_id'] : ('#' . $dupRow['id']);
         $dupDate = date('M d, Y', strtotime($dupRow['created_at']));
         $dupStatus = ucfirst($dupRow['status']);
         echo json_encode([
@@ -197,7 +197,7 @@ if ($stmt->execute()) {
             $tenantPublicId = generateRealPublicId($conn, 'tenants', 'public_id', 'OPT-', 8);
             $setupToken = generateSecureToken(32);
             $setupExpires = date('Y-m-d H:i:s', strtotime('+48 hours'));
-            $placeholderHash = password_hash(generateSecureToken(16), PASSWORD_DEFAULT);
+            $placeholderHash = optibiz_hash_password(generateSecureToken(16));
             $startDate = date('Y-m-d');
             $endDate = date('Y-m-d', strtotime('+1 month'));
 

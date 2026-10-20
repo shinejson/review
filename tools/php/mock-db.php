@@ -1,4 +1,11 @@
 <?php
+// Harness-only file. Refuse to execute over HTTP so a deployment that
+// copies the repository verbatim cannot expose preview data or accounts.
+if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
+    http_response_code(404);
+    exit;
+}
+
 /**
  * ============================================================
  *  Mock mysqli connection for the PHP render harness
@@ -1148,6 +1155,24 @@ class MockMysqli
 
         /* ---- ratings ---- */
         if ($tbl === 'ratings' && !$this->has($o, 'JOIN customers')) {
+            // The monthly duplicate guard filters by the reviewer's email.
+            // Mirror that here, otherwise every fixture row looks like a
+            // prior review and the submission tests can never pass.
+            if ($this->has($s, 'customer_email') && $this->has($s, 'LOWER(TRIM(customer_email))')) {
+                $email = '';
+                foreach ((array) ($values ?? []) as $v) {
+                    if (is_string($v) && strpos($v, '@') !== false) {
+                        $email = strtolower(trim($v));
+                    }
+                }
+                if ($email === '') {
+                    return [];
+                }
+                $rows = array_values(array_filter($D['ratings'], function ($r) use ($email) {
+                    return strtolower(trim((string) $r['customer_email'])) === $email;
+                }));
+                return $rows;
+            }
             if ($this->has($s, 'DATE_FORMAT(created_at')) {
                 return $this->ratingsPerMonth();
             }

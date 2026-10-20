@@ -1785,7 +1785,7 @@ function sponsored_for_category_group($cat_title, $cat_id, $map) {
                 <ul class="footer-links-list">
                     <li><a href="features.php#qr-stands">Counter QR Stands</a></li>
                     <li><a href="features.php#whatsapp">WhatsApp Requester</a></li>
-                    <li><a href="features.php#google-booster">Google Booster</a></li>
+                    <li><a href="features.php#google-booster">Google Reviews</a></li>
                     <li><a href="features.php#social-proof">Social Proof Cards</a></li>
                     <li><a href="features.php#ad-funnel">Ad Funnels &amp; Pixels</a></li>
                 </ul>
@@ -1809,6 +1809,8 @@ function sponsored_for_category_group($cat_title, $cat_id, $map) {
                 <a href="pricing.php" style="color:#94a3b8;text-decoration:none">Pricing</a>
                 <a href="features.php" style="color:#94a3b8;text-decoration:none">Features</a>
                 <a href="<?php echo admin_url('login.php'); ?>" style="color:#94a3b8;text-decoration:none">Sign In</a>
+                <a href="privacy.php" style="color:#94a3b8;text-decoration:none">Privacy</a>
+                <a href="account-deletion.php" style="color:#94a3b8;text-decoration:none">Delete account</a>
             </div>
         </div>
     </footer>

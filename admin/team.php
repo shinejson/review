@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $is_tenant) {
         } elseif (teamCredentialsTaken($conn, $username, $email, 0, $tenant_id)) {
             $_SESSION['error'] = 'That username or email is already in use. Choose a different one.';
         } else {
-            $hash = password_hash($password, PASSWORD_DEFAULT);
+            $hash = optibiz_hash_password($password);
             $ins  = $conn->prepare("INSERT INTO team_members (tenant_id, full_name, username, email, password, role, permissions) VALUES (?,?,?,?,?,?,?)");
             $ins->bind_param("issssss", $tenant_id, $full_name, $username, $email, $hash, $role, $perm_str);
             $ins->execute();
@@ -130,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $is_tenant) {
             $_SESSION['error'] = 'That username or email is already used by another account.';
         } else {
             if ($new_pass !== '') {
-                $hash = password_hash($new_pass, PASSWORD_DEFAULT);
+                $hash = optibiz_hash_password($new_pass);
                 $up = $conn->prepare("UPDATE team_members SET full_name=?, username=?, email=?, role=?, permissions=?, is_active=?, password=? WHERE id=? AND tenant_id=?");
                 $up->bind_param("sssssssii", $full_name, $username, $email, $role, $perm_str, $is_active, $hash, $member_id, $tenant_id);
             } else {

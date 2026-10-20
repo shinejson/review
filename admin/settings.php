@@ -186,8 +186,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $stmt->execute();
             $curr_hash = $stmt->get_result()->fetch_assoc()['password'];
 
-            if (password_verify($current_password, $curr_hash)) {
-                $new_hash = password_hash($new_password, PASSWORD_DEFAULT);
+            if (optibiz_login_check($conn, 'tenants', (int) $tenant_id, $current_password, (string) $curr_hash)) {
+                $new_hash = optibiz_hash_password($new_password);
                 $up_stmt = $conn->prepare("UPDATE tenants SET password = ? WHERE id = ?");
                 $up_stmt->bind_param("si", $new_hash, $tenant_id);
                 if ($up_stmt->execute()) {
@@ -209,8 +209,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $stmt->execute();
             $curr_hash = $stmt->get_result()->fetch_assoc()['password'];
 
-            if (password_verify($current_password, $curr_hash)) {
-                $new_hash = password_hash($new_password, PASSWORD_DEFAULT);
+            if (optibiz_login_check($conn, 'admins', (int) $admin_id, $current_password, (string) $curr_hash)) {
+                $new_hash = optibiz_hash_password($new_password);
                 $up_stmt = $conn->prepare("UPDATE admins SET password = ? WHERE id = ?");
                 $up_stmt->bind_param("si", $new_hash, $admin_id);
                 if ($up_stmt->execute()) {

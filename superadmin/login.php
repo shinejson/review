@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $admin = $result && $result->num_rows === 1 ? $result->fetch_assoc() : null;
         $stmt->close();
 
-        if ($admin && password_verify($password, $admin['password'])) {
+        if ($admin && optibiz_login_check($conn, 'super_admins', (int) $admin['id'], $password, (string) $admin['password'])) {
             $adminId = (int) $admin['id'];
             $sessionData = [
                 'super_admin_id'       => $adminId,
