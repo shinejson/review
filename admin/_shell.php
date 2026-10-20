@@ -306,7 +306,7 @@ $activeNav = $activeNav ?? 'dashboard';
       </button>
       <div class="nav-group-menu">
         <div class="nav-group-flyout-title">Grow &amp; Monetize</div>
-        <a class="nav-sub-link <?php echo $activeNav === 'premium_profiles' ? 'active' : ''; ?>" href="premium_profiles.php" title="Premium Profiles"><span class="sub-dot"></span><span class="nav-label">Premium Profiles</span><span style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;background:#f59e0b;color:#fff;margin-left:auto;">NEW</span></a>
+        <a class="nav-sub-link <?php echo $activeNav === 'premium_profiles' ? 'active' : ''; ?>" href="premium_profiles.php" title="Premium Profiles"><span class="sub-dot"></span><span class="nav-label">Premium Profiles</span><span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;background:rgba(194,245,66,0.2);color:var(--lime);border:1px solid rgba(194,245,66,0.3);margin-left:auto;">NEW</span></a>
         <a class="nav-sub-link <?php echo $activeNav === 'widgets' ? 'active' : ''; ?>" href="widgets.php" title="Review Widgets"><span class="sub-dot"></span><span class="nav-label">Review Widgets</span></a>
         <a class="nav-sub-link <?php echo $activeNav === 'sponsored' ? 'active' : ''; ?>" href="sponsored.php" title="Sponsored Listings"><span class="sub-dot"></span><span class="nav-label">Sponsored Ads</span></a>
         <a class="nav-sub-link <?php echo $activeNav === 'sms_campaigns' ? 'active' : ''; ?>" href="sms_campaigns.php" title="SMS Campaigns"><span class="sub-dot"></span><span class="nav-label">SMS Campaigns</span></a>
