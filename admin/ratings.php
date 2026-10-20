@@ -439,6 +439,13 @@ $date_from         = isset($_GET['date_from']) ? trim($_GET['date_from']) : '';
 $date_to           = isset($_GET['date_to']) ? trim($_GET['date_to']) : '';
 $date_preset       = isset($_GET['date_preset']) ? trim($_GET['date_preset']) : '';
 
+// ============================================================
+// Pagination parameters
+// ============================================================
+$page        = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$per_page    = isset($_GET['per_page']) ? max(10, min(100, (int)$_GET['per_page'])) : 20;
+$offset      = ($page - 1) * $per_page;
+
 // Handle date presets
 if ($date_preset) {
     $today = date('Y-m-d');
@@ -531,6 +538,30 @@ if (!empty($date_to)) {
     $param_vals[]    = $date_to;
 }
 
+// Count total records (before pagination)
+$count_sql = "SELECT COUNT(*) as total 
+              FROM ratings r 
+              JOIN customers c ON r.company_id = c.id
+              LEFT JOIN rating_questions rq ON r.question_id = rq.id";
+
+if (!empty($where_clauses)) {
+    $count_sql .= " WHERE " . implode(" AND ", $where_clauses);
+}
+
+if (!empty($param_vals)) {
+    $count_stmt = $conn->prepare($count_sql);
+    $count_stmt->bind_param($param_types, ...$param_vals);
+    $count_stmt->execute();
+    $total_records = (int)($count_stmt->get_result()->fetch_assoc()['total'] ?? 0);
+} else {
+    $count_res = $conn->query($count_sql);
+    $total_records = (int)($count_res ? ($count_res->fetch_assoc()['total'] ?? 0) : 0);
+}
+
+$total_pages = $total_records > 0 ? ceil($total_records / $per_page) : 1;
+$page = min($page, $total_pages); // Ensure page doesn't exceed total
+
+// Fetch paginated data
 $sql = "SELECT r.*, c.company_name, rq.question_text 
         FROM ratings r 
         JOIN customers c ON r.company_id = c.id
@@ -539,15 +570,21 @@ $sql = "SELECT r.*, c.company_name, rq.question_text
 if (!empty($where_clauses)) {
     $sql .= " WHERE " . implode(" AND ", $where_clauses);
 }
-$sql .= " ORDER BY r.created_at DESC";
+$sql .= " ORDER BY r.created_at DESC LIMIT ? OFFSET ?";
 
 if (!empty($param_vals)) {
+    $param_types .= "ii";
+    $param_vals[] = $per_page;
+    $param_vals[] = $offset;
     $stmt = $conn->prepare($sql);
     $stmt->bind_param($param_types, ...$param_vals);
     $stmt->execute();
     $ratings = $stmt->get_result();
 } else {
-    $ratings = $conn->query($sql);
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("ii", $per_page, $offset);
+    $stmt->execute();
+    $ratings = $stmt->get_result();
 }
 
 // Fetch all ratings into array for multiple uses (Table + Responses feed)
@@ -800,13 +837,20 @@ include __DIR__ . '/_shell.php';
                 <button type="submit" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;background:var(--lime);color:var(--ink);border-color:var(--lime);font-weight:700;">Apply</button>
             </div>
 
+            <select name="per_page" onchange="this.form.submit()" style="padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;">
+                <option value="10" <?php echo $per_page === 10 ? 'selected' : ''; ?>>10 per page</option>
+                <option value="20" <?php echo $per_page === 20 ? 'selected' : ''; ?>>20 per page</option>
+                <option value="50" <?php echo $per_page === 50 ? 'selected' : ''; ?>>50 per page</option>
+                <option value="100" <?php echo $per_page === 100 ? 'selected' : ''; ?>>100 per page</option>
+            </select>
+
             <?php if ($company_filter || $star_filter || !empty($escalation_filter) || $search_query || $date_from || $date_to || $date_preset): ?>
                 <a href="ratings.php" class="btn btn-secondary" style="padding:9px 14px;font-size:12px;">Reset Filters</a>
             <?php endif; ?>
         </form>
 
         <span class="muted" style="font-size:13px;">
-            Showing <strong><?php echo $total_count; ?></strong> review record(s)
+            Showing <strong><?php echo min($offset + 1, $total_records); ?>-<?php echo min($offset + $per_page, $total_records); ?></strong> of <strong><?php echo number_format($total_records); ?></strong> review<?php echo $total_records !== 1 ? 's' : ''; ?>
         </span>
     </div>
 
@@ -931,25 +975,43 @@ include __DIR__ . '/_shell.php';
                                 </div>
                             </td>
                             <td>
-                                <?php if (!empty($r['is_escalated'])): ?>
-                                    <?php if (($r['escalation_status'] ?? 'pending') === 'resolved'): ?>
-                                        <div style="margin-bottom:4px;"><span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;display:inline-flex;align-items:center;gap:3px;">✓ Resolved</span></div>
+                                <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
+                                    <?php if (!empty($r['is_escalated'])): ?>
+                                        <?php if (($r['escalation_status'] ?? 'pending') === 'resolved'): ?>
+                                            <span style="background:#dcfce7;color:#15803d;font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;border:1px solid #86efac;">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                                Resolved
+                                            </span>
+                                        <?php else: ?>
+                                            <span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;border:1px solid #fde68a;box-shadow:0 1px 2px rgba(0,0,0,.05);" title="Gated from Google">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                                Needs Resolution
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php elseif ((int)$r['rating'] >= 4): ?>
+                                        <span style="background:linear-gradient(135deg,#e8f0fe,#dbeafe);color:#1e40af;font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;border:1px solid #93c5fd;box-shadow:0 1px 3px rgba(30,64,175,.1);" title="Boosted to Google">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                                            Google Boosted
+                                        </span>
                                     <?php else: ?>
-                                        <div style="margin-bottom:4px;"><span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;display:inline-flex;align-items:center;gap:3px;" title="Gated from Google">⚠️ Needs Resolution</span></div>
+                                        <span style="background:var(--bg);color:var(--muted);font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                            Standard
+                                        </span>
                                     <?php endif; ?>
-                                <?php elseif ((int)$r['rating'] >= 4): ?>
-                                    <div style="margin-bottom:4px;"><span style="background:#e8f0fe;color:#1a73e8;border:1px solid #bfdbfe;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;display:inline-flex;align-items:center;gap:3px;" title="Eligible for Google boost">🚀 Google Boosted</span></div>
-                                <?php endif; ?>
 
-                                <?php if (!empty($r['admin_reply'])): ?>
-                                    <span class="status-badge-replied">
-                                        ✓ Replied
-                                    </span>
-                                <?php else: ?>
-                                    <span class="status-badge-pending">
-                                        Pending reply
-                                    </span>
-                                <?php endif; ?>
+                                    <?php if (!empty($r['admin_reply'])): ?>
+                                        <span style="background:rgba(194,245,66,.15);color:#3f6212;font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;border:1px solid rgba(194,245,66,.4);">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="10 9 14 9"/><line x1="12" y1="13" x2="12" y2="13"/></svg>
+                                            Replied
+                                        </span>
+                                    <?php else: ?>
+                                        <span style="background:#f8fafc;color:#64748b;font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;border:1px solid #e2e8f0;">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                            Pending Reply
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                             <td class="table-meta">
                                 <?php echo date('M d, Y, g:i A', strtotime($r['created_at'])); ?>
@@ -1013,6 +1075,94 @@ include __DIR__ . '/_shell.php';
             </tbody>
         </table>
         </div><!-- /.table-scroll-wrap -->
+
+        <!-- Pagination Controls -->
+        <?php if ($total_pages > 1): 
+            $query_params = [];
+            if ($company_filter) $query_params[] = 'company_id=' . $company_filter;
+            if ($star_filter) $query_params[] = 'star=' . $star_filter;
+            if ($escalation_filter) $query_params[] = 'escalation=' . urlencode($escalation_filter);
+            if ($search_query) $query_params[] = 'q=' . urlencode($search_query);
+            if ($date_from) $query_params[] = 'date_from=' . urlencode($date_from);
+            if ($date_to) $query_params[] = 'date_to=' . urlencode($date_to);
+            if ($date_preset) $query_params[] = 'date_preset=' . urlencode($date_preset);
+            if ($per_page !== 20) $query_params[] = 'per_page=' . $per_page;
+            $base_url = 'ratings.php' . (!empty($query_params) ? '?' . implode('&', $query_params) . '&' : '?');
+        ?>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding:16px 20px;background:var(--bg);border:1px solid var(--line);border-radius:12px;flex-wrap:wrap;gap:16px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <?php if ($page > 1): ?>
+                    <a href="<?php echo $base_url; ?>page=1" class="btn btn-secondary" style="padding:8px 14px;font-size:13px;text-decoration:none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+                        First
+                    </a>
+                    <a href="<?php echo $base_url; ?>page=<?php echo $page - 1; ?>" class="btn btn-secondary" style="padding:8px 14px;font-size:13px;text-decoration:none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><polyline points="15 18 9 12 15 6"/></svg>
+                        Previous
+                    </a>
+                <?php else: ?>
+                    <span class="btn btn-secondary" style="padding:8px 14px;font-size:13px;opacity:0.5;cursor:not-allowed;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+                        First
+                    </span>
+                    <span class="btn btn-secondary" style="padding:8px 14px;font-size:13px;opacity:0.5;cursor:not-allowed;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><polyline points="15 18 9 12 15 6"/></svg>
+                        Previous
+                    </span>
+                <?php endif; ?>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <?php
+                $start_page = max(1, $page - 2);
+                $end_page = min($total_pages, $page + 2);
+                
+                if ($start_page > 1): ?>
+                    <a href="<?php echo $base_url; ?>page=1" class="btn btn-secondary" style="padding:8px 12px;font-size:13px;min-width:38px;text-align:center;text-decoration:none;">1</a>
+                    <?php if ($start_page > 2): ?>
+                        <span style="padding:8px 4px;color:var(--muted);">...</span>
+                    <?php endif; ?>
+                <?php endif; ?>
+                
+                <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                    <?php if ($i === $page): ?>
+                        <span class="btn btn-primary" style="padding:8px 12px;font-size:13px;min-width:38px;text-align:center;font-weight:700;"><?php echo $i; ?></span>
+                    <?php else: ?>
+                        <a href="<?php echo $base_url; ?>page=<?php echo $i; ?>" class="btn btn-secondary" style="padding:8px 12px;font-size:13px;min-width:38px;text-align:center;text-decoration:none;"><?php echo $i; ?></a>
+                    <?php endif; ?>
+                <?php endfor; ?>
+                
+                <?php if ($end_page < $total_pages): ?>
+                    <?php if ($end_page < $total_pages - 1): ?>
+                        <span style="padding:8px 4px;color:var(--muted);">...</span>
+                    <?php endif; ?>
+                    <a href="<?php echo $base_url; ?>page=<?php echo $total_pages; ?>" class="btn btn-secondary" style="padding:8px 12px;font-size:13px;min-width:38px;text-align:center;text-decoration:none;"><?php echo $total_pages; ?></a>
+                <?php endif; ?>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px;">
+                <?php if ($page < $total_pages): ?>
+                    <a href="<?php echo $base_url; ?>page=<?php echo $page + 1; ?>" class="btn btn-secondary" style="padding:8px 14px;font-size:13px;text-decoration:none;">
+                        Next
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:4px;"><polyline points="9 18 15 12 9 6"/></svg>
+                    </a>
+                    <a href="<?php echo $base_url; ?>page=<?php echo $total_pages; ?>" class="btn btn-secondary" style="padding:8px 14px;font-size:13px;text-decoration:none;">
+                        Last
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:4px;"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+                    </a>
+                <?php else: ?>
+                    <span class="btn btn-secondary" style="padding:8px 14px;font-size:13px;opacity:0.5;cursor:not-allowed;">
+                        Next
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:4px;"><polyline points="9 18 15 12 9 6"/></svg>
+                    </span>
+                    <span class="btn btn-secondary" style="padding:8px 14px;font-size:13px;opacity:0.5;cursor:not-allowed;">
+                        Last
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-left:4px;"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+                    </span>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
     </div>
 </div>
 
