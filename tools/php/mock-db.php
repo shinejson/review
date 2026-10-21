@@ -165,7 +165,7 @@ class MockMysqli
 
     public function __construct($host = null, $user = null, $pass = null, $db = null)
     {
-        $this->data = require dirname(__DIR__) . '/tools/php/dataset.php';
+        $this->data = require __DIR__ . '/dataset.php';
     }
 
     public function set_charset($c)
@@ -1856,6 +1856,16 @@ class MockMysqli
                 $userId = (int) $m[1];
             }
 
+            $kind = null;
+            if ($this->has($s, 'user_kind = ?')) {
+                // Count '?' placeholders before 'user_kind = ?' to find its index in $values
+                $pos = strpos($s, 'user_kind = ?');
+                $paramIndex = substr_count(substr($s, 0, $pos), '?');
+                $kind = isset($values[$paramIndex]) ? (string) $values[$paramIndex] : null;
+            } elseif (preg_match("/user_kind = '([^']+)'/", $s, $m)) {
+                $kind = $m[1];
+            }
+
             /* SELECT user_id, COUNT(*) AS sessions … GROUP BY user_id */
             if ($this->has($o, 'GROUP BY user_id')) {
                 $ids = [];
@@ -1866,6 +1876,7 @@ class MockMysqli
                 foreach ($rows as $r) {
                     if (!empty($r['logged_out_at'])) continue;
                     if ($portal !== null && $r['portal'] !== $portal) continue;
+                    if ($kind !== null && (string) $r['user_kind'] !== $kind) continue;
                     if ($ids && !in_array((int) $r['user_id'], $ids, true)) continue;
                     $uid = (int) $r['user_id'];
                     $counts[$uid] = isset($counts[$uid]) ? $counts[$uid] + 1 : 1;
@@ -1878,10 +1889,11 @@ class MockMysqli
             }
 
             $onlyLive = stripos($s, 'logged_out_at IS NULL') !== false;
-            $match = array_values(array_filter($rows, function ($r) use ($portal, $token, $userId, $onlyLive) {
+            $match = array_values(array_filter($rows, function ($r) use ($portal, $token, $userId, $kind, $onlyLive) {
                 if ($portal !== null && $r['portal'] !== $portal) return false;
                 if ($token !== null && $r['session_token'] !== $token) return false;
                 if ($userId !== null && (int) $r['user_id'] !== $userId) return false;
+                if ($kind !== null && (string) $r['user_kind'] !== $kind) return false;
                 if ($onlyLive && !empty($r['logged_out_at'])) return false;
                 return true;
             }));

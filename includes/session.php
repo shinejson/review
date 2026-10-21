@@ -52,6 +52,13 @@ function auth_session_start() {
     if (session_status() !== PHP_SESSION_NONE) {
         return;
     }
+    // Keep the PHP session file alive at least as long as our longest
+    // idle window — otherwise the OS garbage-collector can wipe the
+    // session after ~24 min (default gc_maxlifetime=1440) and the user
+    // is bounced with an empty session instead of ?expired=idle.
+    if (defined('AUTH_ABSOLUTE_TIMEOUT_ADMIN')) {
+        @ini_set('session.gc_maxlifetime', (string) AUTH_ABSOLUTE_TIMEOUT_ADMIN);
+    }
     $secure = auth_is_https();
     if (PHP_VERSION_ID >= 70300) {
         session_set_cookie_params([
@@ -145,28 +152,59 @@ function auth_session_table_ok($conn) {
  *  Who is signed in
  * ============================================================ */
 
-/** 'superadmin', 'admin' or null. */
+/** 'superadmin', 'admin' or null. Support impersonation counts as the tenant workspace. */
 function auth_current_portal() {
+    if (!empty($_SESSION['impersonator_super_admin_id']) && !empty($_SESSION['tenant_id'])) return 'admin';
     if (!empty($_SESSION['super_admin_id'])) return 'superadmin';
     if (!empty($_SESSION['admin_id']) || !empty($_SESSION['tenant_id'])) return 'admin';
     return null;
 }
 
-/** The id this session belongs to inside its portal. */
+/** The id this session belongs to inside its portal (team-aware). */
 function auth_current_user_id($portal = null) {
     $portal = $portal ?: auth_current_portal();
     if ($portal === 'superadmin') return (int) (isset($_SESSION['super_admin_id']) ? $_SESSION['super_admin_id'] : 0);
+    if (auth_current_team_id() > 0) return auth_current_team_id();
     if (!empty($_SESSION['admin_id'])) return (int) $_SESSION['admin_id'];
     return (int) (isset($_SESSION['tenant_id']) ? $_SESSION['tenant_id'] : 0);
 }
 
-/** 'super_admin', 'admin' or 'tenant'. */
+/** 'super_admin', 'admin', 'tenant' or 'team'. */
 function auth_current_user_kind($portal = null) {
     $portal = $portal ?: auth_current_portal();
     if ($portal === 'superadmin') return 'super_admin';
+    if (auth_current_team_id() > 0) return 'team';
     return !empty($_SESSION['admin_id']) ? 'admin' : 'tenant';
 }
 
+/** True when the current session is a super-admin support impersonation of a tenant workspace. */
+function auth_is_impersonating() {
+    return !empty($_SESSION['impersonator_super_admin_id']) && !empty($_SESSION['tenant_id']);
+}
+
+/** team_member id for team sessions, 0 otherwise. */
+function auth_current_team_id() {
+    return (int) (isset($_SESSION['team_member_id']) ? $_SESSION['team_member_id'] : 0);
+}
+
+/**
+ * Canonical identity behind this browser's row in `user_sessions`:
+ * [user_id, kind]. Team members are tracked by their team_members.id
+ * with kind 'team' so a team id can never collide with a tenant id.
+ */
+function auth_session_identity($portal = null) {
+    $portal = $portal ?: auth_current_portal();
+    if ($portal === 'superadmin') {
+        return [(int) (isset($_SESSION['super_admin_id']) ? $_SESSION['super_admin_id'] : 0), 'super_admin'];
+    }
+    if (auth_current_team_id() > 0) {
+        return [auth_current_team_id(), 'team'];
+    }
+    if (!empty($_SESSION['admin_id'])) {
+        return [(int) $_SESSION['admin_id'], 'admin'];
+    }
+    return [(int) (isset($_SESSION['tenant_id']) ? $_SESSION['tenant_id'] : 0), 'tenant'];
+}
 /** Human readable owner of the session. */
 function auth_current_user_label($portal = null) {
     $portal = $portal ?: auth_current_portal();
@@ -270,8 +308,9 @@ function auth_login_session($conn, $portal = null, $user_id = 0, $label = '', $k
     auth_regenerate_session();
 
     $portal  = $portal ?: (auth_current_portal() ?: 'admin');
-    $user_id = (int) ($user_id ?: auth_current_user_id($portal));
-    $kind    = $kind !== '' ? $kind : auth_current_user_kind($portal);
+    list($ident_id, $ident_kind) = auth_session_identity($portal);
+    $user_id = (int) ($user_id ?: $ident_id);
+    $kind    = $kind !== '' ? $kind : $ident_kind;
     $label   = $label !== '' ? $label : auth_current_user_label($portal);
 
     $now = time();
@@ -353,23 +392,28 @@ function auth_session_row($conn, $token) {
     return $row ?: null;
 }
 
-/** Active sessions of one user, most recently used first. */
-function auth_sessions_for($conn, $portal, $user_id, $limit = 8) {
+/** Active sessions of one user, most recently used first. Optional $kind narrows tenant vs team rows. */
+function auth_sessions_for($conn, $portal, $user_id, $limit = 8, $kind = null) {
     if (!auth_session_table_ok($conn)) {
         return [];
     }
     $limit = max(1, (int) $limit);
+    $kind_sql = ($kind !== null && $kind !== '') ? ' AND user_kind = ?' : '';
     $stmt  = @$conn->prepare(
         'SELECT id, session_token, user_label, user_kind, ip_address, user_agent, created_at, last_seen_at
            FROM user_sessions
-          WHERE portal = ? AND user_id = ? AND logged_out_at IS NULL
+          WHERE portal = ? AND user_id = ?' . $kind_sql . ' AND logged_out_at IS NULL
           ORDER BY last_seen_at DESC
           LIMIT ' . $limit
     );
     if (!$stmt) {
         return [];
     }
-    $stmt->bind_param('si', $portal, $user_id);
+    if ($kind !== null && $kind !== '') {
+        $stmt->bind_param('sis', $portal, $user_id, $kind);
+    } else {
+        $stmt->bind_param('si', $portal, $user_id);
+    }
     @$stmt->execute();
     $res  = $stmt->get_result();
     $rows = [];
@@ -382,16 +426,21 @@ function auth_sessions_for($conn, $portal, $user_id, $limit = 8) {
     return $rows;
 }
 
-/** How many live sessions a user has. */
-function auth_session_count($conn, $portal, $user_id) {
+/** How many live sessions a user has. Optional $kind narrows tenant vs team rows. */
+function auth_session_count($conn, $portal, $user_id, $kind = null) {
     if (!auth_session_table_ok($conn)) {
         return 0;
     }
-    $stmt = @$conn->prepare('SELECT COUNT(*) AS c FROM user_sessions WHERE portal = ? AND user_id = ? AND logged_out_at IS NULL');
+    $kind_sql = ($kind !== null && $kind !== '') ? ' AND user_kind = ?' : '';
+    $stmt = @$conn->prepare('SELECT COUNT(*) AS c FROM user_sessions WHERE portal = ? AND user_id = ?' . $kind_sql . ' AND logged_out_at IS NULL');
     if (!$stmt) {
         return 0;
     }
-    $stmt->bind_param('si', $portal, $user_id);
+    if ($kind !== null && $kind !== '') {
+        $stmt->bind_param('sis', $portal, $user_id, $kind);
+    } else {
+        $stmt->bind_param('si', $portal, $user_id);
+    }
     @$stmt->execute();
     $res = $stmt->get_result();
     $row = $res ? $res->fetch_assoc() : null;
@@ -399,18 +448,25 @@ function auth_session_count($conn, $portal, $user_id) {
     return $row ? (int) $row['c'] : 0;
 }
 
-/** user_id => live session count, for a list of users. */
-function auth_session_counts($conn, $portal, array $user_ids) {
+/** user_id => live session count, for a list of users. Optional $kind narrows tenant vs team rows. */
+function auth_session_counts($conn, $portal, array $user_ids, $kind = null) {
     $ids = array_values(array_unique(array_filter(array_map('intval', $user_ids))));
     if (!$ids || !auth_session_table_ok($conn)) {
         return [];
     }
+    $escPortal = is_object($conn) && method_exists($conn, 'real_escape_string') ? $conn->real_escape_string($portal) : $portal;
+    $kind_sql = '';
+    if ($kind !== null && $kind !== '') {
+        $escKind = is_object($conn) && method_exists($conn, 'real_escape_string') ? $conn->real_escape_string((string) $kind) : $kind;
+        $kind_sql = " AND user_kind = '{$escKind}'";
+    }
     $sql = 'SELECT user_id, COUNT(*) AS sessions
               FROM user_sessions
-             WHERE portal = \'' . (is_object($conn) && method_exists($conn, 'real_escape_string') ? $conn->real_escape_string($portal) : $portal) . '\'
-               AND logged_out_at IS NULL
-               AND user_id IN (' . implode(', ', $ids) . ')
-             GROUP BY user_id';
+             WHERE portal = \'' . $escPortal . '\''
+                . $kind_sql . '
+                AND logged_out_at IS NULL
+                AND user_id IN (' . implode(', ', $ids) . ')
+              GROUP BY user_id';
     $res = @$conn->query($sql);
     $out = [];
     if ($res) {
@@ -477,26 +533,29 @@ function auth_session_logout($conn = null, $reason = 'user', $mark_row = true) {
 /**
  * Close every other live session of the signed-in user — the
  * "sign out everywhere else" button. Returns how many were closed.
+ * Team sessions resolve to (team id, 'team') so they never touch the
+ * tenant owner's rows.
  */
 function auth_session_logout_others($conn, $portal = null, $user_id = 0, $reason = 'revoked') {
     $portal  = $portal ?: auth_current_portal();
-    $user_id = (int) ($user_id ?: auth_current_user_id($portal));
+    list($ident_id, $ident_kind) = auth_session_identity($portal);
+    $user_id = (int) ($user_id ?: $ident_id);
     if (!$portal || $user_id <= 0 || !auth_session_table_ok($conn)) {
         return 0;
     }
     $token = auth_session_token(false);
-    $count = auth_session_count($conn, $portal, $user_id);
+    $count = auth_session_count($conn, $portal, $user_id, $ident_kind);
     if ($token !== '' && ($row = auth_session_row($conn, $token))) {
         $count = max(0, $count - 1);
     }
     $stmt = @$conn->prepare(
         'UPDATE user_sessions SET logged_out_at = NOW(), logout_reason = ?
-          WHERE portal = ? AND user_id = ? AND logged_out_at IS NULL AND session_token <> ?'
+          WHERE portal = ? AND user_id = ? AND user_kind = ? AND logged_out_at IS NULL AND session_token <> ?'
     );
     if (!$stmt) {
         return 0;
     }
-    $stmt->bind_param('ssis', $reason, $portal, $user_id, $token);
+    $stmt->bind_param('ssiss', $reason, $portal, $user_id, $ident_kind, $token);
     @$stmt->execute();
     $stmt->close();
     return $count;
@@ -506,17 +565,25 @@ function auth_session_logout_others($conn, $portal = null, $user_id = 0, $reason
  * Close every live session of another account — used by the super
  * admin Users screen to push somebody out. Returns the count.
  */
-function auth_revoke_user_sessions($conn, $portal, $user_id, $reason = 'revoked') {
+function auth_revoke_user_sessions($conn, $portal, $user_id, $reason = 'revoked', $kind = null) {
     $user_id = (int) $user_id;
     if ($user_id <= 0 || !auth_session_table_ok($conn)) {
         return 0;
     }
-    $count = auth_session_count($conn, $portal, $user_id);
-    $stmt  = @$conn->prepare('UPDATE user_sessions SET logged_out_at = NOW(), logout_reason = ? WHERE portal = ? AND user_id = ? AND logged_out_at IS NULL');
-    if (!$stmt) {
-        return 0;
+    $count = auth_session_count($conn, $portal, $user_id, $kind);
+    if ($kind !== null && $kind !== '') {
+        $stmt = @$conn->prepare('UPDATE user_sessions SET logged_out_at = NOW(), logout_reason = ? WHERE portal = ? AND user_id = ? AND user_kind = ? AND logged_out_at IS NULL');
+        if (!$stmt) {
+            return 0;
+        }
+        $stmt->bind_param('ssis', $reason, $portal, $user_id, $kind);
+    } else {
+        $stmt  = @$conn->prepare('UPDATE user_sessions SET logged_out_at = NOW(), logout_reason = ? WHERE portal = ? AND user_id = ? AND logged_out_at IS NULL');
+        if (!$stmt) {
+            return 0;
+        }
+        $stmt->bind_param('ssi', $reason, $portal, $user_id);
     }
-    $stmt->bind_param('ssi', $reason, $portal, $user_id);
     @$stmt->execute();
     $stmt->close();
     return $count;
