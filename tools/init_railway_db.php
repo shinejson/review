@@ -174,53 +174,59 @@ if (file_exists($reviewTrustFile)) {
 }
 
 // 3. Deduplication of Categories & Subscription Plans
-echo "[DB Init] Cleaning up and deduplicating categories...\n";
-$catDups = @$conn->query("
-    SELECT name, MIN(id) AS min_id, GROUP_CONCAT(id) AS all_ids, COUNT(*) AS cnt
-    FROM categories
-    GROUP BY name
-    HAVING cnt > 1
-");
-if ($catDups) {
-    while ($row = $catDups->fetch_assoc()) {
-        $minId = (int)$row['min_id'];
-        $allIds = array_map('intval', explode(',', $row['all_ids']));
-        $dupIds = array_filter($allIds, function($id) use ($minId) { return $id !== $minId; });
-        if (!empty($dupIds)) {
-            $idList = implode(',', $dupIds);
-            @$conn->query("UPDATE customers SET category_id = {$minId} WHERE category_id IN ({$idList})");
-            @$conn->query("DELETE FROM categories WHERE id IN ({$idList})");
-        }
-    }
-}
+echo "[DB Init] Cleaning up and deduplicating categories and plans...\n";
 try {
-    @$conn->query("ALTER TABLE categories ADD UNIQUE KEY uniq_cat_name (name)");
-} catch (Throwable $e) {}
+    @$conn->query("SET FOREIGN_KEY_CHECKS = 0");
 
-echo "[DB Init] Cleaning up and deduplicating subscription plans...\n";
-$planDups = @$conn->query("
-    SELECT plan_name, MIN(id) AS min_id, GROUP_CONCAT(id) AS all_ids, COUNT(*) AS cnt
-    FROM subscription_plans
-    GROUP BY plan_name
-    HAVING cnt > 1
-");
-if ($planDups) {
-    while ($row = $planDups->fetch_assoc()) {
-        $minId = (int)$row['min_id'];
-        $allIds = array_map('intval', explode(',', $row['all_ids']));
-        $dupIds = array_filter($allIds, function($id) use ($minId) { return $id !== $minId; });
-        if (!empty($dupIds)) {
-            $idList = implode(',', $dupIds);
-            @$conn->query("UPDATE tenants SET plan_id = {$minId} WHERE plan_id IN ({$idList})");
-            @$conn->query("UPDATE subscription_requests SET requested_plan_id = {$minId} WHERE requested_plan_id IN ({$idList})");
-            @$conn->query("UPDATE subscription_requests SET current_plan_id = {$minId} WHERE current_plan_id IN ({$idList})");
-            @$conn->query("DELETE FROM subscription_plans WHERE id IN ({$idList})");
+    // Categories
+    $catDups = @$conn->query("
+        SELECT name, MIN(id) AS min_id, GROUP_CONCAT(id) AS all_ids, COUNT(*) AS cnt
+        FROM categories
+        GROUP BY name
+        HAVING cnt > 1
+    ");
+    if ($catDups) {
+        while ($row = $catDups->fetch_assoc()) {
+            $minId = (int)$row['min_id'];
+            $allIds = array_map('intval', explode(',', $row['all_ids']));
+            $dupIds = array_filter($allIds, function($id) use ($minId) { return $id !== $minId; });
+            if (!empty($dupIds)) {
+                $idList = implode(',', $dupIds);
+                @$conn->query("UPDATE customers SET category_id = {$minId} WHERE category_id IN ({$idList})");
+                @$conn->query("UPDATE quote_requests SET category_id = {$minId} WHERE category_id IN ({$idList})");
+                @$conn->query("DELETE FROM categories WHERE id IN ({$idList})");
+            }
         }
     }
-}
-try {
+    @$conn->query("ALTER TABLE categories ADD UNIQUE KEY uniq_cat_name (name)");
+
+    // Subscription Plans
+    $planDups = @$conn->query("
+        SELECT plan_name, MIN(id) AS min_id, GROUP_CONCAT(id) AS all_ids, COUNT(*) AS cnt
+        FROM subscription_plans
+        GROUP BY plan_name
+        HAVING cnt > 1
+    ");
+    if ($planDups) {
+        while ($row = $planDups->fetch_assoc()) {
+            $minId = (int)$row['min_id'];
+            $allIds = array_map('intval', explode(',', $row['all_ids']));
+            $dupIds = array_filter($allIds, function($id) use ($minId) { return $id !== $minId; });
+            if (!empty($dupIds)) {
+                $idList = implode(',', $dupIds);
+                @$conn->query("UPDATE tenants SET plan_id = {$minId} WHERE plan_id IN ({$idList})");
+                @$conn->query("UPDATE subscription_requests SET requested_plan_id = {$minId} WHERE requested_plan_id IN ({$idList})");
+                @$conn->query("UPDATE subscription_requests SET current_plan_id = {$minId} WHERE current_plan_id IN ({$idList})");
+                @$conn->query("DELETE FROM subscription_plans WHERE id IN ({$idList})");
+            }
+        }
+    }
     @$conn->query("ALTER TABLE subscription_plans ADD UNIQUE KEY uniq_plan_name (plan_name)");
-} catch (Throwable $e) {}
+
+    @$conn->query("SET FOREIGN_KEY_CHECKS = 1");
+} catch (Throwable $e) {
+    @$conn->query("SET FOREIGN_KEY_CHECKS = 1");
+}
 
 // 4. Ensure Super Admin and Tenant Credentials & Unlock Accounts
 echo "[DB Init] Resetting default credentials and unlocking accounts...\n";
