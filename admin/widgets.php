@@ -81,9 +81,144 @@ if($existingWidget){
   // refresh after save
   $existingWidget=get_widget_config($conn,$tenant_id,$company_id);
 }
-$BASE='../'; $pageTitle='Review Widgets'; $activeNav='company';
+$BASE='../'; $pageTitle='Review Widgets'; $activeNav='widgets';
 include __DIR__.'/_shell.php';
 ?>
+<style>
+/* Grow & Monetize Dark Mode Overrides */
+:root[data-theme='dark'] .form-card {
+  background: #0f1f2e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #e2e8f0 !important;
+  box-shadow: none !important;
+}
+:root[data-theme='dark'] .form-card h3,
+:root[data-theme='dark'] .form-card h4,
+:root[data-theme='dark'] .form-card strong {
+  color: #f1f5f9 !important;
+}
+:root[data-theme='dark'] .form-card label {
+  color: #cbd5e1 !important;
+}
+:root[data-theme='dark'] .form-card input[type="text"],
+:root[data-theme='dark'] .form-card input[type="email"],
+:root[data-theme='dark'] .form-card input[type="number"],
+:root[data-theme='dark'] .form-card select,
+:root[data-theme='dark'] .form-card textarea {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #e2e8f0 !important;
+  color-scheme: dark;
+}
+:root[data-theme='dark'] .form-card select option {
+  background: #0f1f2e !important;
+  color: #e2e8f0 !important;
+}
+:root[data-theme='dark'] .form-card input::placeholder,
+:root[data-theme='dark'] .form-card textarea::placeholder {
+  color: #64748b !important;
+}
+:root[data-theme='dark'] div[style*="background:#f8fafc"],
+:root[data-theme='dark'] div[style*="background: #f8fafc"] {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #e2e8f0 !important;
+}
+:root[data-theme='dark'] div[style*="background:#fff;"],
+:root[data-theme='dark'] div[style*="background: #fff;"],
+:root[data-theme='dark'] div[style*="background:#ffffff;"] {
+  background: #0f1f2e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #e2e8f0 !important;
+}
+:root[data-theme='dark'] div[style*="border:1px solid #e2e8f0"],
+:root[data-theme='dark'] div[style*="border: 1px solid #e2e8f0"] {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+:root[data-theme='dark'] div[style*="background:#eff6ff"],
+:root[data-theme='dark'] div[style*="background: #eff6ff"] {
+  background: rgba(59, 130, 246, 0.12) !important;
+  border-color: rgba(59, 130, 246, 0.28) !important;
+  color: #93c5fd !important;
+}
+:root[data-theme='dark'] div[style*="background:#eff6ff"] strong,
+:root[data-theme='dark'] div[style*="background:#eff6ff"] span {
+  color: #bfdbfe !important;
+}
+:root[data-theme='dark'] div[style*="background:#f0fdf4"],
+:root[data-theme='dark'] div[style*="background: #f0fdf4"],
+:root[data-theme='dark'] div[style*="background:#ecfdf5"],
+:root[data-theme='dark'] div[style*="background: #ecfdf5"] {
+  background: rgba(34, 197, 94, 0.1) !important;
+  border-color: rgba(34, 197, 94, 0.25) !important;
+  color: #86efac !important;
+}
+:root[data-theme='dark'] div[style*="background:#f0fdf4"] strong,
+:root[data-theme='dark'] div[style*="background:#ecfdf5"] strong {
+  color: #4ade80 !important;
+}
+:root[data-theme='dark'] div[style*="background:#fffbeb"],
+:root[data-theme='dark'] div[style*="background: #fffbeb"],
+:root[data-theme='dark'] div[style*="background:#fef3c7"],
+:root[data-theme='dark'] div[style*="background: #fef3c7"] {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+  color: #fde68a !important;
+}
+:root[data-theme='dark'] div[style*="background:#fffbeb"] strong,
+:root[data-theme='dark'] div[style*="background:#fef3c7"] strong {
+  color: #fbbf24 !important;
+}
+:root[data-theme='dark'] [style*="color:#334155"],
+:root[data-theme='dark'] [style*="color: #334155"],
+:root[data-theme='dark'] [style*="color:#475569"],
+:root[data-theme='dark'] [style*="color: #475569"] {
+  color: #cbd5e1 !important;
+}
+:root[data-theme='dark'] [style*="color:#0f172a"],
+:root[data-theme='dark'] [style*="color: #0f172a"],
+:root[data-theme='dark'] [style*="color:#111827"] {
+  color: #f1f5f9 !important;
+}
+:root[data-theme='dark'] [style*="color:#64748b"],
+:root[data-theme='dark'] [style*="color: #64748b"] {
+  color: #94a3b8 !important;
+}
+:root[data-theme='dark'] label[style*="border:1px solid #cbd5e1"],
+:root[data-theme='dark'] label[style*="border: 1px solid #cbd5e1"] {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: #e2e8f0 !important;
+}
+:root[data-theme='dark'] thead tr[style*="background:#f8fafc"],
+:root[data-theme='dark'] thead tr[style*="background: #f8fafc"] {
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: #94a3b8 !important;
+}
+:root[data-theme='dark'] tr[style*="border-top:1px solid #e2e8f0"],
+:root[data-theme='dark'] tr[style*="border-top: 1px solid #e2e8f0"],
+:root[data-theme='dark'] tr[style*="border-top:1px solid #f1f5f9"],
+:root[data-theme='dark'] tr[style*="border-top: 1px solid #f1f5f9"] {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+:root[data-theme='dark'] tr[style*="border-bottom:1px solid #f1f5f9"],
+:root[data-theme='dark'] tr[style*="border-bottom:1px solid #e2e8f0"] {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+:root[data-theme='dark'] tbody td {
+  color: #cbd5e1 !important;
+}
+:root[data-theme='dark'] tbody td strong {
+  color: #f1f5f9 !important;
+}
+:root[data-theme='dark'] #codeIframe,
+:root[data-theme='dark'] #codeJs {
+  background: #081522 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #c2f542 !important;
+}
+</style>
+
 <div class="welcome-row" style="margin-bottom:22px;">
   <div>
     <p class="eyebrow">Monetization · Review Generation Widgets</p>
