@@ -153,7 +153,7 @@ include __DIR__ . '/_shell.php';
                 <!-- Card Header -->
                 <div class="stand-header">
                     <?php if (!empty($brand_logo)): ?>
-                        <img src="../<?php echo htmlspecialchars($brand_logo); ?>" alt="<?php echo htmlspecialchars($brand_name); ?>" class="stand-logo">
+                        <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($brand_logo) : ('../' . $brand_logo)); ?>" alt="<?php echo htmlspecialchars($brand_name); ?>" class="stand-logo">
                     <?php else: ?>
                         <div class="stand-avatar"><?php echo htmlspecialchars($brand_initials); ?></div>
                     <?php endif; ?>

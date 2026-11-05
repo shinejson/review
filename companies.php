@@ -1410,8 +1410,8 @@ function sponsored_for_category_group($cat_title, $cat_id, $map) {
                 $rank_index = 1;
                 foreach ($top3 as $c): 
                     $c_name      = (string)($c['company_name'] ?? '');
-                    $c_logo      = (string)($c['tenant_logo'] ?? '');
-                    $c_banner    = (string)($c['tenant_banner'] ?? '');
+                    $c_logo      = function_exists('getAppImageUrl') ? getAppImageUrl($c['tenant_logo'] ?? '') : (string)($c['tenant_logo'] ?? '');
+                    $c_banner    = function_exists('getAppImageUrl') ? getAppImageUrl($c['tenant_banner'] ?? '') : (string)($c['tenant_banner'] ?? '');
                     $c_initials  = getInitials($c_name);
                     $c_whatsapp  = whatsappChatUrl($c['whatsapp_number'] ?? '', $c_name);
                     $c_reviews   = (int)($c['rating_count'] ?? 0);
@@ -1577,8 +1577,8 @@ function sponsored_for_category_group($cat_title, $cat_id, $map) {
                         <div class="cmp-sponsored-grid">
                             <?php foreach ($sponsored_in_cat as $sp):
                                 $sp_name = (string)($sp['company_name'] ?? '');
-                                $sp_logo = (string)($sp['tenant_logo'] ?? '');
-                                $sp_banner = (string)($sp['tenant_banner'] ?? '');
+                                $sp_logo = function_exists('getAppImageUrl') ? getAppImageUrl($sp['tenant_logo'] ?? '') : (string)($sp['tenant_logo'] ?? '');
+                                $sp_banner = function_exists('getAppImageUrl') ? getAppImageUrl($sp['tenant_banner'] ?? '') : (string)($sp['tenant_banner'] ?? '');
                                 $sp_initials = getInitials($sp_name);
                                 $sp_wa = whatsappChatUrl($sp['whatsapp_number'] ?? '', $sp_name);
                                 $sp_reviews = (int)($sp['rating_count'] ?? 0);
@@ -1620,8 +1620,8 @@ function sponsored_for_category_group($cat_title, $cat_id, $map) {
                     <div class="cmp-companies-grid">
                         <?php foreach ($comps_in_cat as $c): 
                             $c_name      = (string)($c['company_name'] ?? '');
-                            $c_logo      = (string)($c['tenant_logo'] ?? '');
-                            $c_banner    = (string)($c['tenant_banner'] ?? '');
+                            $c_logo      = function_exists('getAppImageUrl') ? getAppImageUrl($c['tenant_logo'] ?? '') : (string)($c['tenant_logo'] ?? '');
+                            $c_banner    = function_exists('getAppImageUrl') ? getAppImageUrl($c['tenant_banner'] ?? '') : (string)($c['tenant_banner'] ?? '');
                             $c_initials  = getInitials($c_name);
                             $c_whatsapp  = whatsappChatUrl($c['whatsapp_number'] ?? '', $c_name);
                             $c_reviews   = (int)($c['rating_count'] ?? 0);

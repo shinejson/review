@@ -286,7 +286,7 @@ include __DIR__ . '/_shell.php';
                 <div style="display:flex;align-items:center;gap:12px;">
                     <div style="width:38px;height:38px;border-radius:50%;background:#128c7e;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;color:#fff;overflow:hidden;">
                         <?php if (!empty($brand_logo)): ?>
-                            <img src="../<?php echo htmlspecialchars(ltrim($brand_logo, '/')); ?>" style="width:100%;height:100%;object-fit:cover;">
+                            <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($brand_logo) : ('../' . ltrim($brand_logo, '/'))); ?>" style="width:100%;height:100%;object-fit:cover;">
                         <?php else: ?>
                             ★
                         <?php endif; ?>

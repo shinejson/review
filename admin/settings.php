@@ -28,114 +28,229 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $phone = sanitize($_POST['phone'] ?? '');
 
     if ($is_tenant && $tenant_id) {
+        if (function_exists('ensureTenantFaviconColumn')) {
+            ensureTenantFaviconColumn($conn);
+        }
+
         $logo_path = null;
         $banner_path = null;
+        $favicon_path = null;
+
+        // Fetch current tenant records to know existing files
+        $currStmt = $conn->prepare("SELECT logo, banner, favicon FROM tenants WHERE id = ?");
+        $currStmt->bind_param("i", $tenant_id);
+        $currStmt->execute();
+        $currTenantData = $currStmt->get_result()->fetch_assoc();
+        $old_logo = $currTenantData['logo'] ?? '';
+        $old_banner = $currTenantData['banner'] ?? '';
+        $old_favicon = $currTenantData['favicon'] ?? '';
+        $currStmt->close();
 
         // Helper closure to store an uploaded image into /uploads
         $handle_image_upload = function ($field, $prefix) use ($tenant_id) {
-            if (!isset($_FILES[$field]) || $_FILES[$field]['error'] === UPLOAD_ERR_NO_FILE) {
+            if (!isset($_FILES[$field])) {
                 return null;
             }
+            $fileError = $_FILES[$field]['error'];
+            if ($fileError === UPLOAD_ERR_NO_FILE) {
+                return null;
+            }
+            if ($fileError === UPLOAD_ERR_INI_SIZE || $fileError === UPLOAD_ERR_FORM_SIZE) {
+                $iniMax = ini_get('upload_max_filesize') ?: 'server limit';
+                $_SESSION['error'] = "The uploaded file exceeds the allowed file size ({$iniMax}).";
+                return false;
+            }
+            if ($fileError === UPLOAD_ERR_PARTIAL) {
+                $_SESSION['error'] = "The file upload was interrupted. Please try again.";
+                return false;
+            }
+            if ($fileError === UPLOAD_ERR_NO_TMP_DIR || $fileError === UPLOAD_ERR_CANT_WRITE) {
+                $_SESSION['error'] = "Server storage error: unable to write temporary file on the host.";
+                return false;
+            }
+            if ($fileError !== UPLOAD_ERR_OK) {
+                $_SESSION['error'] = "Upload failed with error code: {$fileError}.";
+                return false;
+            }
+
             if (!is_uploaded_file($_FILES[$field]['tmp_name'])) {
-                return null;
+                $_SESSION['error'] = "No valid uploaded file found.";
+                return false;
             }
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            $mime = finfo_file($finfo, $_FILES[$field]['tmp_name']);
-            finfo_close($finfo);
+
+            $maxBytes = 8 * 1024 * 1024; // 8MB limit
+            if ($_FILES[$field]['size'] > $maxBytes) {
+                $_SESSION['error'] = "The uploaded file is too large (" . round($_FILES[$field]['size'] / (1024 * 1024), 2) . "MB). Maximum allowed is 8MB.";
+                return false;
+            }
+
+            $mime = function_exists('safeDetectImageMime')
+                ? safeDetectImageMime($_FILES[$field]['tmp_name'], $_FILES[$field]['type'] ?? '')
+                : '';
+            if (empty($mime)) {
+                $img_info = @getimagesize($_FILES[$field]['tmp_name']);
+                $mime = $img_info['mime'] ?? ($_FILES[$field]['type'] ?? '');
+            }
 
             $mime_to_ext = [
-                'image/jpeg' => 'jpg',
-                'image/png'  => 'png',
-                'image/gif'  => 'gif',
-                'image/webp' => 'webp',
+                'image/jpeg'               => 'jpg',
+                'image/jpg'                => 'jpg',
+                'image/pjpeg'              => 'jpg',
+                'image/png'                => 'png',
+                'image/x-png'              => 'png',
+                'image/gif'                => 'gif',
+                'image/webp'               => 'webp',
+                'image/x-icon'             => 'ico',
+                'image/vnd.microsoft.icon' => 'ico',
+                'image/ico'                => 'ico',
+                'image/icon'               => 'ico',
+                'image/svg+xml'            => 'svg',
             ];
 
-            if (!isset($mime_to_ext[$mime]) || $_FILES[$field]['size'] > 2 * 1024 * 1024) {
-                $_SESSION['error'] = "Invalid file type or file too large. Only JPG, PNG, GIF, WEBP allowed (max 2MB).";
+            if (!isset($mime_to_ext[$mime])) {
+                $_SESSION['error'] = "Invalid file type (" . htmlspecialchars($mime ?: 'unknown') . "). Only JPG, PNG, GIF, WEBP, ICO, and SVG allowed.";
                 return false;
             }
 
-            $upload_dir = __DIR__ . '/../uploads/';
-            if (!is_dir($upload_dir)) {
-                mkdir($upload_dir, 0755, true);
-            }
             $ext = $mime_to_ext[$mime];
-            // Belt-and-suspenders: confirm valid image header
-            $img_info = @getimagesize($_FILES[$field]['tmp_name']);
-            if ($img_info === false) {
-                $_SESSION['error'] = "The uploaded file is not a valid image.";
+
+            // Belt-and-suspenders: confirm valid image header (SVG skips getimagesize)
+            if ($ext === 'svg') {
+                $rawSvg = @file_get_contents($_FILES[$field]['tmp_name']);
+                if ($rawSvg === false || stripos($rawSvg, '<svg') === false || stripos($rawSvg, '<script') !== false) {
+                    $_SESSION['error'] = "The uploaded SVG file is invalid or contains prohibited scripts.";
+                    return false;
+                }
+            } else {
+                $img_info = @getimagesize($_FILES[$field]['tmp_name']);
+                if ($img_info === false) {
+                    $_SESSION['error'] = "The uploaded file is not a valid image.";
+                    return false;
+                }
+            }
+
+            $upload_dir = dirname(__DIR__) . '/uploads/';
+            if (!is_dir($upload_dir)) {
+                @mkdir($upload_dir, 0777, true);
+            }
+            @chmod($upload_dir, 0777);
+
+            if (!is_writable($upload_dir)) {
+                $_SESSION['error'] = "Upload failed: 'uploads' directory is not writable on the host. Please set uploads folder permissions to 777 in your hosting control panel.";
                 return false;
             }
+
+            $ext = $mime_to_ext[$mime];
             try {
                 $random = bin2hex(random_bytes(16));
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 $random = uniqid('', true);
             }
             $filename = $prefix . '_' . $tenant_id . '_' . $random . '.' . $ext;
             $target_file = $upload_dir . $filename;
 
-            if (move_uploaded_file($_FILES[$field]['tmp_name'], $target_file)) {
+            if (@move_uploaded_file($_FILES[$field]['tmp_name'], $target_file) || @copy($_FILES[$field]['tmp_name'], $target_file)) {
+                @chmod($target_file, 0644);
                 return 'uploads/' . $filename;
             }
-            $_SESSION['error'] = "Failed to upload {$prefix}. Please try again.";
+
+            $_SESSION['error'] = "Failed to save {$prefix} to server disk. Please check uploads directory permissions.";
             return false;
         };
 
         // Handle logo upload
         $logo_result = $handle_image_upload('company_logo', 'tenant_logo');
         if ($logo_result === false) {
-            $logo_result = null;
-        }
-        if ($logo_result !== null) {
+            // Error is stored in $_SESSION['error']
+        } elseif ($logo_result !== null) {
             $logo_path = $logo_result;
-            // Remove old logo if exists
-            $old_logo = $tenant['logo'] ?? '';
-            if (!empty($old_logo) && file_exists(__DIR__ . '/../' . $old_logo)) {
-                unlink(__DIR__ . '/../' . $old_logo);
+            // Remove old logo if exists and differs
+            if (!empty($old_logo)) {
+                $oldFile = dirname(__DIR__) . '/' . ltrim($old_logo, '/');
+                if (file_exists($oldFile) && is_file($oldFile) && basename($oldFile) !== basename($logo_path)) {
+                    @unlink($oldFile);
+                }
             }
         }
 
         // Handle banner upload
         $banner_result = $handle_image_upload('company_banner', 'tenant_banner');
         if ($banner_result === false) {
-            $banner_result = null;
-        }
-        if ($banner_result !== null) {
+            // Error is stored in $_SESSION['error']
+        } elseif ($banner_result !== null) {
             $banner_path = $banner_result;
-            // Remove old banner if exists
-            $old_banner = $tenant['banner'] ?? '';
-            if (!empty($old_banner) && file_exists(__DIR__ . '/../' . $old_banner)) {
-                unlink(__DIR__ . '/../' . $old_banner);
+            // Remove old banner if exists and differs
+            if (!empty($old_banner)) {
+                $oldFile = dirname(__DIR__) . '/' . ltrim($old_banner, '/');
+                if (file_exists($oldFile) && is_file($oldFile) && basename($oldFile) !== basename($banner_path)) {
+                    @unlink($oldFile);
+                }
+            }
+        }
+
+        // Handle favicon upload
+        $favicon_result = $handle_image_upload('company_favicon', 'tenant_favicon');
+        if ($favicon_result === false) {
+            // Error is stored in $_SESSION['error']
+        } elseif ($favicon_result !== null) {
+            $favicon_path = $favicon_result;
+            // Remove old favicon if exists and differs
+            if (!empty($old_favicon)) {
+                $oldFile = dirname(__DIR__) . '/' . ltrim($old_favicon, '/');
+                if (file_exists($oldFile) && is_file($oldFile) && basename($oldFile) !== basename($favicon_path)) {
+                    @unlink($oldFile);
+                }
             }
         }
 
         if (!isset($_SESSION['error'])) {
-            if ($logo_path !== null && $banner_path !== null) {
-                $stmt = $conn->prepare("UPDATE tenants SET company_name = ?, email = ?, phone = ?, logo = ?, banner = ? WHERE id = ?");
-                $stmt->bind_param("sssssi", $company_name, $email, $phone, $logo_path, $banner_path, $tenant_id);
-            } elseif ($logo_path !== null) {
-                $stmt = $conn->prepare("UPDATE tenants SET company_name = ?, email = ?, phone = ?, logo = ? WHERE id = ?");
-                $stmt->bind_param("ssssi", $company_name, $email, $phone, $logo_path, $tenant_id);
-            } elseif ($banner_path !== null) {
-                $stmt = $conn->prepare("UPDATE tenants SET company_name = ?, email = ?, phone = ?, banner = ? WHERE id = ?");
-                $stmt->bind_param("ssssi", $company_name, $email, $phone, $banner_path, $tenant_id);
-            } else {
-                $stmt = $conn->prepare("UPDATE tenants SET company_name = ?, email = ?, phone = ? WHERE id = ?");
-                $stmt->bind_param("sssi", $company_name, $email, $phone, $tenant_id);
+            $updateFields = ['company_name = ?', 'email = ?', 'phone = ?'];
+            $updateParams = [$company_name, $email, $phone];
+            $updateTypes  = 'sss';
+
+            if ($logo_path !== null) {
+                $updateFields[] = 'logo = ?';
+                $updateParams[] = $logo_path;
+                $updateTypes   .= 's';
             }
-            if ($stmt->execute()) {
-                $_SESSION['tenant_name'] = $company_name;
-                $_SESSION['tenant_email'] = $email;
-                if ($logo_path !== null) {
-                    $_SESSION['tenant_logo'] = $logo_path;
+            if ($banner_path !== null) {
+                $updateFields[] = 'banner = ?';
+                $updateParams[] = $banner_path;
+                $updateTypes   .= 's';
+            }
+            if ($favicon_path !== null) {
+                $updateFields[] = 'favicon = ?';
+                $updateParams[] = $favicon_path;
+                $updateTypes   .= 's';
+            }
+
+            $updateParams[] = (int)$tenant_id;
+            $updateTypes   .= 'i';
+
+            $sql = "UPDATE tenants SET " . implode(', ', $updateFields) . " WHERE id = ?";
+            $stmt = $conn->prepare($sql);
+            if ($stmt) {
+                $stmt->bind_param($updateTypes, ...$updateParams);
+                if ($stmt->execute()) {
+                    $_SESSION['tenant_name'] = $company_name;
+                    $_SESSION['tenant_email'] = $email;
+                    if ($logo_path !== null) {
+                        $_SESSION['tenant_logo'] = $logo_path;
+                    }
+                    if ($banner_path !== null) {
+                        $_SESSION['tenant_banner'] = $banner_path;
+                    }
+                    if ($favicon_path !== null) {
+                        $_SESSION['tenant_favicon'] = $favicon_path;
+                    }
+                    $_SESSION['success'] = "Profile updated successfully!";
+                    admin_log_activity($conn, 'profile_update', 'Updated the workspace profile', 'tenant', (int) $tenant_id);
+                } else {
+                    $_SESSION['error'] = "Failed to update profile: " . $conn->error;
                 }
-                if ($banner_path !== null) {
-                    $_SESSION['tenant_banner'] = $banner_path;
-                }
-                $_SESSION['success'] = "Profile updated successfully!";
-                admin_log_activity($conn, 'profile_update', 'Updated the workspace profile', 'tenant', (int) $tenant_id);
+                $stmt->close();
             } else {
-                $_SESSION['error'] = "Failed to update profile: " . $conn->error;
+                $_SESSION['error'] = "Failed to prepare profile update: " . $conn->error;
             }
         }
     } elseif (isAdmin()) {
@@ -515,6 +630,63 @@ if ($is_tenant && $tenant_id) {
     $stmt->execute();
     $tenant = $stmt->get_result()->fetch_assoc();
 
+    // Auto-heal missing logo/banner/favicon path in database if file on disk does not match DB path
+    if ($tenant) {
+        if (function_exists('ensureTenantFaviconColumn')) {
+            ensureTenantFaviconColumn($conn);
+        }
+
+        $needDbUpdate = false;
+        $currentDbLogo = $tenant['logo'] ?? '';
+        $currentDbBanner = $tenant['banner'] ?? '';
+        $currentDbFavicon = $tenant['favicon'] ?? '';
+
+        if (!empty($currentDbLogo)) {
+            $realLogoPath = dirname(__DIR__) . '/' . ltrim($currentDbLogo, '/');
+            if (!file_exists($realLogoPath)) {
+                $candidates = @glob(dirname(__DIR__) . '/uploads/tenant_logo_' . (int)$tenant_id . '_*.*');
+                if (!empty($candidates)) {
+                    $currentDbLogo = 'uploads/' . basename($candidates[0]);
+                    $tenant['logo'] = $currentDbLogo;
+                    $_SESSION['tenant_logo'] = $currentDbLogo;
+                    $needDbUpdate = true;
+                }
+            }
+        }
+        if (!empty($currentDbBanner)) {
+            $realBannerPath = dirname(__DIR__) . '/' . ltrim($currentDbBanner, '/');
+            if (!file_exists($realBannerPath)) {
+                $candidates = @glob(dirname(__DIR__) . '/uploads/tenant_banner_' . (int)$tenant_id . '_*.*');
+                if (!empty($candidates)) {
+                    $currentDbBanner = 'uploads/' . basename($candidates[0]);
+                    $tenant['banner'] = $currentDbBanner;
+                    $_SESSION['tenant_banner'] = $currentDbBanner;
+                    $needDbUpdate = true;
+                }
+            }
+        }
+        if (!empty($currentDbFavicon)) {
+            $realFaviconPath = dirname(__DIR__) . '/' . ltrim($currentDbFavicon, '/');
+            if (!file_exists($realFaviconPath)) {
+                $candidates = @glob(dirname(__DIR__) . '/uploads/tenant_favicon_' . (int)$tenant_id . '_*.*');
+                if (!empty($candidates)) {
+                    $currentDbFavicon = 'uploads/' . basename($candidates[0]);
+                    $tenant['favicon'] = $currentDbFavicon;
+                    $_SESSION['tenant_favicon'] = $currentDbFavicon;
+                    $needDbUpdate = true;
+                }
+            }
+        }
+        if ($needDbUpdate) {
+            $healStmt = $conn->prepare("UPDATE tenants SET logo = ?, banner = ?, favicon = ? WHERE id = ?");
+            if ($healStmt) {
+                $healStmt->bind_param("sssi", $currentDbLogo, $currentDbBanner, $currentDbFavicon, $tenant_id);
+                $healStmt->execute();
+                $healStmt->close();
+            }
+        }
+    }
+
     // Live usage: companies
     $stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM customers WHERE tenant_id = ?");
     $stmt->bind_param("i", $tenant_id);
@@ -676,7 +848,7 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                 <span class="status-dot">● Active</span>
             </div>
 
-                        <form method="POST" action="settings.php" enctype="multipart/form-data">
+                        <form method="POST" action="" enctype="multipart/form-data">
                 <?php echo sa_csrf_field(); ?>
                         <input type="hidden" name="action" value="update_profile">
 
@@ -711,14 +883,14 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                     </label>
                     <div style="display:flex;align-items:center;gap:14px;">
                         <?php if (!empty($tenant['logo'])): ?>
-                            <img src="<?php echo $BASE . htmlspecialchars($tenant['logo']); ?>" alt="Current Logo" style="width:60px;height:60px;border-radius:8px;object-fit:cover;border:1px solid var(--line);">
+                            <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($tenant['logo']) : ($BASE . $tenant['logo'])); ?>" alt="Current Logo" style="width:60px;height:60px;border-radius:8px;object-fit:cover;border:1px solid var(--line);" onerror="this.style.display='none';var d=document.getElementById('fallbackLogoBox');if(d)d.style.display='grid';">
+                            <div id="fallbackLogoBox" style="width:60px;height:60px;border-radius:8px;border:1px dashed var(--line);display:none;place-items:center;color:var(--muted);font-size:11px;text-align:center;">No Logo</div>
                         <?php else: ?>
-                            <div style="width:60px;height:60px;border-radius:8px;border:1px dashed var(--line);display:grid;place-items:center;color:var(--muted);font-size:11px;text-align:center;">No Logo
-                            </div>
+                            <div style="width:60px;height:60px;border-radius:8px;border:1px dashed var(--line);display:grid;place-items:center;color:var(--muted);font-size:11px;text-align:center;">No Logo</div>
                         <?php endif; ?>
                         <div style="flex:1;">
                             <input type="file" name="company_logo" accept="image/*" style="font-size:13px;">
-                            <small class="muted" style="display:block;margin-top:4px;font-size:11.5px;">PNG, JPG, GIF, WEBP - max 2MB</small>
+                            <small class="muted" style="display:block;margin-top:4px;font-size:11.5px;">PNG, JPG, GIF, WEBP - max 8MB</small>
                         </div>
                     </div>
                 </div>
@@ -729,14 +901,32 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                     </label>
                     <div style="display:flex;align-items:center;gap:14px;">
                         <?php if (!empty($tenant['banner'])): ?>
-                            <img src="<?php echo $BASE . htmlspecialchars($tenant['banner']); ?>" alt="Current Banner" style="width:120px;height:68px;border-radius:8px;object-fit:cover;border:1px solid var(--line);flex-shrink:0;">
+                            <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($tenant['banner']) : ($BASE . $tenant['banner'])); ?>" alt="Current Banner" style="width:120px;height:68px;border-radius:8px;object-fit:cover;border:1px solid var(--line);flex-shrink:0;" onerror="this.style.display='none';var d=document.getElementById('fallbackBannerBox');if(d)d.style.display='grid';">
+                            <div id="fallbackBannerBox" style="width:120px;height:68px;border-radius:8px;border:1px dashed var(--line);display:none;place-items:center;color:var(--muted);font-size:11px;text-align:center;">No Banner</div>
                         <?php else: ?>
-                            <div style="width:120px;height:68px;border-radius:8px;border:1px dashed var(--line);display:grid;place-items:center;color:var(--muted);font-size:11px;text-align:center;">No Banner
-                            </div>
+                            <div style="width:120px;height:68px;border-radius:8px;border:1px dashed var(--line);display:grid;place-items:center;color:var(--muted);font-size:11px;text-align:center;">No Banner</div>
                         <?php endif; ?>
                         <div style="flex:1;">
                             <input type="file" name="company_banner" accept="image/*" style="font-size:13px;">
-                            <small class="muted" style="display:block;margin-top:4px;font-size:11.5px;">PNG, JPG, GIF, WEBP - max 2MB, recommended 1200 x 400px</small>
+                            <small class="muted" style="display:block;margin-top:4px;font-size:11.5px;">PNG, JPG, GIF, WEBP - max 8MB, recommended 1200 x 400px</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:24px;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#334155;margin-bottom:8px;">
+                        Workspace Favicon (Browser Tab Icon)
+                    </label>
+                    <div style="display:flex;align-items:center;gap:14px;">
+                        <?php if (!empty($tenant['favicon'])): ?>
+                            <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($tenant['favicon']) : ($BASE . $tenant['favicon'])); ?>" alt="Current Favicon" style="width:36px;height:36px;border-radius:8px;object-fit:contain;border:1px solid var(--line);padding:4px;background:rgba(255,255,255,0.04);flex-shrink:0;" onerror="this.style.display='none';var d=document.getElementById('fallbackFaviconBox');if(d)d.style.display='grid';">
+                            <div id="fallbackFaviconBox" style="width:36px;height:36px;border-radius:8px;border:1px dashed var(--line);display:none;place-items:center;color:var(--muted);font-size:10px;text-align:center;flex-shrink:0;">No Icon</div>
+                        <?php else: ?>
+                            <div style="width:36px;height:36px;border-radius:8px;border:1px dashed var(--line);display:grid;place-items:center;color:var(--muted);font-size:10px;text-align:center;flex-shrink:0;">No Icon</div>
+                        <?php endif; ?>
+                        <div style="flex:1;">
+                            <input type="file" name="company_favicon" accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/jpeg,image/webp,image/gif" style="font-size:13px;">
+                            <small class="muted" style="display:block;margin-top:4px;font-size:11.5px;">PNG, ICO, WEBP, JPG - max 2MB, recommended 32 x 32px or 64 x 64px</small>
                         </div>
                     </div>
                 </div>
@@ -756,7 +946,10 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
             <div>
                 <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
                     <?php if ($is_tenant && !empty($tenant['logo'])): ?>
-                        <img src="<?php echo $BASE . htmlspecialchars($tenant['logo']); ?>" alt="<?php echo htmlspecialchars($display_title); ?> Logo" style="width:50px;height:50px;border-radius:14px;object-fit:cover;border:1px solid var(--line);flex-shrink:0;">
+                        <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($tenant['logo']) : ($BASE . $tenant['logo'])); ?>" alt="<?php echo htmlspecialchars($display_title); ?> Logo" style="width:50px;height:50px;border-radius:14px;object-fit:cover;border:1px solid var(--line);flex-shrink:0;" onerror="this.style.display='none';var d=document.getElementById('fallbackCardAvatar');if(d)d.style.display='flex';">
+                        <div id="fallbackCardAvatar" class="mini-avatar" style="display:none;">
+                            <?php echo htmlspecialchars($display_initials); ?>
+                        </div>
                     <?php else: ?>
                         <div class="mini-avatar">
                             <?php echo htmlspecialchars($display_initials); ?>

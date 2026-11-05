@@ -116,11 +116,16 @@ $assetBase = rtrim($BASE, '/');
     <meta name="robots" content="<?php echo htmlspecialchars($robots); ?>">
 <?php endif; ?>
     <title><?php echo htmlspecialchars($sa_page); ?> &middot; Optibiz</title>
-    <?php if (function_exists('sa_platform_favicon')): ?>
-    <?php $fav_url = sa_platform_favicon($conn); ?>
-    <?php if ($fav_url): ?>
-    <link rel="icon" href="<?php echo sa_e($fav_url); ?>">
-    <?php endif; ?>
+    <?php
+    $fav_url = '';
+    if (function_exists('getAppFaviconUrl')) {
+        $fav_url = getAppFaviconUrl();
+    } elseif (function_exists('sa_platform_favicon') && isset($conn)) {
+        $fav_url = sa_platform_favicon($conn);
+    }
+    if (!empty($fav_url)):
+    ?>
+    <link rel="icon" href="<?php echo htmlspecialchars($fav_url); ?>">
     <?php endif; ?>
     <style>
         /* Keeps the first paint from flashing while the saved theme loads */

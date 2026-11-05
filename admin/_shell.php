@@ -542,7 +542,8 @@ $activeNav = $activeNav ?? 'dashboard';
       <div class="admin-menu-wrap" data-admin-menu>
         <button type="button" class="admin-avatar-btn" data-admin-menu-trigger aria-haspopup="true" aria-expanded="false">
           <?php if ($is_tenant && !empty($_SESSION['tenant_logo'])): ?>
-            <img src="<?php echo $BASE . htmlspecialchars($_SESSION['tenant_logo']); ?>" alt="Logo" class="admin-avatar-img">
+            <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($_SESSION['tenant_logo']) : ($BASE . $_SESSION['tenant_logo'])); ?>" alt="Logo" class="admin-avatar-img" onerror="this.style.display='none';var fb=this.nextElementSibling;if(fb)fb.style.display='inline-flex';">
+            <span class="admin-avatar" style="display:none;"><?php echo htmlspecialchars(strtoupper(substr(getCurrentUserName() ?? 'A', 0, 1))); ?></span>
           <?php else: ?>
           <span class="admin-avatar"><?php echo htmlspecialchars(strtoupper(substr(getCurrentUserName() ?? 'A', 0, 1))); ?></span>
           <?php endif; ?>

@@ -2305,7 +2305,7 @@ $seo_faq_node = array(
                 <div class="c-card-top">
                     <div class="c-card-logo">
                         <?php if (!empty($fc['logo'])): ?>
-                            <img src="<?php echo htmlspecialchars($fc['logo'], ENT_QUOTES, 'UTF-8'); ?>"
+                            <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($fc['logo']) : $fc['logo'], ENT_QUOTES, 'UTF-8'); ?>"
                                  alt="<?php echo htmlspecialchars($fc['company_name'], ENT_QUOTES, 'UTF-8'); ?> logo"
                                  width="48" height="48" loading="lazy" decoding="async">
                         <?php else: ?>

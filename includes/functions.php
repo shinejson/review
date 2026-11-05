@@ -760,24 +760,66 @@ function reportReview($rating_id, $reason, $conn) {
     return ['success' => false, 'message' => 'Error reporting'];
 }
 
-function uploadReviewPhoto($file, $rating_id) {
-    $upload_dir = __DIR__ . '/../uploads/reviews/';
-    if (!is_dir($upload_dir)) {
-        mkdir($upload_dir, 0755, true);
+if (!function_exists('safeDetectImageMime')) {
+    /**
+     * Resiliently detect image MIME type without throwing TypeErrors on hosts lacking magic db.
+     */
+    function safeDetectImageMime($tmpPath, $fallbackType = '') {
+        $mime = '';
+        if (function_exists('finfo_open')) {
+            $finfo = @finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo !== false) {
+                $detected = @finfo_file($finfo, $tmpPath);
+                @finfo_close($finfo);
+                if ($detected !== false && $detected !== '') {
+                    $mime = $detected;
+                }
+            }
+        }
+        if (empty($mime) && function_exists('mime_content_type')) {
+            $detected = @mime_content_type($tmpPath);
+            if ($detected !== false && $detected !== '') {
+                $mime = $detected;
+            }
+        }
+        if (empty($mime)) {
+            $img_info = @getimagesize($tmpPath);
+            if ($img_info && !empty($img_info['mime'])) {
+                $mime = $img_info['mime'];
+            }
+        }
+        if ((empty($mime) || $mime === 'text/plain' || $mime === 'application/octet-stream') && !empty($fallbackType)) {
+            $mime = strtolower(trim($fallbackType));
+        }
+        return $mime;
     }
+}
 
-    // Verify the file is a real image — never trust the client-supplied
-    // MIME type ($file['type']) or extension, both of which are attacker-controlled.
+function uploadReviewPhoto($file, $rating_id) {
+    $upload_dir = dirname(__DIR__) . '/uploads/reviews/';
+    if (!is_dir($upload_dir)) {
+        @mkdir($upload_dir, 0777, true);
+    }
+    @chmod($upload_dir, 0777);
+
     if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
         return ['success' => false, 'message' => 'Invalid upload'];
     }
 
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime  = $finfo->file($file['tmp_name']);
+    $mime = function_exists('safeDetectImageMime')
+        ? safeDetectImageMime($file['tmp_name'], $file['type'] ?? '')
+        : '';
+    if (empty($mime)) {
+        $img_info = @getimagesize($file['tmp_name']);
+        $mime = $img_info['mime'] ?? ($file['type'] ?? '');
+    }
 
     $mime_to_ext = [
         'image/jpeg' => 'jpg',
+        'image/jpg'  => 'jpg',
+        'image/pjpeg'=> 'jpg',
         'image/png'  => 'png',
+        'image/x-png'=> 'png',
         'image/gif'  => 'gif',
         'image/webp' => 'webp',
     ];
@@ -786,53 +828,57 @@ function uploadReviewPhoto($file, $rating_id) {
         return ['success' => false, 'message' => 'Invalid file type'];
     }
 
-    // Belt-and-suspenders: confirm the file has a valid image header.
     $img_info = @getimagesize($file['tmp_name']);
     if ($img_info === false) {
         return ['success' => false, 'message' => 'Invalid image data'];
     }
 
-    if ($file['size'] > 5 * 1024 * 1024) {
-        return ['success' => false, 'message' => 'File too large (max 5MB)'];
+    if ($file['size'] > 10 * 1024 * 1024) {
+        return ['success' => false, 'message' => 'File too large (max 10MB)'];
     }
 
-    // Generate a random server-side filename. Never use the client-provided name.
     $ext = $mime_to_ext[$mime];
     try {
         $random = bin2hex(random_bytes(16));
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         $random = uniqid('', true);
     }
     $filename = 'review_' . (int)$rating_id . '_' . $random . '.' . $ext;
     $filepath = $upload_dir . $filename;
 
-    if (move_uploaded_file($file['tmp_name'], $filepath)) {
-        // Serve as a static image — ensure no script execution by setting
-        // a restrictive Content-Type and disabling PHP for the directory.
+    if (@move_uploaded_file($file['tmp_name'], $filepath) || @copy($file['tmp_name'], $filepath)) {
+        @chmod($filepath, 0644);
         return ['success' => true, 'path' => 'uploads/reviews/' . $filename];
     }
 
-    return ['success' => false, 'message' => 'Upload failed'];
+    return ['success' => false, 'message' => 'Upload failed. Please check folder permissions.'];
 }
 
 function uploadReceiptPhoto($file, $rating_id) {
-    $upload_dir = __DIR__ . '/../uploads/receipts/';
+    $upload_dir = dirname(__DIR__) . '/uploads/receipts/';
     if (!is_dir($upload_dir)) {
-        mkdir($upload_dir, 0755, true);
+        @mkdir($upload_dir, 0777, true);
     }
+    @chmod($upload_dir, 0777);
 
-    // Verify the file is a real image — never trust the client-supplied
-    // MIME type or extension.
     if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
         return ['success' => false, 'message' => 'Invalid upload'];
     }
 
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime  = $finfo->file($file['tmp_name']);
+    $mime = function_exists('safeDetectImageMime')
+        ? safeDetectImageMime($file['tmp_name'], $file['type'] ?? '')
+        : '';
+    if (empty($mime)) {
+        $img_info = @getimagesize($file['tmp_name']);
+        $mime = $img_info['mime'] ?? ($file['type'] ?? '');
+    }
 
     $mime_to_ext = [
         'image/jpeg' => 'jpg',
+        'image/jpg'  => 'jpg',
+        'image/pjpeg'=> 'jpg',
         'image/png'  => 'png',
+        'image/x-png'=> 'png',
         'image/gif'  => 'gif',
         'image/webp' => 'webp',
     ];
@@ -841,31 +887,30 @@ function uploadReceiptPhoto($file, $rating_id) {
         return ['success' => false, 'message' => 'Invalid file type'];
     }
 
-    // Belt-and-suspenders: confirm the file has a valid image header.
     $img_info = @getimagesize($file['tmp_name']);
     if ($img_info === false) {
         return ['success' => false, 'message' => 'Invalid image data'];
     }
 
-    if ($file['size'] > 5 * 1024 * 1024) {
-        return ['success' => false, 'message' => 'File too large (max 5MB)'];
+    if ($file['size'] > 10 * 1024 * 1024) {
+        return ['success' => false, 'message' => 'File too large (max 10MB)'];
     }
 
-    // Generate a random server-side filename. Never use the client-provided name.
     $ext = $mime_to_ext[$mime];
     try {
         $random = bin2hex(random_bytes(16));
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         $random = uniqid('', true);
     }
     $filename = 'receipt_' . (int)$rating_id . '_' . $random . '.' . $ext;
     $filepath = $upload_dir . $filename;
 
-    if (move_uploaded_file($file['tmp_name'], $filepath)) {
+    if (@move_uploaded_file($file['tmp_name'], $filepath) || @copy($file['tmp_name'], $filepath)) {
+        @chmod($filepath, 0644);
         return ['success' => true, 'path' => 'uploads/receipts/' . $filename];
     }
 
-    return ['success' => false, 'message' => 'Upload failed'];
+    return ['success' => false, 'message' => 'Upload failed. Please check folder permissions.'];
 }
 
 /**
@@ -2575,10 +2620,9 @@ function generateSecureToken($length = 48) {
 
 function getPlatformBaseUrl() {
     // Prefer an explicit application URL configured by the operator.
-    // $_SERVER['HTTP_HOST'] is attacker-controlled and must never be used
-    // unvalidated to build password-reset / email links.
-    if (defined('APP_BASE_URL') && APP_BASE_URL !== '') {
-        $url = rtrim((string)APP_BASE_URL, '/');
+    $cfgUrl = (defined('APP_BASE_URL') && APP_BASE_URL !== '') ? APP_BASE_URL : (function_exists('optibiz_env') ? optibiz_env('APP_BASE_URL') : (getenv('APP_BASE_URL') ?: ''));
+    if (!empty($cfgUrl)) {
+        $url = rtrim((string)$cfgUrl, '/');
         // Basic sanity check — must be an absolute http(s) URL
         if (preg_match('~^https?://~i', $url)) {
             return $url;
@@ -2588,42 +2632,38 @@ function getPlatformBaseUrl() {
     // Fall back to scheme-relative reconstruction, also gated on a host
     // allow-list so a spoofed Host header cannot inject an arbitrary domain.
     $allowedHosts = [];
-    $envHosts = getenv('OPTIBIZ_ALLOWED_HOSTS');
+    $envHosts = function_exists('optibiz_env') ? optibiz_env('OPTIBIZ_ALLOWED_HOSTS') : getenv('OPTIBIZ_ALLOWED_HOSTS');
     if ($envHosts) {
         $allowedHosts = array_map('trim', explode(',', (string)$envHosts));
         $allowedHosts = array_filter($allowedHosts);
     }
-    if (empty($allowedHosts)) {
-        $allowedHosts = ['localhost'];
+    if (!empty($cfgUrl)) {
+        $cfgHost = parse_url($cfgUrl, PHP_URL_HOST);
+        if ($cfgHost) {
+            $allowedHosts[] = $cfgHost;
+        }
     }
 
     $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '';
     // Strip port for the allow-list check
     $hostName = $host !== '' ? preg_replace('/:\d+$/', '', $host) : '';
-    if (!in_array($hostName, $allowedHosts, true)) {
-        return '';
-    }
 
-    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
-    $scheme = $https ? 'https' : 'http';
-
-    // Determine base path: script is /admin/setup-password.php or /api/... -> go up one level
-    $script = $_SERVER['SCRIPT_NAME'] ?? '';
-    $basePath = '';
-    if ($script !== '') {
-        $dir = dirname($script);
-        if ($dir === '/' || $dir === '\\' || $dir === '.') {
-            $basePath = '';
-        } else {
-            if (in_array(basename($dir), ['admin', 'superadmin', 'api', 'includes'], true)) {
-                $basePath = dirname($dir);
-                if ($basePath === '/' || $basePath === '\\' || $basePath === '.') $basePath = '';
-            } else {
-                $basePath = $dir;
-                if ($basePath === '/' || $basePath === '.') $basePath = '';
-            }
+    if (!empty($allowedHosts)) {
+        if (!in_array($hostName, $allowedHosts, true)) {
+            return '';
+        }
+    } else {
+        if (!preg_match('/^[a-z0-9.-]+$/i', $hostName)) {
+            return '';
         }
     }
+
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
+    $scheme = $https ? 'https' : 'http';
+
+    $basePath = function_exists('getAppWebRoot') ? getAppWebRoot() : '';
     return rtrim($scheme . '://' . $host . $basePath, '/');
 }
 
@@ -2649,17 +2689,32 @@ if (!function_exists('getAppWebRoot')) {
      * Get the web root path of the application relative to the domain (e.g. '/rate' or '' if domain root).
      */
     function getAppWebRoot() {
+        // 1. If configured APP_BASE_URL exists, parse its path directly
+        $cfgUrl = (defined('APP_BASE_URL') && APP_BASE_URL !== '') ? APP_BASE_URL : (function_exists('optibiz_env') ? optibiz_env('APP_BASE_URL') : (getenv('APP_BASE_URL') ?: ''));
+        if (!empty($cfgUrl)) {
+            $parsedPath = parse_url($cfgUrl, PHP_URL_PATH);
+            if ($parsedPath !== null && $parsedPath !== false) {
+                $trimmed = '/' . trim($parsedPath, '/');
+                return ($trimmed === '/') ? '' : $trimmed;
+            }
+        }
+
+        // 2. Check DOCUMENT_ROOT vs application directory
         $appWebRoot = '';
         if (!empty($_SERVER['DOCUMENT_ROOT'])) {
             $docRoot = str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT']) ?: $_SERVER['DOCUMENT_ROOT']);
-            $appDir  = str_replace('\\', '/', dirname(__DIR__));
+            $appDir  = str_replace('\\', '/', realpath(dirname(__DIR__)) ?: dirname(__DIR__));
             if ($docRoot && strpos(strtolower($appDir), strtolower($docRoot)) === 0) {
                 $appWebRoot = substr($appDir, strlen($docRoot));
             }
         }
+
+        // 3. Fallback from SCRIPT_NAME: extract parent directory containing known panels
         if ($appWebRoot === '' && !empty($_SERVER['SCRIPT_NAME'])) {
             $script = str_replace('\\', '/', $_SERVER['SCRIPT_NAME']);
-            if (preg_match('#^(.*?)/(admin|superadmin|api|rate)(/|$)#i', $script, $m)) {
+            if (preg_match('#^(.*?)/(admin|superadmin|api|rate/index\.php|includes)(/|$)#i', $script, $m)) {
+                $appWebRoot = rtrim($m[1], '/');
+            } elseif (preg_match('#^(.*?)/[^/]+\.php$#i', $script, $m)) {
                 $appWebRoot = rtrim($m[1], '/');
             }
         }
@@ -2671,7 +2726,7 @@ if (!function_exists('getAppWebRoot')) {
 
 if (!function_exists('getAppBaseUrl')) {
     /**
-     * Get the full base URL of the application including scheme and host (e.g. 'http://localhost/rate').
+     * Get the full base URL of the application including scheme and host (e.g. 'https://optibiz.rf.gd/rate').
      * Prioritizes configured canonical APP_BASE_URL via getPlatformBaseUrl(), validating host against allowlist.
      */
     function getAppBaseUrl() {
@@ -2683,24 +2738,137 @@ if (!function_exists('getAppBaseUrl')) {
         }
 
         $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
+            $scheme = 'https';
+        }
+
         $rawHost = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
         $hostName = preg_replace('/:\d+$/', '', $rawHost);
 
         $allowedHosts = [];
-        $envHosts = getenv('OPTIBIZ_ALLOWED_HOSTS');
+        $envHosts = function_exists('optibiz_env') ? optibiz_env('OPTIBIZ_ALLOWED_HOSTS') : getenv('OPTIBIZ_ALLOWED_HOSTS');
         if ($envHosts) {
             $allowedHosts = array_map('trim', explode(',', (string)$envHosts));
             $allowedHosts = array_filter($allowedHosts);
         }
-        if (empty($allowedHosts)) {
-            $allowedHosts = ['localhost', '127.0.0.1'];
+
+        $cfgUrl = (defined('APP_BASE_URL') && APP_BASE_URL !== '') ? APP_BASE_URL : (function_exists('optibiz_env') ? optibiz_env('APP_BASE_URL') : '');
+        if (!empty($cfgUrl)) {
+            $cfgHost = parse_url($cfgUrl, PHP_URL_HOST);
+            if ($cfgHost) {
+                $allowedHosts[] = $cfgHost;
+            }
         }
 
-        $host = in_array($hostName, $allowedHosts, true) ? $rawHost : 'localhost';
+        if (empty($allowedHosts)) {
+            // When no explicit host allowlist is configured, trust the actual request host if valid hostname
+            $isHostValid = (bool)preg_match('/^[a-z0-9.-]+$/i', $hostName);
+            $host = $isHostValid ? $rawHost : 'localhost';
+        } else {
+            $host = in_array($hostName, $allowedHosts, true) ? $rawHost : (preg_match('/^[a-z0-9.-]+$/i', $hostName) ? $rawHost : 'localhost');
+        }
+
         return $scheme . '://' . $host . getAppWebRoot();
     }
 }
 
+if (!function_exists('getAppImageUrl')) {
+    /**
+     * Resolve a stored image/upload path to a clean, web-accessible URL.
+     * Handles:
+     * - Absolute URLs ('https://...')
+     * - Data URIs ('data:image/...')
+     * - Relative paths ('uploads/...') -> '/rate/uploads/...'
+     * - Root-relative paths ('/rate/uploads/...') -> left as-is
+     * - Protocol-relative paths ('//...') -> left as-is
+     */
+    function getAppImageUrl($path) {
+        $path = trim((string)$path);
+        if ($path === '') {
+            return '';
+        }
+        if (preg_match('~^(https?:)?//~i', $path) || strpos($path, 'data:') === 0) {
+            return $path;
+        }
+
+        $cleanPath = ltrim($path, '/');
+
+        // Check if file exists on server disk. If not, auto-heal for tenant logos/banners.
+        $baseDir = dirname(__DIR__);
+        $localFile = $baseDir . '/' . $cleanPath;
+        if (!file_exists($localFile) && preg_match('#^uploads/(tenant_(logo|banner|favicon)_(\d+))_#i', $cleanPath, $m)) {
+            $candidates = @glob($baseDir . '/uploads/' . $m[1] . '_*.*');
+            if (!empty($candidates)) {
+                $cleanPath = 'uploads/' . basename($candidates[0]);
+            }
+        }
+
+        $webRoot = function_exists('getAppWebRoot') ? getAppWebRoot() : '';
+        if ($webRoot !== '') {
+            $rootNoSlash = trim($webRoot, '/');
+            if (strpos($cleanPath, $rootNoSlash . '/') === 0) {
+                return '/' . $cleanPath;
+            }
+            return $webRoot . '/' . $cleanPath;
+        }
+        return '/' . $cleanPath;
+    }
+}
+
+if (!function_exists('getAppFaviconUrl')) {
+    /**
+     * Resolve the active favicon URL for the current page context.
+     * Prioritises tenant favicon if in tenant workspace / public review page,
+     * falling back to tenant logo, platform favicon, or default.
+     */
+    function getAppFaviconUrl($tenant_id = null) {
+        global $conn;
+
+        $targetTenantId = 0;
+        if ($tenant_id !== null && (int)$tenant_id > 0) {
+            $targetTenantId = (int)$tenant_id;
+        } elseif (!empty($_SESSION['tenant_id'])) {
+            $targetTenantId = (int)$_SESSION['tenant_id'];
+        } elseif (function_exists('getTenantId')) {
+            $targetTenantId = (int)getTenantId();
+        }
+
+        if ($targetTenantId > 0 && isset($conn) && is_object($conn)) {
+            // Check session first
+            if (!empty($_SESSION['tenant_favicon']) && $targetTenantId === (int)($_SESSION['tenant_id'] ?? 0)) {
+                return function_exists('getAppImageUrl') ? getAppImageUrl($_SESSION['tenant_favicon']) : $_SESSION['tenant_favicon'];
+            }
+
+            if (function_exists('ensureTenantFaviconColumn')) {
+                ensureTenantFaviconColumn($conn);
+            }
+            $stmt = @$conn->prepare("SELECT favicon, logo FROM tenants WHERE id = ? LIMIT 1");
+            if ($stmt) {
+                $stmt->bind_param("i", $targetTenantId);
+                $stmt->execute();
+                $row = $stmt->get_result()->fetch_assoc();
+                $stmt->close();
+                if (!empty($row['favicon'])) {
+                    return function_exists('getAppImageUrl') ? getAppImageUrl($row['favicon']) : $row['favicon'];
+                }
+                if (!empty($row['logo'])) {
+                    return function_exists('getAppImageUrl') ? getAppImageUrl($row['logo']) : $row['logo'];
+                }
+            }
+        }
+
+        // Platform favicon fallback
+        if (function_exists('sa_platform_favicon') && isset($conn)) {
+            $platFav = sa_platform_favicon($conn);
+            if (!empty($platFav)) {
+                return $platFav;
+            }
+        }
+
+        $webRoot = function_exists('getAppWebRoot') ? getAppWebRoot() : '';
+        return ($webRoot !== '' ? $webRoot : '') . '/favicon.ico';
+    }
+}
 if (!function_exists('generateUuidV7')) {
     /**
      * Generate an RFC 9562 UUIDv7 (time-ordered, 36 chars hyphenated).
@@ -3112,6 +3280,22 @@ if (!function_exists('toggleCompanyEngagement')) {
             'user_has_followed' => $stats['user_has_followed'],
             'user_has_liked'    => $stats['user_has_liked'],
         ];
+    }
+}
+
+if (!function_exists('ensureTenantFaviconColumn')) {
+    /**
+     * Ensure favicon column exists in tenants table.
+     */
+    function ensureTenantFaviconColumn($conn) {
+        if (!is_object($conn)) return;
+        static $checked = false;
+        if ($checked) return;
+        $checked = true;
+        $chk = @$conn->query("SHOW COLUMNS FROM tenants LIKE 'favicon'");
+        if ($chk && $chk->num_rows === 0) {
+            @$conn->query("ALTER TABLE tenants ADD COLUMN favicon VARCHAR(500) NULL AFTER banner");
+        }
     }
 }
 

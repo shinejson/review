@@ -255,6 +255,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $_SESSION['tenant_id'] = (int) $tenant['id'];
         $_SESSION['tenant_name'] = $tenant['company_name'];
         $_SESSION['tenant_logo'] = $tenant['logo'] ?? '';
+        $_SESSION['tenant_favicon'] = $tenant['favicon'] ?? '';
         $_SESSION['tenant_username'] = $tenant['username'];
         $_SESSION['tenant_email'] = $tenant['email'];
         $_SESSION['tenant_plan_id'] = $tenant['plan_id'];

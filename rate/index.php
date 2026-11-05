@@ -482,19 +482,24 @@ $pageTitle = 'Rate ' . htmlspecialchars($brand_name);
 // Google AggregateRating JSON-LD Structured Data for Organic Search Stars
 // ============================================================
 $__scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
+    $__scheme = 'https';
+}
 $__host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
 if (empty($app_web_root)) {
     $app_web_root = function_exists('getAppWebRoot') ? getAppWebRoot() : '';
 }
 
+$base_app_url = function_exists('getAppBaseUrl') ? getAppBaseUrl() : ($__scheme . '://' . $__host . $app_web_root);
+
 $company_uuid = !empty($company['uuid']) ? $company['uuid'] : (function_exists('getCompanyUuid') ? getCompanyUuid($conn, $company_id) : '');
 if (!empty($company_uuid)) {
-    $canonical_url = $__scheme . '://' . $__host . $app_web_root . '/' . $company_uuid;
+    $canonical_url = rtrim($base_app_url, '/') . '/' . $company_uuid;
 } else {
     $tenant_slug_part = !empty($brand_name) ? '&tenant=' . urlencode(slugify($brand_name)) : '';
-    $canonical_url    = $__scheme . '://' . $__host . $app_web_root . '/rate/index.php?company=' . $company_id . $tenant_slug_part;
+    $canonical_url    = rtrim($base_app_url, '/') . '/rate/index.php?company=' . $company_id . $tenant_slug_part;
 }
-$brand_logo_full = !empty($brand_logo) ? ($__scheme . '://' . $__host . $app_web_root . '/' . ltrim($brand_logo, '/')) : '';
+$brand_logo_full = !empty($brand_logo) ? (rtrim($base_app_url, '/') . '/' . ltrim($brand_logo, '/')) : '';
 $meta_desc       = "Read verified customer reviews and ratings for " . $brand_name . ". Overall score of " . number_format($avg_rating, 1) . "/5.0 based on " . number_format($total_ratings) . " customer review(s).";
 
 $schema_json_ld = [
@@ -592,6 +597,19 @@ if ($total_ratings > 0) {
     <title><?php echo $pageTitle; ?> - Verified Ratings &amp; Reviews</title>
     <meta name="description" content="<?php echo htmlspecialchars($meta_desc); ?>">
     <link rel="canonical" href="<?php echo htmlspecialchars($canonical_url); ?>">
+    <?php
+    $fav_url = '';
+    if (!empty($tenant_info['favicon'])) {
+        $fav_url = function_exists('getAppImageUrl') ? getAppImageUrl($tenant_info['favicon']) : $tenant_info['favicon'];
+    } elseif (!empty($tenant_info['logo'])) {
+        $fav_url = function_exists('getAppImageUrl') ? getAppImageUrl($tenant_info['logo']) : $tenant_info['logo'];
+    } elseif (function_exists('getAppFaviconUrl')) {
+        $fav_url = getAppFaviconUrl($tenant_info['id'] ?? 0);
+    }
+    if (!empty($fav_url)):
+    ?>
+    <link rel="icon" href="<?php echo htmlspecialchars($fav_url); ?>">
+    <?php endif; ?>
 
     <!-- Open Graph for Social Previews -->
     <meta property="og:title" content="<?php echo $pageTitle; ?> - Verified Ratings &amp; Reviews">
@@ -2743,7 +2761,7 @@ if ($total_ratings > 0) {
     <?php if (!empty($brand_banner) && !empty($public_page_settings['show_banner'])): ?>
     <!-- Tenant Brand Cover Banner -->
     <div class="rt-cover-banner-wrap">
-        <img src="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($brand_banner, '/')); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> Banner" class="rt-cover-banner">
+        <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($brand_banner) : (($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($brand_banner, '/'))); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> Banner" class="rt-cover-banner">
     </div>
     <?php endif; ?>
 
@@ -2762,7 +2780,7 @@ if ($total_ratings > 0) {
     <header class="rt-company-header">
         <div class="rt-brand-wrap">
             <?php if (!empty($brand_logo)): ?>
-                <img src="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($brand_logo, '/')); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> logo" class="rt-brand-logo">
+                <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($brand_logo) : (($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($brand_logo, '/'))); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> logo" class="rt-brand-logo">
             <?php else: ?>
                 <div class="rt-brand-logo rt-brand-fallback"><?php echo htmlspecialchars($brand_initials); ?></div>
             <?php endif; ?>
@@ -3782,7 +3800,7 @@ if ($total_ratings > 0) {
             <div class="rt-footer-col">
                 <div class="rt-footer-brand">
                     <?php if (!empty($brand_logo)): ?>
-                        <img src="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($brand_logo, '/')); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> logo">
+                        <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($brand_logo) : (($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($brand_logo, '/'))); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> logo">
                     <?php else: ?>
                         <div class="rt-footer-fallback"><?php echo htmlspecialchars($brand_initials); ?></div>
                     <?php endif; ?>

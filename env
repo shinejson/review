@@ -1,0 +1,27 @@
+# ============================================================
+# Optibiz deployment environment
+# Production configuration
+# ============================================================
+
+# Environment: 'production' or 'development'
+APP_ENV=production
+APP_BASE_URL=https://optibiz.rf.gd/rate
+
+# Database credentials
+OPTIBIZ_DB_HOST=sql107.infinityfree.com
+OPTIBIZ_DB_USER=if0_42891699
+OPTIBIZ_DB_PASS=SfKbaSAi3hIq
+OPTIBIZ_DB_NAME=if0_42891699_company_rating_saas
+
+# Security: use a cryptographically strong random secret of at least 32 chars.
+OPTIBIZ_JWT_SECRET=c8f2a9e1d4b740528e6c7391a24d85601b3e5f7a9c2d4e6f8b0a1c3e5d7f9a2b
+
+# Allowed origins for API access (comma-separated list of origins)
+OPTIBIZ_API_ALLOWED_ORIGINS=https://optibiz.rf.gd,https://app.optibiz.rf.gd
+
+# Allowed Host header values (comma-separated, no scheme, no path).
+# These must match the canonical public domain(s) for secure URL generation.
+OPTIBIZ_ALLOWED_HOSTS=optibiz.rf.gd,www.optibiz.rf.gd,localhost,127.0.0.1
+
+# Optional admin alias. Leave blank to use the default alias.
+# OPTIBIZ_ADMIN_PATH_ALIAS=p7xk2mqw9vrt4zhn

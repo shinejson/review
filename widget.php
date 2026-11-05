@@ -140,6 +140,7 @@ if ($entitlement_error !== '') {
 // Brand Details
 $brand_name     = !empty($tenant_info['company_name']) ? $tenant_info['company_name'] : ($company['company_name'] ?? 'Verified Business');
 $brand_logo     = !empty($tenant_info['logo']) ? $tenant_info['logo'] : ($company['logo'] ?? '');
+if (function_exists('getAppImageUrl')) { $brand_logo = getAppImageUrl($brand_logo); }
 $brand_initials = strtoupper(substr($brand_name, 0, 2));
 
 // Company name used for the public rating URL (slug fallback for companies that

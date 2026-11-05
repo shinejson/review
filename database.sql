@@ -667,6 +667,7 @@ ALTER TABLE IF EXISTS team_members ADD COLUMN IF NOT EXISTS account_locked_until
 ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS failed_login_attempts INT NOT NULL DEFAULT 0;
 ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS last_failed_attempt_at DATETIME NULL;
 ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS account_locked_until DATETIME NULL;
+ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS favicon VARCHAR(500) NULL AFTER banner;
 
 -- ============================================================
 -- MONETIZATION ENGINE (4 Revenue Streams)

@@ -1,7 +1,4 @@
-# Block script execution in the uploads directory.
-# Uploaded files are strictly static user images and must never be executed as scripts.
-
-# 1. Deny execution of any script or dangerous file type
+# Block script execution in uploads directory
 <FilesMatch "\.(php|php[0-9]|phtml|pht|phps|phar|cgi|pl|py|sh|bash|asp|aspx|jsp|svg|html|htm|shtml|inc|htaccess|exe)$">
     <IfModule mod_authz_core.c>
         Require all denied
@@ -12,20 +9,18 @@
     </IfModule>
 </FilesMatch>
 
-# 2. Neutralize execution handlers for image files
+# Allow static image assets
 <FilesMatch "\.(gif|jpe?g|png|webp|ico|pdf)$">
-    SetHandler default-handler
-    <IfModule mod_php.c>
-        php_flag engine off
+    <IfModule mod_authz_core.c>
+        Require all granted
     </IfModule>
-    <IfModule mod_php7.c>
-        php_flag engine off
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
     </IfModule>
-    <IfModule mod_php8.c>
-        php_flag engine off
-    </IfModule>
-    RemoveHandler .php .phtml .phar
 </FilesMatch>
 
-# 3. Prevent directory listing
-Options -Indexes -ExecCGI
+# Prevent directory listing
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>

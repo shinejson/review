@@ -137,7 +137,7 @@ include __DIR__.'/_shell.php';
 <?php else: ?>
 
 <?php
-  $baseUrl = (defined('APP_BASE_URL') && APP_BASE_URL!=='') ? rtrim(APP_BASE_URL,'/') : '';
+  $baseUrl = function_exists('getAppBaseUrl') ? getAppBaseUrl() : ((defined('APP_BASE_URL') && APP_BASE_URL!=='') ? rtrim(APP_BASE_URL,'/') : '');
   if($baseUrl===''){ $scheme=!empty($_SERVER['HTTPS'])?'https':'http'; $baseUrl=$scheme.'://'.($_SERVER['HTTP_HOST'] ?? 'localhost'); }
   $widgetSrc = $baseUrl . '/widget.php?company='.(int)$company_id.'&key='.$existingWidget['widget_key'];
   $iframeCode = '<iframe src="'.$widgetSrc.'" width="100%" height="340" style="border:0;border-radius:12px;" loading="lazy" title="Customer Reviews for '.htmlspecialchars($brand).'"></iframe>';

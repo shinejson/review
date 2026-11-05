@@ -42,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'tenant_id'               => (int)$tenant['id'],
                     'tenant_name'             => $tenant['company_name'],
                     'tenant_logo'             => $tenant['logo'] ?? '',
+                    'tenant_favicon'          => $tenant['favicon'] ?? '',
                     'tenant_username'         => $tenant['username'],
                     'admin_username'          => $tenant['username'],
                     'tenant_email'            => $tenant['email'],

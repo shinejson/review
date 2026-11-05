@@ -259,7 +259,8 @@ if (!defined('OPTIBIZ_SEO_LOADED')) {
 
             // --- Favicon ------------------------------------------------------
             // A tenant can override the icon from Control Center → Branding.
-            $favicon = seo_asset_url(seo_setting('favicon_asset', ''), 'assets/images/favicon/favicon.svg');
+            $tenantFavicon = function_exists('getAppFaviconUrl') ? getAppFaviconUrl() : '';
+            $favicon = !empty($tenantFavicon) ? $tenantFavicon : seo_asset_url(seo_setting('favicon_asset', ''), 'assets/images/favicon/favicon.svg');
             $pngIcon = seo_url('assets/images/favicon/favicon-192.png');
             $appleIcon = seo_url('assets/images/favicon/apple-touch-icon.png');
 
