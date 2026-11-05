@@ -15,4 +15,7 @@ sed -i "s/<VirtualHost \*:[0-9]*>/<VirtualHost *:$TARGET_PORT>/g" /etc/apache2/s
 mkdir -p /var/www/html/uploads/receipts /var/www/html/uploads/reviews
 chmod -R 777 /var/www/html/uploads 2>/dev/null || true
 
+# Initialize database schema if needed
+php /var/www/html/tools/init_railway_db.php || true
+
 exec apache2-foreground
