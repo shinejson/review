@@ -14,8 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && docker-php-ext-install -j$(nproc) gd mysqli pdo_mysql zip \
     && rm -rf /var/lib/apt/lists/*
 
-# Enable Apache mod_rewrite and mod_headers
-RUN a2enmod rewrite headers
+# Ensure only mpm_prefork is active (prevent AH00534 duplicate MPM error)
+RUN a2dismod mpm_event mpm_worker 2>/dev/null || true \
+    && a2enmod mpm_prefork rewrite headers
 
 # Allow .htaccess overrides in Apache document root
 RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
