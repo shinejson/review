@@ -28,8 +28,19 @@ $success   = '';
 $activeTab = 'totp';
 $waDirectUrl = '';
 
-// Handle cancel request
-if (isset($_GET['action']) && $_GET['action'] === 'cancel') {
+// Handle cancel / skip request
+if (isset($_GET['action']) && in_array($_GET['action'], ['cancel', 'skip'], true)) {
+    if ($_GET['action'] === 'skip') {
+        $sessionData = $pending['session_data'] ?? [];
+        foreach ($sessionData as $k => $v) {
+            $_SESSION[$k] = $v;
+        }
+        $pUserId = (int)($pending['user_id'] ?? 0);
+        $pName   = $pending['target_name'] ?? 'Tenant';
+        tfa_clear_pending_setup_session();
+        auth_login_session($conn, 'admin', $pUserId, $pName, 'tenant');
+        redirect('index.php');
+    }
     tfa_clear_pending_setup_session();
     redirect('login.php');
 }
@@ -425,6 +436,7 @@ include dirname(__DIR__) . '/includes/header.php';
             </form>
 
             <footer class="auth-card-foot" style="margin-top:20px;">
+                <a href="2fa-setup.php?action=skip" style="color:#10b981;font-weight:700;margin-right:15px;">Skip for now &rarr;</a>
                 <a href="2fa-setup.php?action=cancel">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
                     Cancel and return to login

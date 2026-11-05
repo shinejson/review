@@ -4,6 +4,7 @@
  * Safe to run on every container start; all operations are idempotent.
  */
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/password.php';
 
 echo "[DB Init] Connecting to " . DB_HOST . ":" . DB_PORT . " / " . DB_NAME . "...\n";
 
@@ -26,6 +27,16 @@ function ensure_col($conn, $table, $column, $definition) {
         }
     } catch (Throwable $e) {
         // Ignored or table does not exist yet
+    }
+}
+
+// Helper to check if a table already has rows
+function table_has_rows($conn, $table) {
+    try {
+        $res = @$conn->query("SELECT 1 FROM `{$table}` LIMIT 1");
+        return ($res && $res->num_rows > 0);
+    } catch (Throwable $e) {
+        return false;
     }
 }
 
@@ -58,6 +69,17 @@ if (file_exists($sqlPath)) {
             // Skip CREATE DATABASE and USE statements
             if (preg_match('/^(?:CREATE\s+DATABASE|USE\s+)/i', $stmt)) {
                 continue;
+            }
+
+            // Prevent duplicating rows on subsequent restarts
+            if (preg_match('/^INSERT\s+(?:IGNORE\s+)?INTO\s+`?([a-z_]+)`?/i', $stmt, $mInsert)) {
+                $seedTable = strtolower($mInsert[1]);
+                if (in_array($seedTable, ['subscription_plans', 'categories', 'customers', 'ratings', 'rating_questions', 'super_admins', 'tenants', 'admins'], true)) {
+                    if (table_has_rows($conn, $seedTable)) {
+                        // Already seeded; do not repeat insertion
+                        continue;
+                    }
+                }
             }
 
             try {
@@ -131,26 +153,139 @@ try {
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_services_tenant (tenant_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    echo "[DB Init] Services table ensured.\n";
 } catch (Throwable $e) {}
 
-// Ensure admin helpers schema (social_posts, social_accounts, tenant_ad_configs)
+// Ensure admin helpers schema
 $adminHelpers = dirname(__DIR__) . '/includes/admin_helpers.php';
 if (file_exists($adminHelpers)) {
     require_once $adminHelpers;
     if (function_exists('admin_ensure_schema')) {
         admin_ensure_schema($conn);
-        echo "[DB Init] Admin helper tables ensured.\n";
     }
 }
 
-// Ensure review_trust helper tables if file exists
+// Ensure review_trust helper tables
 $reviewTrustFile = dirname(__DIR__) . '/includes/review_trust.php';
 if (file_exists($reviewTrustFile)) {
     require_once $reviewTrustFile;
     if (function_exists('review_trust_ensure_schema')) {
         review_trust_ensure_schema($conn);
-        echo "[DB Init] Review trust schema ensured.\n";
+    }
+}
+
+// 3. Deduplication of Categories & Subscription Plans
+echo "[DB Init] Cleaning up and deduplicating categories...\n";
+$catDups = @$conn->query("
+    SELECT name, MIN(id) AS min_id, GROUP_CONCAT(id) AS all_ids, COUNT(*) AS cnt
+    FROM categories
+    GROUP BY name
+    HAVING cnt > 1
+");
+if ($catDups) {
+    while ($row = $catDups->fetch_assoc()) {
+        $minId = (int)$row['min_id'];
+        $allIds = array_map('intval', explode(',', $row['all_ids']));
+        $dupIds = array_filter($allIds, function($id) use ($minId) { return $id !== $minId; });
+        if (!empty($dupIds)) {
+            $idList = implode(',', $dupIds);
+            @$conn->query("UPDATE customers SET category_id = {$minId} WHERE category_id IN ({$idList})");
+            @$conn->query("DELETE FROM categories WHERE id IN ({$idList})");
+        }
+    }
+}
+try {
+    @$conn->query("ALTER TABLE categories ADD UNIQUE KEY uniq_cat_name (name)");
+} catch (Throwable $e) {}
+
+echo "[DB Init] Cleaning up and deduplicating subscription plans...\n";
+$planDups = @$conn->query("
+    SELECT plan_name, MIN(id) AS min_id, GROUP_CONCAT(id) AS all_ids, COUNT(*) AS cnt
+    FROM subscription_plans
+    GROUP BY plan_name
+    HAVING cnt > 1
+");
+if ($planDups) {
+    while ($row = $planDups->fetch_assoc()) {
+        $minId = (int)$row['min_id'];
+        $allIds = array_map('intval', explode(',', $row['all_ids']));
+        $dupIds = array_filter($allIds, function($id) use ($minId) { return $id !== $minId; });
+        if (!empty($dupIds)) {
+            $idList = implode(',', $dupIds);
+            @$conn->query("UPDATE tenants SET plan_id = {$minId} WHERE plan_id IN ({$idList})");
+            @$conn->query("UPDATE subscription_requests SET requested_plan_id = {$minId} WHERE requested_plan_id IN ({$idList})");
+            @$conn->query("UPDATE subscription_requests SET current_plan_id = {$minId} WHERE current_plan_id IN ({$idList})");
+            @$conn->query("DELETE FROM subscription_plans WHERE id IN ({$idList})");
+        }
+    }
+}
+try {
+    @$conn->query("ALTER TABLE subscription_plans ADD UNIQUE KEY uniq_plan_name (plan_name)");
+} catch (Throwable $e) {}
+
+// 4. Ensure Super Admin and Tenant Credentials & Unlock Accounts
+echo "[DB Init] Resetting default credentials and unlocking accounts...\n";
+// Clear lockouts on all accounts
+@$conn->query("UPDATE tenants SET failed_login_attempts = 0, account_locked_until = NULL");
+@$conn->query("UPDATE team_members SET failed_login_attempts = 0, account_locked_until = NULL");
+
+// Default passwords hashes (PBKDF2)
+$superadminHash = optibiz_hash_password('superadmin123');
+$adminHash      = optibiz_hash_password('admin123');
+
+// Update superadmin password if present
+if ($superadminHash) {
+    $stmt = $conn->prepare("UPDATE super_admins SET password = ? WHERE username = 'superadmin'");
+    if ($stmt) {
+        $stmt->bind_param("s", $superadminHash);
+        $stmt->execute();
+        $stmt->close();
+    }
+}
+
+// Update seed tenant passwords
+if ($adminHash) {
+    $stmt = $conn->prepare("UPDATE tenants SET password = ? WHERE username IN ('abc_corporation', 'xyz_industries')");
+    if ($stmt) {
+        $stmt->bind_param("s", $adminHash);
+        $stmt->execute();
+        $stmt->close();
+    }
+    $stmtA = $conn->prepare("UPDATE admins SET password = ? WHERE username = 'admin'");
+    if ($stmtA) {
+        $stmtA->bind_param("s", $adminHash);
+        $stmtA->execute();
+        $stmtA->close();
+    }
+}
+
+// Ensure 'Airport West Hotel' tenant from user workspace is available
+$checkHotel = @$conn->query("SELECT id FROM tenants WHERE username = 'airport_west_hotel' OR public_id = 'OPT-PJY9XXXQ' LIMIT 1");
+if ($checkHotel && $checkHotel->num_rows === 0) {
+    $hotelPw = $adminHash ?: optibiz_hash_password('admin123');
+    $insHotel = $conn->prepare("
+        INSERT INTO tenants (public_id, company_name, email, phone, username, password, plan_id, subscription_status, subscription_price, subscription_start_date, subscription_end_date, email_verified_at)
+        VALUES ('OPT-PJY9XXXQ', 'Airport West Hotel', 'IT@airportwesthotel.com.gh', '+599507420', 'airport_west_hotel', ?, 1, 'active', 29.99, NOW(), DATE_ADD(NOW(), INTERVAL 1 YEAR), NOW())
+    ");
+    if ($insHotel) {
+        $insHotel->bind_param("s", $hotelPw);
+        $insHotel->execute();
+        $hotelTenantId = (int)$conn->insert_id;
+        $insHotel->close();
+
+        // Also create company profile for Airport West Hotel
+        $catRes = @$conn->query("SELECT id FROM categories WHERE name LIKE '%Hospitality%' OR name LIKE '%Hotel%' LIMIT 1");
+        $hotelCatId = ($catRes && $catRes->num_rows > 0) ? (int)$catRes->fetch_assoc()['id'] : 1;
+
+        $insComp = $conn->prepare("
+            INSERT INTO customers (tenant_id, company_name, category_id, email, phone, whatsapp_number, website, booster_enabled, booster_min_stars, created_at)
+            VALUES (?, 'Airport West Hotel', ?, 'IT@airportwesthotel.com.gh', '+599507420', '+599507420', 'www.airportwesthotel.com.gh', 1, 4, NOW())
+        ");
+        if ($insComp) {
+            $insComp->bind_param("ii", $hotelTenantId, $hotelCatId);
+            $insComp->execute();
+            $insComp->close();
+        }
+        echo "[DB Init] Seeded 'Airport West Hotel' tenant account (OPT-PJY9XXXQ).\n";
     }
 }
 

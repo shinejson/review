@@ -29,11 +29,12 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     features TEXT,
     status ENUM('active', 'inactive') DEFAULT 'active',
     annual_discount_percent TINYINT(3) DEFAULT 0 COMMENT 'Discount percentage for annual billing (0-100)',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_plan_name (plan_name)
 );
 
 -- Insert sample subscription plans
-INSERT INTO subscription_plans (plan_name, price, max_ratings, max_customers, features, annual_discount_percent) VALUES 
+INSERT IGNORE INTO subscription_plans (plan_name, price, max_ratings, max_customers, features, annual_discount_percent) VALUES 
 ('Starter', 29.99, 100, 10, 'Basic analytics, Email support, 10 customers, 100 ratings/month', 10),
 ('Professional', 79.99, 500, 50, 'Advanced analytics, Priority support, 50 customers, 500 ratings/month, Custom branding', 15),
 ('Enterprise', 199.99, 9999, 999, 'Full analytics suite, 24/7 support, Unlimited customers, Unlimited ratings, API access, White label', 20);
@@ -169,11 +170,12 @@ CREATE TABLE IF NOT EXISTS tenant_backups (
 CREATE TABLE IF NOT EXISTS categories (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_cat_name (name)
 );
 
 -- Insert sample categories
-INSERT INTO categories (name) VALUES 
+INSERT IGNORE INTO categories (name) VALUES 
 ('Technology'),
 ('Healthcare'),
 ('Finance'),

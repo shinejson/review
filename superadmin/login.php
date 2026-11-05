@@ -68,12 +68,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 redirect('2fa-verify.php');
             } else {
-                // Mandatory 2FA setup!
-                $contact = tfa_get_user_contact($conn, 'superadmin', $adminId);
-                $phone = $contact['phone'] ?? '';
-                $email = $admin['email'] ?? ($contact['email'] ?? '');
-                tfa_start_pending_setup_session('superadmin', $adminId, $sessionData, $email, $admin['username'], 'superadmin', $phone);
-                redirect('2fa-setup.php');
+                // 2FA is not enabled on this account: log in directly
+                foreach ($sessionData as $k => $v) {
+                    $_SESSION[$k] = $v;
+                }
+                auth_login_session($conn, 'superadmin', $adminId, $admin['username'], 'super_admin');
+                redirect('index.php');
             }
         }
         $error = 'Invalid username or password. Please try again.';

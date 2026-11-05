@@ -84,12 +84,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     redirect('2fa-verify.php');
                 } else {
-                    // Mandatory 2FA: user must configure two-factor authentication before logging in
-                    $contact = tfa_get_user_contact($conn, 'tenant', (int)$tenant['id']);
-                    $phone = $tenant['phone'] ?: ($contact['phone'] ?? '');
-                    $email = $tenant['email'] ?? ($contact['email'] ?? '');
-                    tfa_start_pending_setup_session('tenant', (int)$tenant['id'], $sessionData, $email, $tenant['company_name'], 'admin', $phone);
-                    redirect('2fa-setup.php');
+                    // 2FA is not enabled on this tenant account: log in directly
+                    foreach ($sessionData as $k => $v) {
+                        $_SESSION[$k] = $v;
+                    }
+                    auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['username'] ?: $tenant['company_name'], 'tenant');
+                    redirect('index.php');
                 }
             } else {
                 // Record failed attempt
@@ -173,12 +173,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                             redirect('2fa-verify.php');
                         } else {
-                            // Mandatory 2FA setup!
-                            $contact = tfa_get_user_contact($conn, 'team_member', (int)$member['id']);
-                            $phone = $member['phone'] ?? ($contact['phone'] ?? '');
-                            $email = $member['email'] ?? ($contact['email'] ?? '');
-                            tfa_start_pending_setup_session('team_member', (int)$member['id'], $sessionData, $email, $member['full_name'], 'admin', $phone);
-                            redirect('2fa-setup.php');
+                            // 2FA is not enabled on this team account: log in directly
+                            foreach ($sessionData as $k => $v) {
+                                $_SESSION[$k] = $v;
+                            }
+                            auth_login_session($conn, 'admin', (int)$member['id'], $member['full_name'], 'team');
+                            $ll = $conn->prepare("UPDATE team_members SET last_login_at = NOW() WHERE id = ?");
+                            if ($ll) { $ll->bind_param("i", $member['id']); $ll->execute(); $ll->close(); }
+                            redirect('index.php');
                         }
                     }
                 }
@@ -225,12 +227,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                             redirect('2fa-verify.php');
                         } else {
-                            // Mandatory 2FA setup!
-                            tfa_start_pending_setup_session('admin', (int)$admin['id'], $sessionData, $admin['email'] ?? '', $admin['username'], 'admin');
-                            redirect('2fa-setup.php');
-                        }
-                    } else {
-                        $error = 'Invalid credentials. Please verify your password.';
+                                // 2FA is not enabled on this admin account: log in directly
+                                foreach ($sessionData as $k => $v) {
+                                    $_SESSION[$k] = $v;
+                                }
+                                auth_login_session($conn, 'admin', (int)$admin['id'], $admin['username'], 'admin');
+                                redirect('index.php');
+                            }
+                        } else {
+                            $error = 'Invalid credentials. Please verify your password.';
                     }
                     $stmt2->close();
                 } else {
