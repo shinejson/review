@@ -173,18 +173,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
         }
 
-        // Handle banner upload
-        $banner_result = $handle_image_upload('company_banner', 'tenant_banner');
-        if ($banner_result === false) {
-            // Error is stored in $_SESSION['error']
-        } elseif ($banner_result !== null) {
-            $banner_path = $banner_result;
-            // Remove old banner if exists and differs
-            if (!empty($old_banner)) {
-                $oldFile = dirname(__DIR__) . '/' . ltrim($old_banner, '/');
-                if (file_exists($oldFile) && is_file($oldFile) && basename($oldFile) !== basename($banner_path)) {
-                    @unlink($oldFile);
+        // Handle banner slider uploads (multi-banner company_banners[] and single company_banner)
+        $existing_banner_slides = function_exists('getTenantBannerImages')
+            ? getTenantBannerImages($conn, $tenant_id, $old_banner)
+            : (!empty($old_banner) ? [$old_banner] : []);
+        $new_uploaded_slides = [];
+
+        // 1. Multi-banner upload via company_banners[]
+        if (isset($_FILES['company_banners']) && is_array($_FILES['company_banners']['name'])) {
+            $fCount = count($_FILES['company_banners']['name']);
+            for ($i = 0; $i < $fCount; $i++) {
+                $fErr = $_FILES['company_banners']['error'][$i];
+                if ($fErr === UPLOAD_ERR_NO_FILE) continue;
+                if ($fErr !== UPLOAD_ERR_OK) continue;
+
+                $tmpName  = $_FILES['company_banners']['tmp_name'][$i];
+                $fileSize = $_FILES['company_banners']['size'][$i];
+                $fileType = $_FILES['company_banners']['type'][$i] ?? '';
+
+                if (!is_uploaded_file($tmpName) || $fileSize > (8 * 1024 * 1024)) continue;
+
+                $mime = function_exists('safeDetectImageMime')
+                    ? safeDetectImageMime($tmpName, $fileType)
+                    : '';
+                if (empty($mime)) {
+                    $img_info = @getimagesize($tmpName);
+                    $mime = $img_info['mime'] ?? $fileType;
                 }
+
+                $mime_to_ext = [
+                    'image/jpeg'    => 'jpg',
+                    'image/jpg'     => 'jpg',
+                    'image/pjpeg'   => 'jpg',
+                    'image/png'     => 'png',
+                    'image/x-png'   => 'png',
+                    'image/gif'     => 'gif',
+                    'image/webp'    => 'webp',
+                    'image/svg+xml' => 'svg',
+                ];
+                if (!isset($mime_to_ext[$mime])) continue;
+
+                $ext = $mime_to_ext[$mime];
+                $upload_dir = dirname(__DIR__) . '/uploads/';
+                if (!is_dir($upload_dir)) {
+                    @mkdir($upload_dir, 0777, true);
+                }
+                @chmod($upload_dir, 0777);
+
+                try {
+                    $random = bin2hex(random_bytes(16));
+                } catch (Throwable $e) {
+                    $random = uniqid('', true);
+                }
+                $filename = 'tenant_banner_' . (int)$tenant_id . '_' . $random . '.' . $ext;
+                $target_file = $upload_dir . $filename;
+
+                if (@move_uploaded_file($tmpName, $target_file) || @copy($tmpName, $target_file)) {
+                    @chmod($target_file, 0644);
+                    $new_uploaded_slides[] = 'uploads/' . $filename;
+                }
+            }
+        }
+
+        // 2. Single banner upload fallback via company_banner
+        $single_banner_result = $handle_image_upload('company_banner', 'tenant_banner');
+        if ($single_banner_result !== false && $single_banner_result !== null) {
+            $new_uploaded_slides[] = $single_banner_result;
+        }
+
+        // If new banner images were uploaded, append to existing slides
+        if (!empty($new_uploaded_slides)) {
+            $merged_slides = array_values(array_unique(array_merge($existing_banner_slides, $new_uploaded_slides)));
+            if (function_exists('saveTenantBannerImages')) {
+                saveTenantBannerImages($conn, $tenant_id, $merged_slides);
+            }
+            $banner_path = $merged_slides[0] ?? null;
+        }
+
+        // Save slider autoplay and interval settings if submitted in the form
+        if (isset($_POST['banner_slider_autoplay']) || isset($_POST['banner_slider_interval'])) {
+            $slider_autoplay = isset($_POST['banner_slider_autoplay']) ? 1 : 0;
+            $slider_interval = max(2, min(30, (int)($_POST['banner_slider_interval'] ?? 5)));
+            if (function_exists('saveTenantPublicPageSettings')) {
+                saveTenantPublicPageSettings($conn, $tenant_id, [
+                    'banner_slider_autoplay' => $slider_autoplay,
+                    'banner_slider_interval' => $slider_interval,
+                ]);
             }
         }
 
@@ -267,6 +341,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
     
+    header('Location: settings.php');
+    exit;
+}
+
+// Handle Delete Individual Banner Slide
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_banner_slide') {
+    if (!sa_csrf_ok()) {
+        $_SESSION['error'] = "Your session expired. Please refresh the page and try again.";
+        header('Location: settings.php');
+        exit;
+    }
+    if ($is_tenant && $tenant_id) {
+        $slide_index = (int)($_POST['slide_index'] ?? -1);
+        $currStmt = $conn->prepare("SELECT banner FROM tenants WHERE id = ?");
+        $currStmt->bind_param("i", $tenant_id);
+        $currStmt->execute();
+        $currRow = $currStmt->get_result()->fetch_assoc();
+        $currStmt->close();
+
+        $slides = function_exists('getTenantBannerImages')
+            ? getTenantBannerImages($conn, $tenant_id, $currRow['banner'] ?? '')
+            : (!empty($currRow['banner']) ? [$currRow['banner']] : []);
+
+        if ($slide_index >= 0 && isset($slides[$slide_index])) {
+            $to_remove = $slides[$slide_index];
+            unset($slides[$slide_index]);
+            $slides = array_values($slides);
+
+            if (function_exists('saveTenantBannerImages')) {
+                saveTenantBannerImages($conn, $tenant_id, $slides);
+            }
+
+            // Remove physical file from uploads folder if it belongs to this tenant
+            if (!empty($to_remove) && preg_match('#^uploads/tenant_banner_' . (int)$tenant_id . '_#i', $to_remove)) {
+                $filePath = dirname(__DIR__) . '/' . ltrim($to_remove, '/');
+                if (file_exists($filePath) && is_file($filePath)) {
+                    @unlink($filePath);
+                }
+            }
+
+            $_SESSION['tenant_banner'] = $slides[0] ?? '';
+            $_SESSION['success'] = "Banner slide removed successfully.";
+            admin_log_activity($conn, 'banner_delete', 'Deleted a banner slide', 'tenant', (int)$tenant_id);
+        } else {
+            $_SESSION['error'] = "Invalid banner slide requested for removal.";
+        }
+    }
+    header('Location: settings.php');
+    exit;
+}
+
+// Handle Set Primary Banner Slide
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'set_primary_banner_slide') {
+    if (!sa_csrf_ok()) {
+        $_SESSION['error'] = "Your session expired. Please refresh the page and try again.";
+        header('Location: settings.php');
+        exit;
+    }
+    if ($is_tenant && $tenant_id) {
+        $slide_index = (int)($_POST['slide_index'] ?? -1);
+        $currStmt = $conn->prepare("SELECT banner FROM tenants WHERE id = ?");
+        $currStmt->bind_param("i", $tenant_id);
+        $currStmt->execute();
+        $currRow = $currStmt->get_result()->fetch_assoc();
+        $currStmt->close();
+
+        $slides = function_exists('getTenantBannerImages')
+            ? getTenantBannerImages($conn, $tenant_id, $currRow['banner'] ?? '')
+            : (!empty($currRow['banner']) ? [$currRow['banner']] : []);
+
+        if ($slide_index > 0 && isset($slides[$slide_index])) {
+            $picked = $slides[$slide_index];
+            unset($slides[$slide_index]);
+            array_unshift($slides, $picked);
+            $slides = array_values($slides);
+
+            if (function_exists('saveTenantBannerImages')) {
+                saveTenantBannerImages($conn, $tenant_id, $slides);
+            }
+
+            $_SESSION['tenant_banner'] = $slides[0] ?? '';
+            $_SESSION['success'] = "Primary cover banner updated.";
+            admin_log_activity($conn, 'banner_reorder', 'Updated primary banner slide', 'tenant', (int)$tenant_id);
+        }
+    }
     header('Location: settings.php');
     exit;
 }
@@ -759,6 +918,9 @@ $widget_default_url = $widget_base_url . $public_review_qs;
 
 // Current public page layout & color customisation
 $page_customization = getTenantPublicPageSettings($conn, $is_tenant ? (int)$tenant_id : 0);
+$banner_slides = function_exists('getTenantBannerImages')
+    ? getTenantBannerImages($conn, $is_tenant ? (int)$tenant_id : 0, $tenant['banner'] ?? '')
+    : (!empty($tenant['banner']) ? [$tenant['banner']] : []);
 
 // Determine initial active tab from URL query param ?tab=...
 $initial_tab = 'profile';
@@ -895,20 +1057,79 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                     </div>
                 </div>
 
-                <div class="form-group" style="margin-bottom:24px;">
-                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#334155;margin-bottom:8px;">
-                        Company Banner (shown at the front of your company cards)
+                <div class="form-group" style="margin-bottom:28px;">
+                    <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;font-weight:600;color:#334155;margin-bottom:8px;">
+                        <span>Company Banners &amp; Slider (Header Carousel)</span>
+                        <span style="font-size:11.5px;font-weight:normal;color:var(--muted);">
+                            <?php echo count($banner_slides); ?> slide<?php echo count($banner_slides) === 1 ? '' : 's'; ?> configured
+                        </span>
                     </label>
-                    <div style="display:flex;align-items:center;gap:14px;">
-                        <?php if (!empty($tenant['banner'])): ?>
-                            <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($tenant['banner']) : ($BASE . $tenant['banner'])); ?>" alt="Current Banner" style="width:120px;height:68px;border-radius:8px;object-fit:cover;border:1px solid var(--line);flex-shrink:0;" onerror="this.style.display='none';var d=document.getElementById('fallbackBannerBox');if(d)d.style.display='grid';">
-                            <div id="fallbackBannerBox" style="width:120px;height:68px;border-radius:8px;border:1px dashed var(--line);display:none;place-items:center;color:var(--muted);font-size:11px;text-align:center;">No Banner</div>
-                        <?php else: ?>
-                            <div style="width:120px;height:68px;border-radius:8px;border:1px dashed var(--line);display:grid;place-items:center;color:var(--muted);font-size:11px;text-align:center;">No Banner</div>
-                        <?php endif; ?>
-                        <div style="flex:1;">
-                            <input type="file" name="company_banner" accept="image/*" style="font-size:13px;">
-                            <small class="muted" style="display:block;margin-top:4px;font-size:11.5px;">PNG, JPG, GIF, WEBP - max 8MB, recommended 1200 x 400px</small>
+
+                    <!-- Existing Banner Slides Gallery -->
+                    <?php if (!empty($banner_slides)): ?>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));gap:12px;margin-bottom:14px;">
+                        <?php foreach ($banner_slides as $sIdx => $slidePath): 
+                            $isPrimary = ($sIdx === 0);
+                            $slideUrl = function_exists('getAppImageUrl') ? getAppImageUrl($slidePath) : ($BASE . $slidePath);
+                        ?>
+                        <div style="position:relative;background:rgba(255,255,255,0.03);border:1px solid <?php echo $isPrimary ? '#10b981' : 'var(--line)'; ?>;border-radius:10px;overflow:hidden;box-shadow:<?php echo $isPrimary ? '0 0 0 1px #10b981' : 'none'; ?>;display:flex;flex-direction:column;">
+                            <div style="position:relative;width:100%;height:90px;background:#0f172a;overflow:hidden;">
+                                <img src="<?php echo htmlspecialchars($slideUrl); ?>" alt="Banner Slide <?php echo $sIdx + 1; ?>" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none';this.nextElementSibling.style.display='grid';">
+                                <div style="width:100%;height:100%;display:none;place-items:center;color:var(--muted);font-size:11px;background:#0f172a;">Image Missing</div>
+                                <span style="position:absolute;top:5px;left:5px;background:<?php echo $isPrimary ? '#10b981' : 'rgba(15,23,42,0.8)'; ?>;color:#fff;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:0.3px;backdrop-filter:blur(4px);">
+                                    <?php echo $isPrimary ? '★ Primary Cover' : 'Slide #' . ($sIdx + 1); ?>
+                                </span>
+                            </div>
+                            <div style="padding:6px 8px;display:flex;align-items:center;justify-content:space-between;gap:4px;background:rgba(255,255,255,0.02);border-top:1px solid var(--line);">
+                                <?php if (!$isPrimary): ?>
+                                    <button type="submit" form="formSetPrimaryBanner<?php echo $sIdx; ?>" class="btn btn-sm" style="font-size:10.5px;padding:3px 7px;background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:5px;cursor:pointer;" title="Set as primary cover banner">
+                                        ★ Set Cover
+                                    </button>
+                                <?php else: ?>
+                                    <span style="font-size:10.5px;color:#10b981;font-weight:700;padding:3px 2px;">Primary</span>
+                                <?php endif; ?>
+                                <button type="submit" form="formDeleteBanner<?php echo $sIdx; ?>" class="btn btn-sm" style="font-size:10.5px;padding:3px 7px;background:transparent;border:1px solid rgba(239,68,68,0.3);color:#ef4444;border-radius:5px;cursor:pointer;" title="Remove this slide" onclick="return confirm('Remove this banner slide?');">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php else: ?>
+                    <div style="padding:14px;border:1px dashed var(--line);border-radius:10px;text-align:center;color:var(--muted);font-size:12px;margin-bottom:14px;background:rgba(255,255,255,0.01);">
+                        No banner slides uploaded yet. Upload images below to showcase your hotel or business on the public rating page header.
+                    </div>
+                    <?php endif; ?>
+
+                    <!-- Upload New Slides Input & Slider Controls -->
+                    <div style="background:rgba(255,255,255,0.02);border:1px dashed var(--line);border-radius:10px;padding:14px 16px;">
+                        <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+                            <div style="flex:1;min-width:240px;">
+                                <label for="company_banners" style="font-size:12.5px;font-weight:600;display:block;margin-bottom:5px;color:var(--ink);">
+                                    Upload Banner Slide(s)
+                                </label>
+                                <input type="file" name="company_banners[]" id="company_banners" multiple accept="image/*" style="font-size:13px;width:100%;" onchange="previewSelectedBannerSlides(this)">
+                                <small class="muted" style="display:block;margin-top:5px;font-size:11.5px;line-height:1.4;">
+                                    Select one or multiple images (PNG, JPG, GIF, WEBP - max 8MB each, recommended 1200 x 400px). Adding multiple slides automatically enables the interactive carousel slider on your public rating page.
+                                </small>
+                                <div id="newBannerThumbnails" style="display:none;grid-template-columns:repeat(auto-fill, minmax(100px, 1fr));gap:8px;margin-top:10px;"></div>
+                            </div>
+                            <!-- Slider Autoplay & Interval Controls -->
+                            <div style="display:flex;flex-direction:column;gap:10px;padding-left:16px;border-left:1px solid var(--line);min-width:180px;">
+                                <label style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--ink);cursor:pointer;margin:0;">
+                                    <input type="checkbox" name="banner_slider_autoplay" value="1" <?php echo !empty($page_customization['banner_slider_autoplay']) ? 'checked' : ''; ?>>
+                                    <span>Autoplay Carousel</span>
+                                </label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <label for="banner_slider_interval" style="font-size:11.5px;color:var(--muted);white-space:nowrap;">Slide Time:</label>
+                                    <select name="banner_slider_interval" id="banner_slider_interval" style="padding:4px 8px;font-size:12px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);flex:1;">
+                                        <option value="3" <?php echo ((int)($page_customization['banner_slider_interval'] ?? 5) === 3) ? 'selected' : ''; ?>>3 seconds</option>
+                                        <option value="5" <?php echo ((int)($page_customization['banner_slider_interval'] ?? 5) === 5) ? 'selected' : ''; ?>>5 seconds (default)</option>
+                                        <option value="7" <?php echo ((int)($page_customization['banner_slider_interval'] ?? 5) === 7) ? 'selected' : ''; ?>>7 seconds</option>
+                                        <option value="10" <?php echo ((int)($page_customization['banner_slider_interval'] ?? 5) === 10) ? 'selected' : ''; ?>>10 seconds</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -939,6 +1160,53 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                     </button>
                 </div>
             </form>
+
+            <?php if (!empty($banner_slides)): ?>
+                <!-- Standalone auxiliary forms for individual slide deletion & cover reordering -->
+                <?php foreach ($banner_slides as $sIdx => $slidePath): ?>
+                    <form id="formDeleteBanner<?php echo $sIdx; ?>" method="POST" action="settings.php" style="display:none;">
+                        <?php echo sa_csrf_field(); ?>
+                        <input type="hidden" name="action" value="delete_banner_slide">
+                        <input type="hidden" name="slide_index" value="<?php echo $sIdx; ?>">
+                    </form>
+                    <form id="formSetPrimaryBanner<?php echo $sIdx; ?>" method="POST" action="settings.php" style="display:none;">
+                        <?php echo sa_csrf_field(); ?>
+                        <input type="hidden" name="action" value="set_primary_banner_slide">
+                        <input type="hidden" name="slide_index" value="<?php echo $sIdx; ?>">
+                    </form>
+                <?php endforeach; ?>
+            <?php endif; ?>
+
+            <script>
+            function previewSelectedBannerSlides(input) {
+                var previewBox = document.getElementById('newBannerThumbnails');
+                if (!previewBox) return;
+                previewBox.innerHTML = '';
+                if (!input.files || !input.files.length) {
+                    previewBox.style.display = 'none';
+                    return;
+                }
+                previewBox.style.display = 'grid';
+                Array.from(input.files).forEach(function(file, idx) {
+                    if (!file.type.match(/^image\//i)) return;
+                    var reader = new FileReader();
+                    reader.onload = function(e) {
+                        var card = document.createElement('div');
+                        card.style.cssText = 'position:relative;height:70px;border-radius:8px;overflow:hidden;border:1px solid #10b981;background:#0f172a;';
+                        var img = document.createElement('img');
+                        img.src = e.target.result;
+                        img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+                        var badge = document.createElement('span');
+                        badge.style.cssText = 'position:absolute;bottom:3px;left:3px;background:rgba(16,185,129,0.9);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;';
+                        badge.textContent = 'New #' + (idx + 1);
+                        card.appendChild(img);
+                        card.appendChild(badge);
+                        previewBox.appendChild(card);
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+            </script>
         </div>
 
         <!-- Identity & Workspace Summary Card -->
@@ -1272,6 +1540,53 @@ $session_started = !empty($_SESSION['session_started_at']) ? (int) $_SESSION['se
                     </button>
                 </div>
             </form>
+
+            <?php if (!empty($banner_slides)): ?>
+                <!-- Standalone auxiliary forms for individual slide deletion & cover reordering -->
+                <?php foreach ($banner_slides as $sIdx => $slidePath): ?>
+                    <form id="formDeleteBanner<?php echo $sIdx; ?>" method="POST" action="settings.php" style="display:none;">
+                        <?php echo sa_csrf_field(); ?>
+                        <input type="hidden" name="action" value="delete_banner_slide">
+                        <input type="hidden" name="slide_index" value="<?php echo $sIdx; ?>">
+                    </form>
+                    <form id="formSetPrimaryBanner<?php echo $sIdx; ?>" method="POST" action="settings.php" style="display:none;">
+                        <?php echo sa_csrf_field(); ?>
+                        <input type="hidden" name="action" value="set_primary_banner_slide">
+                        <input type="hidden" name="slide_index" value="<?php echo $sIdx; ?>">
+                    </form>
+                <?php endforeach; ?>
+            <?php endif; ?>
+
+            <script>
+            function previewSelectedBannerSlides(input) {
+                var previewBox = document.getElementById('newBannerThumbnails');
+                if (!previewBox) return;
+                previewBox.innerHTML = '';
+                if (!input.files || !input.files.length) {
+                    previewBox.style.display = 'none';
+                    return;
+                }
+                previewBox.style.display = 'grid';
+                Array.from(input.files).forEach(function(file, idx) {
+                    if (!file.type.match(/^image\//i)) return;
+                    var reader = new FileReader();
+                    reader.onload = function(e) {
+                        var card = document.createElement('div');
+                        card.style.cssText = 'position:relative;height:70px;border-radius:8px;overflow:hidden;border:1px solid #10b981;background:#0f172a;';
+                        var img = document.createElement('img');
+                        img.src = e.target.result;
+                        img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+                        var badge = document.createElement('span');
+                        badge.style.cssText = 'position:absolute;bottom:3px;left:3px;background:rgba(16,185,129,0.9);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;';
+                        badge.textContent = 'New #' + (idx + 1);
+                        card.appendChild(img);
+                        card.appendChild(badge);
+                        previewBox.appendChild(card);
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+            </script>
         </div>
 
         <!-- Security Guidelines & Session Info -->

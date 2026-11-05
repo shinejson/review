@@ -3346,6 +3346,10 @@ if (!function_exists('getDefaultPublicPageSettings')) {
             'show_whatsapp'       => 1,
             'show_gstore'         => 1,
             'show_map'            => 1,
+            // Banner & Slider Configuration
+            'banner_images'          => [],
+            'banner_slider_autoplay' => 1,
+            'banner_slider_interval' => 5,
             // Custom CSS
             'custom_css'          => '',
         ];
@@ -3409,18 +3413,34 @@ if (!function_exists('saveTenantPublicPageSettings')) {
         ensurePublicPageSettingsColumn($conn);
 
         $defaults = getDefaultPublicPageSettings();
-        $clean = [];
-        foreach ($defaults as $k => $defVal) {
-            if (isset($settings[$k])) {
-                if (is_int($defVal)) {
-                    $clean[$k] = (int)$settings[$k];
-                } elseif ($k === 'custom_css') {
-                    $clean[$k] = trim((string)$settings[$k]);
+        // Load existing settings first so partial updates don't wipe out other settings (e.g. banner_images)
+        $existing = getTenantPublicPageSettings($conn, $tenant_id);
+        $clean = is_array($existing) ? $existing : $defaults;
+
+        foreach ($settings as $k => $val) {
+            if (!array_key_exists($k, $defaults)) {
+                continue;
+            }
+            $defVal = $defaults[$k];
+            if (is_int($defVal)) {
+                $clean[$k] = (int)$val;
+            } elseif (is_array($defVal)) {
+                if (is_array($val)) {
+                    $cleanedArr = [];
+                    foreach ($val as $subVal) {
+                        $subVal = trim((string)$subVal);
+                        if ($subVal !== '' && !in_array($subVal, $cleanedArr, true)) {
+                            $cleanedArr[] = $subVal;
+                        }
+                    }
+                    $clean[$k] = $cleanedArr;
                 } else {
-                    $clean[$k] = strip_tags(trim((string)$settings[$k]));
+                    $clean[$k] = [];
                 }
+            } elseif ($k === 'custom_css') {
+                $clean[$k] = trim((string)$val);
             } else {
-                $clean[$k] = is_int($defVal) ? 0 : $defVal;
+                $clean[$k] = strip_tags(trim((string)$val));
             }
         }
 
@@ -3447,6 +3467,69 @@ if (!function_exists('saveTenantPublicPageSettings')) {
             }
             return false;
         }
+    }
+}
+
+if (!function_exists('getTenantBannerImages')) {
+    /**
+     * Get the list of banner images for a tenant.
+     * Returns an array of relative paths or clean image URLs.
+     * Falls back to the single $fallback_banner if no multi-banners are set.
+     */
+    function getTenantBannerImages($conn, $tenant_id, $fallback_banner = '') {
+        $slides = [];
+        $tenant_id = (int)$tenant_id;
+        if ($tenant_id > 0 && is_object($conn)) {
+            $settings = getTenantPublicPageSettings($conn, $tenant_id);
+            if (!empty($settings['banner_images']) && is_array($settings['banner_images'])) {
+                foreach ($settings['banner_images'] as $img) {
+                    $img = trim((string)$img);
+                    if ($img !== '' && !in_array($img, $slides, true)) {
+                        $slides[] = $img;
+                    }
+                }
+            }
+        }
+        // Fallback to legacy single banner if no multi-banners are configured
+        if (empty($slides) && !empty($fallback_banner)) {
+            $fallback_banner = trim((string)$fallback_banner);
+            if ($fallback_banner !== '') {
+                $slides[] = $fallback_banner;
+            }
+        }
+        return array_values($slides);
+    }
+}
+
+if (!function_exists('saveTenantBannerImages')) {
+    /**
+     * Save the list of banner images for a tenant, keeping tenants.banner in sync with the primary slide.
+     */
+    function saveTenantBannerImages($conn, $tenant_id, array $images) {
+        $tenant_id = (int)$tenant_id;
+        if ($tenant_id <= 0 || !is_object($conn)) return false;
+
+        $clean = [];
+        foreach ($images as $img) {
+            $img = trim((string)$img);
+            if ($img !== '' && !in_array($img, $clean, true)) {
+                $clean[] = $img;
+            }
+        }
+
+        // Save to public_page_settings
+        $ok = saveTenantPublicPageSettings($conn, $tenant_id, ['banner_images' => $clean]);
+
+        // Keep tenants.banner synced to first slide for backward compatibility & directory cards
+        $primary = $clean[0] ?? '';
+        $stmt = $conn->prepare("UPDATE tenants SET banner = ? WHERE id = ?");
+        if ($stmt) {
+            $stmt->bind_param("si", $primary, $tenant_id);
+            $stmt->execute();
+            $stmt->close();
+        }
+
+        return $ok;
     }
 }
 

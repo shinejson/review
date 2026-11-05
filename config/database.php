@@ -73,17 +73,24 @@ if (!$isDev) {
 }
 
 // Database configuration — read credentials from the environment.
-// Never hard-code production credentials in source; the defaults below
-// are dev-only and MUST be overridden via environment variables.
-define('DB_HOST', optibiz_env('OPTIBIZ_DB_HOST', 'localhost'));
-define('DB_USER', optibiz_env('OPTIBIZ_DB_USER', 'root'));
-define('DB_PASS', optibiz_env('OPTIBIZ_DB_PASS', ''));
-define('DB_NAME', optibiz_env('OPTIBIZ_DB_NAME', 'company_rating_saas'));
+// Supports both OPTIBIZ_DB_* and standard Railway/Docker MYSQL* variables.
+$resolvedHost = optibiz_env('OPTIBIZ_DB_HOST', optibiz_env('MYSQLHOST', 'localhost'));
+$resolvedUser = optibiz_env('OPTIBIZ_DB_USER', optibiz_env('MYSQLUSER', 'root'));
+$resolvedPass = optibiz_env('OPTIBIZ_DB_PASS', optibiz_env('MYSQLPASSWORD', ''));
+$resolvedName = optibiz_env('OPTIBIZ_DB_NAME', optibiz_env('MYSQLDATABASE', 'company_rating_saas'));
+$resolvedPort = (int)optibiz_env('OPTIBIZ_DB_PORT', optibiz_env('MYSQLPORT', '3306'));
+
+define('DB_HOST', $resolvedHost);
+define('DB_USER', $resolvedUser);
+define('DB_PASS', $resolvedPass);
+define('DB_NAME', $resolvedName);
+define('DB_PORT', $resolvedPort > 0 ? $resolvedPort : 3306);
 
 // Application base URL — used for password-reset links, canonical URLs, and emails.
-// MUST be set in production to the canonical public URL. Falls back
-// to a safe relative path during local development only.
-define('APP_BASE_URL', optibiz_env('APP_BASE_URL', ''));
+// Automatically resolves Railway public domain if present and APP_BASE_URL is not set.
+$publicDomain = optibiz_env('RAILWAY_PUBLIC_DOMAIN', '');
+$defaultBaseUrl = $publicDomain ? ('https://' . $publicDomain) : '';
+define('APP_BASE_URL', optibiz_env('APP_BASE_URL', $defaultBaseUrl));
 
 // Public alias for the tenant admin panel. Requests to the real
 // /rate/admin/... path are refused by .htaccess; the panel is served at
@@ -97,7 +104,7 @@ define('ADMIN_PATH_ALIAS', ($adminAlias && preg_match('/^[a-z0-9]{12,40}$/', $ad
 
 // Create connection safely
 try {
-    $conn = @new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+    $conn = @new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
     if ($conn->connect_error) {
         throw new Exception($conn->connect_error);
     }

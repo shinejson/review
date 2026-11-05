@@ -387,6 +387,9 @@ if ($tenant_id > 0) {
 
 // Tenant public page customisation (layout, colors, visibility)
 $public_page_settings = getTenantPublicPageSettings($conn, $tenant_id);
+$brand_banner_slides  = function_exists('getTenantBannerImages')
+    ? getTenantBannerImages($conn, $tenant_id, $brand_banner)
+    : (!empty($brand_banner) ? [$brand_banner] : []);
 
 // Active tab calculation: support URL ?tab= parameter or smartly select default tab
 $requested_tab = trim((string)($_GET['tab'] ?? ''));
@@ -768,6 +771,141 @@ if ($total_ratings > 0) {
             max-height: 220px;
             object-fit: cover;
             display: block;
+        }
+
+        /* Interactive Banner Slider Carousel */
+        .rt-banner-slider {
+            position: relative;
+            height: 220px;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: pan-y;
+        }
+        .rt-slider-track {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        .rt-slider-slide {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.65s cubic-bezier(0.4, 0, 0.2, 1), transform 0.65s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: scale(1.02);
+            z-index: 1;
+        }
+        .rt-slider-slide.is-active {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+            transform: scale(1);
+            z-index: 2;
+        }
+        .rt-slider-slide .rt-cover-banner {
+            width: 100%;
+            height: 100%;
+            max-height: 220px;
+            object-fit: cover;
+            display: block;
+        }
+        .rt-slider-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 6;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+            opacity: 0.85;
+            padding: 0;
+        }
+        .rt-slider-nav:hover {
+            background: rgba(15, 23, 42, 0.88);
+            transform: translateY(-50%) scale(1.08);
+            opacity: 1;
+        }
+        .rt-slider-prev {
+            left: 12px;
+        }
+        .rt-slider-next {
+            right: 12px;
+        }
+        .rt-slider-counter {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 6;
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 99px;
+            letter-spacing: 0.5px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            pointer-events: none;
+        }
+        .rt-slider-dots {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 6;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 5px 12px;
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 99px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .rt-slider-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 99px;
+            background: rgba(255, 255, 255, 0.45);
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease;
+        }
+        .rt-slider-dot:hover {
+            background: rgba(255, 255, 255, 0.8);
+        }
+        .rt-slider-dot.is-active {
+            width: 20px;
+            background: #ffffff;
+        }
+        @media (max-width: 640px) {
+            .rt-cover-banner-wrap, .rt-banner-slider, .rt-slider-slide .rt-cover-banner {
+                max-height: 180px;
+                height: 180px;
+            }
+            .rt-slider-nav {
+                width: 32px;
+                height: 32px;
+            }
+            .rt-slider-prev { left: 8px; }
+            .rt-slider-next { right: 8px; }
         }
 
         /* Quick-Jump Leave Review Button */
@@ -2758,11 +2896,58 @@ if ($total_ratings > 0) {
     </nav>
     <?php endif; ?>
 
-    <?php if (!empty($brand_banner) && !empty($public_page_settings['show_banner'])): ?>
-    <!-- Tenant Brand Cover Banner -->
-    <div class="rt-cover-banner-wrap">
-        <img src="<?php echo htmlspecialchars(function_exists('getAppImageUrl') ? getAppImageUrl($brand_banner) : (($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($brand_banner, '/'))); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> Banner" class="rt-cover-banner">
+    <?php if ((!empty($brand_banner_slides) || !empty($brand_banner)) && !empty($public_page_settings['show_banner'])): ?>
+    <?php if (count($brand_banner_slides) > 1): ?>
+    <!-- Interactive Tenant Brand Cover Carousel -->
+    <div class="rt-cover-banner-wrap rt-banner-slider" id="rtBannerSlider"
+         data-autoplay="<?php echo !empty($public_page_settings['banner_slider_autoplay']) ? '1' : '0'; ?>"
+         data-interval="<?php echo (int)($public_page_settings['banner_slider_interval'] ?? 5); ?>"
+         role="region" aria-label="<?php echo htmlspecialchars($brand_name); ?> Banner Carousel">
+        <div class="rt-slider-track" id="rtSliderTrack">
+            <?php foreach ($brand_banner_slides as $sIdx => $slidePath): 
+                $slideUrl = function_exists('getAppImageUrl') ? getAppImageUrl($slidePath) : (($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($slidePath, '/'));
+            ?>
+                <div class="rt-slider-slide <?php echo $sIdx === 0 ? 'is-active' : ''; ?>" data-slide-index="<?php echo $sIdx; ?>" aria-hidden="<?php echo $sIdx === 0 ? 'false' : 'true'; ?>">
+                    <img src="<?php echo htmlspecialchars($slideUrl); ?>"
+                         alt="<?php echo htmlspecialchars($brand_name); ?> Slide <?php echo $sIdx + 1; ?>"
+                         class="rt-cover-banner"
+                         loading="<?php echo $sIdx === 0 ? 'eager' : 'lazy'; ?>"
+                         decoding="async">
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <!-- Controls: Prev / Next Navigation Arrows -->
+        <button type="button" class="rt-slider-nav rt-slider-prev" id="rtSliderPrev" aria-label="Previous Slide">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button type="button" class="rt-slider-nav rt-slider-next" id="rtSliderNext" aria-label="Next Slide">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+
+        <!-- Slide Counter Badge -->
+        <div class="rt-slider-counter" id="rtSliderCounter">
+            <span id="rtSliderCurrent">1</span> / <?php echo count($brand_banner_slides); ?>
+        </div>
+
+        <!-- Dot Indicators -->
+        <div class="rt-slider-dots" id="rtSliderDots">
+            <?php foreach ($brand_banner_slides as $sIdx => $slidePath): ?>
+                <button type="button" class="rt-slider-dot <?php echo $sIdx === 0 ? 'is-active' : ''; ?>"
+                        data-slide-to="<?php echo $sIdx; ?>"
+                        aria-label="Go to slide <?php echo $sIdx + 1; ?>"></button>
+            <?php endforeach; ?>
+        </div>
     </div>
+    <?php else: 
+        $singleBannerPath = !empty($brand_banner_slides[0]) ? $brand_banner_slides[0] : $brand_banner;
+        $singleBannerUrl  = function_exists('getAppImageUrl') ? getAppImageUrl($singleBannerPath) : (($app_web_root !== '' ? $app_web_root : '') . '/' . ltrim($singleBannerPath, '/'));
+    ?>
+    <!-- Single Tenant Brand Cover Banner -->
+    <div class="rt-cover-banner-wrap">
+        <img src="<?php echo htmlspecialchars($singleBannerUrl); ?>" alt="<?php echo htmlspecialchars($brand_name); ?> Banner" class="rt-cover-banner">
+    </div>
+    <?php endif; ?>
     <?php endif; ?>
 
     <?php if ($is_premium_active && $custom_banner_url !== ''): ?>
@@ -4633,6 +4818,145 @@ function filterReviews(filter, btn) {
 </script>
 
 <?php if ($whatsapp_url !== ''): ?>
+<script>
+/* ============================================================
+   Interactive Banner Carousel Controller
+   ============================================================ */
+(function() {
+    function initBannerSlider() {
+        var slider = document.getElementById('rtBannerSlider');
+        if (!slider) return;
+
+        var slides = slider.querySelectorAll('.rt-slider-slide');
+        var dots = slider.querySelectorAll('.rt-slider-dot');
+        var counterCurrent = document.getElementById('rtSliderCurrent');
+        var prevBtn = document.getElementById('rtSliderPrev');
+        var nextBtn = document.getElementById('rtSliderNext');
+
+        if (!slides || slides.length <= 1) return;
+
+        var currentIndex = 0;
+        var total = slides.length;
+        var autoplay = slider.getAttribute('data-autoplay') === '1';
+        var intervalSec = parseInt(slider.getAttribute('data-interval'), 10) || 5;
+        if (intervalSec < 2) intervalSec = 5;
+        var timer = null;
+
+        function goToSlide(newIndex) {
+            if (newIndex < 0) newIndex = total - 1;
+            if (newIndex >= total) newIndex = 0;
+            currentIndex = newIndex;
+
+            for (var i = 0; i < total; i++) {
+                var isActive = (i === currentIndex);
+                slides[i].classList.toggle('is-active', isActive);
+                slides[i].setAttribute('aria-hidden', isActive ? 'false' : 'true');
+                if (dots[i]) {
+                    dots[i].classList.toggle('is-active', isActive);
+                }
+            }
+            if (counterCurrent) {
+                counterCurrent.textContent = (currentIndex + 1);
+            }
+        }
+
+        function nextSlide() {
+            goToSlide(currentIndex + 1);
+        }
+
+        function prevSlide() {
+            goToSlide(currentIndex - 1);
+        }
+
+        function startAutoplay() {
+            if (!autoplay || total <= 1) return;
+            stopAutoplay();
+            timer = setInterval(nextSlide, intervalSec * 1000);
+        }
+
+        function stopAutoplay() {
+            if (timer) {
+                clearInterval(timer);
+                timer = null;
+            }
+        }
+
+        if (prevBtn) {
+            prevBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                prevSlide();
+                startAutoplay();
+            });
+        }
+
+        if (nextBtn) {
+            nextBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                nextSlide();
+                startAutoplay();
+            });
+        }
+
+        dots.forEach(function(dot) {
+            dot.addEventListener('click', function(e) {
+                e.preventDefault();
+                var idx = parseInt(dot.getAttribute('data-slide-to'), 10);
+                if (!isNaN(idx)) {
+                    goToSlide(idx);
+                    startAutoplay();
+                }
+            });
+        });
+
+        // Pause autoplay on mouse hover
+        slider.addEventListener('mouseenter', stopAutoplay);
+        slider.addEventListener('mouseleave', startAutoplay);
+
+        // Mobile touch swipe gestures
+        var touchStartX = 0;
+        var touchEndX = 0;
+        slider.addEventListener('touchstart', function(e) {
+            if (e.changedTouches && e.changedTouches[0]) {
+                touchStartX = e.changedTouches[0].screenX;
+            }
+            stopAutoplay();
+        }, { passive: true });
+
+        slider.addEventListener('touchend', function(e) {
+            if (e.changedTouches && e.changedTouches[0]) {
+                touchEndX = e.changedTouches[0].screenX;
+                var diff = touchStartX - touchEndX;
+                if (Math.abs(diff) > 40) {
+                    if (diff > 0) {
+                        nextSlide(); // Swiped left -> next
+                    } else {
+                        prevSlide(); // Swiped right -> prev
+                    }
+                }
+            }
+            startAutoplay();
+        }, { passive: true });
+
+        // Global hook
+        window.rtBannerSlider = {
+            next: nextSlide,
+            prev: prevSlide,
+            goTo: goToSlide,
+            start: startAutoplay,
+            stop: stopAutoplay
+        };
+
+        startAutoplay();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initBannerSlider);
+    } else {
+        initBannerSlider();
+    }
+})();
+</script>
+
 <!-- Sticky Floating WhatsApp Chat Button -->
 <a href="<?php echo htmlspecialchars($whatsapp_url); ?>" class="rt-floating-wa" target="_blank" rel="noopener noreferrer" title="Chat with <?php echo htmlspecialchars($brand_name); ?> on WhatsApp" aria-label="Chat with <?php echo htmlspecialchars($brand_name); ?> on WhatsApp">
     <svg viewBox="0 0 448 512" aria-hidden="true"><path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7 .9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z"/></svg>
