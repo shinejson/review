@@ -206,6 +206,10 @@ function sa_permission_list() {
         'subscriptions'   => 'Subscriptions',
         'finance'         => 'Financials',
         'gateways'        => 'Payment integrations',
+        'sms_gateways'    => 'SMS Gateways',
+        'monetization'    => 'Revenue & Growth',
+        'premium_claims'  => 'Premium Claims',
+        'sponsored_mgr'   => 'Sponsored Listings',
         'plans'           => 'Plans',
         'quotes'          => 'Quote requests',
         'reviews'         => 'Reviews moderation',
@@ -296,7 +300,21 @@ function sa_user_permissions($conn = null) {
 
 /** May the signed-in super admin open the given section? */
 function sa_can($permission, $conn = null) {
-    return in_array($permission, sa_user_permissions($conn), true);
+    $perms = sa_user_permissions($conn);
+    if (in_array($permission, $perms, true)) return true;
+    if ($permission === 'sms_gateways') {
+        return in_array('gateways', $perms, true) || in_array('finance', $perms, true) || in_array('settings', $perms, true);
+    }
+    if ($permission === 'monetization') {
+        return in_array('finance', $perms, true);
+    }
+    if ($permission === 'premium_claims') {
+        return in_array('tenants', $perms, true) || in_array('finance', $perms, true);
+    }
+    if ($permission === 'sponsored_mgr') {
+        return in_array('finance', $perms, true);
+    }
+    return false;
 }
 
 /**

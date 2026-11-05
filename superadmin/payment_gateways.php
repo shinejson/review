@@ -222,6 +222,9 @@ include __DIR__ . '/_shell.php';
         <p>Connections, keys and the manual bank-transfer profile tenants see at checkout.</p>
     </div>
     <div class="sa-head-actions">
+        <a class="sa-btn sa-btn-secondary" href="sms_providers.php">
+            <?php echo sa_icon('message'); ?> SMS Gateways
+        </a>
         <a class="sa-btn sa-btn-ghost" href="finance.php">
             <?php echo sa_icon('dollar'); ?> Financial centre
         </a>
@@ -232,6 +235,17 @@ include __DIR__ . '/_shell.php';
 </div>
 
 <?php echo sa_render_flash(); ?>
+
+<div class="sa-card" style="padding:14px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;background:#f8fafc;border:1px solid #e2e8f0;">
+    <div style="display:flex;align-items:center;gap:12px;">
+        <span style="font-size:24px;">💬</span>
+        <div>
+            <strong style="font-size:13.5px;color:#0f172a;">Looking for SMS Gateways?</strong>
+            <p style="margin:2px 0 0;font-size:12px;color:#64748b;">Configure Hubtel, mNotify &amp; Africa's Talking for tenant review invite campaigns.</p>
+        </div>
+    </div>
+    <a href="sms_providers.php" class="sa-btn sa-btn-primary" style="font-size:12.5px;">Configure SMS Gateways &rarr;</a>
+</div>
 
 <!-- ============ POSTURE ============ -->
 <div class="sa-grid sa-kpis sa-anim">

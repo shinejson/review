@@ -158,7 +158,10 @@ if (!function_exists('sms_provider_save')) {
         }
         if(!$sets) return false;
         $exists = sa_one($conn, "SELECT id FROM sms_providers WHERE provider_key='$k' LIMIT 1",'sms_providers');
-        if($exists) return (bool)@$conn->query("UPDATE sms_providers SET ".implode(',',$sets)." WHERE provider_key='$k'");
+        if ($exists) {
+            return (bool)@$conn->query("UPDATE sms_providers SET ".implode(',',$sets)." WHERE provider_key='$k'");
+        }
+        return (bool)@$conn->query("INSERT INTO sms_providers SET provider_key='$k', ".implode(',',$sets));
         return false;
     }
 }

@@ -180,6 +180,7 @@ $sa_nav_sections = [
                     ['key' => 'subscriptions', 'label' => 'Subscriptions',        'href' => 'subscriptions.php',    'badge' => 'subs', 'alert' => true],
                     ['key' => 'finance',       'label' => 'Financials',           'href' => 'finance.php',          'badge' => 'payments', 'alert' => true],
                     ['key' => 'gateways',      'label' => 'Payment Integrations', 'href' => 'payment_gateways.php'],
+                    ['key' => 'sms_gateways',  'label' => 'SMS Gateways',         'href' => 'sms_providers.php'],
                     ['key' => 'plans',         'label' => 'Plans & Pricing',      'href' => 'plans.php'],
                     ['key' => 'quotes',        'label' => 'Quote Requests',       'href' => 'quote_requests.php',   'badge' => 'quotes', 'alert' => true],
                 ],

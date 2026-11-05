@@ -608,6 +608,9 @@ include __DIR__ . '/_shell.php';
     <button class="sa-tab-btn" role="tab" aria-selected="false" aria-controls="tab-email"    id="tabBtn-email"    onclick="saTab('email')">
         <?php echo sa_icon('mail'); ?> Email & SMTP
     </button>
+    <button class="sa-tab-btn" role="tab" aria-selected="false" aria-controls="tab-sms" id="tabBtn-sms" onclick="saTab('sms')">
+        <?php echo sa_icon('message'); ?> SMS Gateways
+    </button>
     <button class="sa-tab-btn" role="tab" aria-selected="false" aria-controls="tab-account"  id="tabBtn-account"  onclick="saTab('account')">
         <?php echo sa_icon('key'); ?> Account
     </button>
@@ -1047,6 +1050,79 @@ include __DIR__ . '/_shell.php';
     </section>
 </div>
 
+<!-- ============ TAB: SMS GATEWAYS ============ -->
+<div class="sa-tab-panel" id="tab-sms" role="tabpanel" aria-labelledby="tabBtn-sms">
+    <?php
+    require_once dirname(__DIR__) . '/includes/sms_providers.php';
+    monetization_ensure_schema($conn);
+    $sms_prov_list = sms_provider_list($conn);
+    $sms_active_cnt = 0;
+    foreach ($sms_prov_list as $sp) { if (!empty($sp['is_enabled'])) $sms_active_cnt++; }
+    ?>
+    <div class="sa-grid sa-split-2-1">
+        <section class="sa-card">
+            <div class="sa-card-head">
+                <div>
+                    <h3>Local SMS Gateways</h3>
+                    <p>Automated review collection SMS routing &amp; API credentials (Ghana: Hubtel, mNotify)</p>
+                </div>
+                <div class="sa-card-head-actions">
+                    <a href="sms_providers.php" class="sa-btn sa-btn-primary" style="font-size:12px;">
+                        Manage All Gateways &rarr;
+                    </a>
+                </div>
+            </div>
+            <div class="sa-card-pad">
+                <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-bottom:14px;font-size:12.5px;color:#1e40af;">
+                    <strong>Ghana-first routing:</strong> Configure Hubtel or mNotify API keys so tenants can auto-dispatch review links to customer phone numbers after transactions.
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <?php foreach ($sms_prov_list as $sp): ?>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+                        <div>
+                            <strong style="font-size:13.5px;"><?php echo htmlspecialchars($sp['display_name']); ?></strong>
+                            <div style="font-size:11.5px;color:#64748b;margin-top:2px;">
+                                Sender ID: <code><?php echo htmlspecialchars($sp['sender_id'] ?: 'Optibiz'); ?></code>
+                                <?php if (!empty($sp['connection_status']) && $sp['connection_status'] !== 'unverified'): ?>
+                                    &middot; Status: <span style="font-weight:600;color:<?php echo $sp['connection_status'] === 'verified' ? '#15803d' : '#b91c1c'; ?>"><?php echo htmlspecialchars($sp['connection_status']); ?></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <?php echo !empty($sp['is_enabled'])
+                                ? '<span class="sa-pill" style="background:#dcfce7;color:#15803d;font-weight:600;">Enabled</span>'
+                                : '<span class="sa-pill" style="background:#f1f5f9;color:#64748b;">Disabled</span>'; ?>
+                            <a href="sms_providers.php" class="sa-btn sa-btn-sm sa-btn-secondary">Configure</a>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <div class="sa-card-foot">
+                <span>Active gateways: <?php echo $sms_active_cnt; ?> of <?php echo count($sms_prov_list); ?></span>
+                <a href="sms_providers.php">Open Full SMS Configuration &rarr;</a>
+            </div>
+        </section>
+
+        <section class="sa-card">
+            <div class="sa-card-head">
+                <div>
+                    <h3>Quick Guide</h3>
+                    <p>How SMS review collection works</p>
+                </div>
+            </div>
+            <div class="sa-card-pad" style="font-size:12.5px;color:#475569;line-height:1.6;">
+                <p><strong>1. Configure Provider:</strong> Set up your Hubtel (ClientID + Secret) or mNotify API Key in <a href="sms_providers.php" style="color:#2563eb;font-weight:600;">SMS Gateways</a>.</p>
+                <p><strong>2. Tenants Buy Credits:</strong> Tenants top-up SMS credits via Paystack/Flutterwave on their SMS Campaigns screen.</p>
+                <p><strong>3. Automated Dispatch:</strong> When a tenant launches a campaign, Optibiz automatically dispatches SMS with direct review links.</p>
+                <div style="margin-top:14px;padding:10px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#92400e;">
+                    💡 <strong>Profit Margin:</strong> You earn 30%&ndash;50% margin per SMS credit sold to tenants.
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
 <!-- ============ TAB: ACCOUNT ============ -->
 <div class="sa-tab-panel" id="tab-account" role="tabpanel" aria-labelledby="tabBtn-account">
     <div class="sa-grid sa-split-2-1">
@@ -1259,7 +1335,7 @@ function saTab(id) {
 /* Restore tab from URL hash on load */
 (function () {
     var hash = location.hash.replace('#tab=', '').replace('#', '');
-    var valid = ['system', 'branding', 'currency', 'email', 'account', 'database'];
+    var valid = ['system', 'branding', 'currency', 'email', 'sms', 'account', 'database'];
     if (valid.indexOf(hash) !== -1) {
         saTab(hash);
     }

@@ -57,7 +57,16 @@ $robots='noindex, nofollow'; $pageTitle='Monetization'; $pageHeading='Monetizati
 include dirname(__DIR__).'/includes/header.php';
 include __DIR__.'/_shell.php';
 ?>
-<div class="sa-page-head"><div><div class="sa-crumbs"><a href="index.php">Super admin</a> <?php echo sa_icon('chevron-right'); ?> <span>Monetization</span></div><h2>Monetization — 4 Streams</h2><p>Premium · Widgets · Sponsored · SMS</p></div></div>
+<div class="sa-page-head">
+  <div>
+    <div class="sa-crumbs"><a href="index.php">Super admin</a> <?php echo sa_icon('chevron-right'); ?> <span>Monetization</span></div>
+    <h2>Monetization — 4 Streams</h2>
+    <p>Premium · Widgets · Sponsored · SMS</p>
+  </div>
+  <div class="sa-head-actions">
+    <a class="sa-btn sa-btn-secondary" href="sms_providers.php"><?php echo sa_icon('message'); ?> SMS Gateways</a>
+  </div>
+</div>
 <?php echo sa_render_flash(); ?>
 
 <!-- KPI row -->
@@ -102,7 +111,10 @@ include __DIR__.'/_shell.php';
 </section>
 
 <section class="sa-card" style="padding:18px;margin-top:16px;">
-  <h3 style="margin:0 0 10px;">Manually Credit SMS</h3>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+    <h3 style="margin:0;">Manually Credit SMS</h3>
+    <a href="sms_providers.php" class="sa-btn sa-btn-secondary" style="font-size:12px;">Configure SMS Gateways (Hubtel / mNotify) &rarr;</a>
+  </div>
   <form method="POST" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
     <?php echo sa_csrf_field(); ?><input type="hidden" name="action" value="credit_sms">
     <div><label style="font-size:12px;">Tenant ID</label><input type="number" name="tenant_id" placeholder="e.g., 3" style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;width:140px;"></div>

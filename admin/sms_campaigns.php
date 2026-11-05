@@ -104,7 +104,7 @@ if(($_SERVER['REQUEST_METHOD']??'')==='POST'){
       @$conn->query("UPDATE sms_campaigns SET status='sent', sent_at=NOW() WHERE id=".$cid);
       // mark all logs as sent (manual/log mode)
       @$conn->query("UPDATE sms_delivery_log SET status='sent', sent_at=NOW() WHERE campaign_id=".$cid);
-      $_SESSION['success']="Campaign logged in manual mode — $count SMS marked as sent. Configure an SMS gateway (Hubtel/mNotify) for real delivery.";
+      $_SESSION['success']="Campaign logged in manual mode — $count SMS recorded. You can track customer review conversions below.";
     }
     header('Location: sms_campaigns.php'); exit;
   }
@@ -129,6 +129,14 @@ include __DIR__.'/_shell.php';
 </div>
 <?php if($flash_success): ?><div class="alert alert-success"><?php echo htmlspecialchars($flash_success); ?></div><?php endif; ?>
 <?php if($flash_error): ?><div class="alert alert-error"><?php echo htmlspecialchars($flash_error); ?></div><?php endif; ?>
+<?php if(empty($enabledProviders)): ?>
+<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#1e40af;display:flex;align-items:center;gap:10px;">
+  <span style="font-size:18px;">💬</span>
+  <div>
+    <strong>Automated SMS Delivery:</strong> The platform is currently operating in <em>Manual / Log only</em> mode. You can queue and record campaign invites here to track responses. Automated delivery will dispatch via platform SMS gateways when enabled.
+  </div>
+</div>
+<?php endif; ?>
 
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:16px;">
   <div class="metric-card"><div class="metric-icon amber">💬</div><span>SMS Balance</span><strong><?php echo number_format((int)$wallet['balance']); ?></strong><small>credits available</small></div>
@@ -170,7 +178,7 @@ include __DIR__.'/_shell.php';
         <div><label style="font-size:12.5px;font-weight:600;">SMS provider</label>
           <select name="provider_key" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;">
             <?php foreach($providers as $pr): ?><option value="<?php echo htmlspecialchars($pr['provider_key']); ?>" <?php echo !empty($pr['is_enabled'])?'':'disabled'; ?>><?php echo htmlspecialchars($pr['display_name']); ?><?php echo empty($pr['is_enabled'])?' (not enabled)':''; ?></option><?php endforeach; ?>
-            <option value="manual">Manual / Log only</option>
+            <option value="manual" <?php echo empty($enabledProviders) ? 'selected' : ''; ?>>Manual / Log only</option>
           </select></div>
         <div><label style="font-size:12.5px;font-weight:600;">Template</label>
           <select name="template_key" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;">
@@ -205,7 +213,11 @@ Paste or upload CSV numbers — one per line" style="width:100%;padding:8px 10px
         Tip: add STOP opt-out automatically — our templates include it. Manage opt-outs via delivery logs.
       </div>
       <div style="margin-top:12px;">
-        <a href="../superadmin/sms_providers.php" style="font-size:12px;color:#2563eb;text-decoration:none;">Super Admin: configure Hubtel/mNotify API keys →</a>
+      <?php if(isSuperAdminLoggedIn()): ?>
+        <a href="../superadmin/sms_providers.php" style="font-size:12px;color:#2563eb;text-decoration:none;">Super Admin: configure Hubtel/mNotify API keys &rarr;</a>
+      <?php else: ?>
+        <span style="font-size:12px;color:#64748b;">SMS campaigns dispatch through verified platform SMS gateways.</span>
+      <?php endif; ?>
       </div>
     </div>
     <div class="form-card" style="padding:16px;margin-top:12px;">
