@@ -86,7 +86,7 @@ if (($_SERVER['REQUEST_METHOD']??'')==='POST') {
             // create pending subscription
             $st=$conn->prepare("INSERT INTO premium_subscriptions (company_id, tenant_id, tier, status, price, currency, billing_cycle, invoice_id, starts_at, expires_at) VALUES (?,?,?,?,?,?,?, ?, NOW(), DATE_ADD(NOW(), INTERVAL ? MONTH))");
             $curr='GHS'; $status='pending';
-            $st->bind_param("iisdssiii", $company_id, $tenant_id, $tier, $status, $price, $curr, $cycle, $iid, $months);
+            $st->bind_param("iissdsisi", $company_id, $tenant_id, $tier, $status, $price, $curr, $cycle, $iid, $months);
             $st->execute(); $st->close();
             header('Location: payment_checkout.php?invoice='.$iid); exit;
         } else {

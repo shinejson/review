@@ -205,6 +205,7 @@ $sa_nav_sections = [
                     ['key' => 'monetization',   'label' => 'Revenue Dashboard',  'href' => 'monetization.php'],
                     ['key' => 'premium_claims', 'label' => 'Premium Claims',     'href' => 'premium_claims.php'],
                     ['key' => 'sponsored_mgr',  'label' => 'Sponsored Listings', 'href' => 'sponsored.php'],
+                    ['key' => 'widgets_mgr',    'label' => 'Review Widgets',     'href' => 'widgets.php'],
                     ['key' => 'sms_gateways',   'label' => 'SMS Gateways',       'href' => 'sms_providers.php'],
                 ],
             ],

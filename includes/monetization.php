@@ -127,7 +127,7 @@ if (!function_exists('monetization_ensure_schema')) {
             company_id INT NOT NULL,
             widget_key VARCHAR(32) NOT NULL,
             tier ENUM('free','pro','agency') NOT NULL DEFAULT 'free',
-            status ENUM('active','suspended','expired') NOT NULL DEFAULT 'active',
+            status ENUM('pending','active','suspended','expired') NOT NULL DEFAULT 'active',
             theme ENUM('light','dark','brand') NOT NULL DEFAULT 'light',
             layout ENUM('card','badge','carousel','grid') NOT NULL DEFAULT 'card',
             limit_count INT NOT NULL DEFAULT 5,
@@ -149,6 +149,7 @@ if (!function_exists('monetization_ensure_schema')) {
         // migrate older installs that missed invoice_id/payment_id
         try { @$conn->query("ALTER TABLE widget_configs ADD COLUMN invoice_id INT NULL AFTER clicks_total"); } catch (Throwable $e) {}
         try { @$conn->query("ALTER TABLE widget_configs ADD COLUMN payment_id INT NULL AFTER invoice_id"); } catch (Throwable $e) {}
+        try { @$conn->query("ALTER TABLE widget_configs MODIFY COLUMN status ENUM('pending','active','suspended','expired') NOT NULL DEFAULT 'active'"); } catch (Throwable $e) {}
 
         // SMS providers
         @$conn->query("CREATE TABLE IF NOT EXISTS sms_providers (
@@ -460,18 +461,23 @@ if (!function_exists('monetization_stats')) {
     {
         monetization_ensure_schema($conn);
         return [
-            'premium_active' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM customers WHERE premium_status='active'",0,'customers'),
-            'premium_claims_pending' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM premium_claims WHERE claim_status='pending'",0,'premium_claims'),
-            'premium_mrr' => (float)sa_scalar($conn, "SELECT COALESCE(SUM(premium_price),0) FROM customers WHERE premium_status='active'",0,'customers'),
-            'sponsored_active' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM sponsored_listings WHERE status='active' AND ends_at > NOW()",0,'sponsored_listings'),
-            'sponsored_pending' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM sponsored_listings WHERE status='pending'",0,'sponsored_listings'),
-            'sponsored_revenue' => (float)sa_scalar($conn, "SELECT COALESCE(SUM(price),0) FROM sponsored_listings WHERE status='active'",0,'sponsored_listings'),
-            'widgets_active' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM widget_configs WHERE status='active'",0,'widget_configs'),
-            'widgets_views' => (int)sa_scalar($conn, "SELECT COALESCE(SUM(views_total),0) FROM widget_configs",0,'widget_configs'),
-            'sms_credits_sold' => (int)sa_scalar($conn, "SELECT COALESCE(SUM(total_purchased),0) FROM sms_credits_wallet",0,'sms_credits_wallet'),
-            'sms_credits_balance' => (int)sa_scalar($conn, "SELECT COALESCE(SUM(balance),0) FROM sms_credits_wallet",0,'sms_credits_wallet'),
-            'sms_campaigns' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM sms_campaigns",0,'sms_campaigns'),
-            'sms_sent' => (int)sa_scalar($conn, "SELECT COALESCE(SUM(credits_used),0) FROM sms_campaigns WHERE status='sent'",0,'sms_campaigns'),
+            'premium_active' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM premium_subscriptions WHERE status='active' AND (expires_at IS NULL OR expires_at > NOW())", 0, 'premium_subscriptions'),
+            'premium_pending' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM premium_subscriptions WHERE status='pending'", 0, 'premium_subscriptions'),
+            'premium_claims_pending' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM premium_claims WHERE claim_status='pending'", 0, 'premium_claims'),
+            'premium_mrr' => (float)sa_scalar($conn, "SELECT COALESCE(SUM(CASE WHEN billing_cycle='yearly' THEN price/12 ELSE price END),0) FROM premium_subscriptions WHERE status='active' AND (expires_at IS NULL OR expires_at > NOW())", 0, 'premium_subscriptions'),
+            'sponsored_active' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM sponsored_listings WHERE status='active' AND ends_at > NOW()", 0, 'sponsored_listings'),
+            'sponsored_pending' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM sponsored_listings WHERE status='pending'", 0, 'sponsored_listings'),
+            'sponsored_revenue' => (float)sa_scalar($conn, "SELECT COALESCE(SUM(price),0) FROM sponsored_listings WHERE status='active'", 0, 'sponsored_listings'),
+            'widgets_active' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM widget_configs WHERE status='active' AND tier IN ('pro','agency') AND (expires_at IS NULL OR expires_at > NOW())", 0, 'widget_configs'),
+            'widgets_pending' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM widget_configs WHERE status='pending' AND tier IN ('pro','agency')", 0, 'widget_configs'),
+            'widgets_total' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM widget_configs", 0, 'widget_configs'),
+            'widgets_mrr' => (float)sa_scalar($conn, "SELECT COALESCE(SUM(CASE WHEN tier='agency' THEN 149 ELSE 79 END),0) FROM widget_configs WHERE status='active' AND tier IN ('pro','agency') AND (expires_at IS NULL OR expires_at > NOW())", 0, 'widget_configs'),
+            'widgets_views' => (int)sa_scalar($conn, "SELECT COALESCE(SUM(views_total),0) FROM widget_configs", 0, 'widget_configs'),
+            'widgets_clicks' => (int)sa_scalar($conn, "SELECT COALESCE(SUM(clicks_total),0) FROM widget_configs", 0, 'widget_configs'),
+            'sms_credits_sold' => (int)sa_scalar($conn, "SELECT COALESCE(SUM(total_purchased),0) FROM sms_credits_wallet", 0, 'sms_credits_wallet'),
+            'sms_credits_balance' => (int)sa_scalar($conn, "SELECT COALESCE(SUM(balance),0) FROM sms_credits_wallet", 0, 'sms_credits_wallet'),
+            'sms_campaigns' => (int)sa_scalar($conn, "SELECT COUNT(*) FROM sms_campaigns", 0, 'sms_campaigns'),
+            'sms_sent' => (int)sa_scalar($conn, "SELECT COALESCE(SUM(credits_used),0) FROM sms_campaigns WHERE status='sent'", 0, 'sms_campaigns'),
         ];
     }
 }
@@ -494,16 +500,31 @@ if (!function_exists('monetization_on_invoice_paid')) {
         $tenant_id = (int)($inv['tenant_id'] ?? 0);
         $notes = $inv['notes'] ?? '';
         $notes_data = @json_decode($notes, true); if (!is_array($notes_data)) $notes_data = [];
+        $purpose = strtolower(trim($inv['purpose'] ?? ($notes_data['stream'] ?? '')));
 
         // 1) Premium subscriptions pending for this invoice
         $rows = sa_query($conn, "SELECT * FROM premium_subscriptions WHERE invoice_id=".$iid." AND status='pending'", 'premium_subscriptions');
         foreach ($rows as $r) {
             $cid = (int)$r['company_id']; $tier = $r['tier'] ?? 'essential';
-            @$conn->query("UPDATE premium_subscriptions SET status='active', starts_at=NOW(), expires_at=DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id=".(int)$r['id']);
+            $months = ($r['billing_cycle'] ?? 'monthly') === 'yearly' ? 12 : 1;
+            @$conn->query("UPDATE premium_subscriptions SET status='active', starts_at=NOW(), expires_at=DATE_ADD(NOW(), INTERVAL ".$months." MONTH) WHERE id=".(int)$r['id']);
             // push to customers table
             $tier_esc = $conn->real_escape_string($tier);
             $price = (float)($r['price'] ?? 0);
-            @$conn->query("UPDATE customers SET premium_tier='".$tier_esc."', premium_status='active', premium_expires_at=DATE_ADD(NOW(), INTERVAL 30 DAY), premium_price=".$price.", is_claimed=1, claimed_tenant_id=".(int)$r['tenant_id'].", claimed_at=NOW(), verified_badge=1 WHERE id=".$cid);
+            @$conn->query("UPDATE customers SET premium_tier='".$tier_esc."', premium_status='active', premium_expires_at=DATE_ADD(NOW(), INTERVAL ".$months." MONTH), premium_price=".$price.", is_claimed=1, claimed_tenant_id=".(int)$r['tenant_id'].", claimed_at=NOW(), verified_badge=1 WHERE id=".$cid);
+        }
+        // Fallback for premium subscription if created without direct invoice_id
+        if (empty($rows) && (strpos($purpose, 'premium') !== false || ($notes_data['stream'] ?? '') === 'premium') && $tenant_id) {
+            $pendingPrem = sa_query($conn, "SELECT * FROM premium_subscriptions WHERE tenant_id=".$tenant_id." AND status='pending' ORDER BY id DESC LIMIT 1", 'premium_subscriptions');
+            foreach ($pendingPrem as $pr) {
+                $cid = (int)$pr['company_id']; $tier = $pr['tier'] ?? 'essential';
+                $months = ($pr['billing_cycle'] ?? 'monthly') === 'yearly' ? 12 : 1;
+                @$conn->query("UPDATE premium_subscriptions SET status='active', invoice_id=".$iid.", starts_at=NOW(), expires_at=DATE_ADD(NOW(), INTERVAL ".$months." MONTH) WHERE id=".(int)$pr['id']);
+                $tier_esc = $conn->real_escape_string($tier);
+                $price = (float)($pr['price'] ?? 0);
+                @$conn->query("UPDATE customers SET premium_tier='".$tier_esc."', premium_status='active', premium_expires_at=DATE_ADD(NOW(), INTERVAL ".$months." MONTH), premium_price=".$price.", is_claimed=1, claimed_tenant_id=".(int)$pr['tenant_id'].", claimed_at=NOW(), verified_badge=1 WHERE id=".$cid);
+                break;
+            }
         }
 
         // 2) Sponsored listings pending for this invoice
@@ -512,8 +533,8 @@ if (!function_exists('monetization_on_invoice_paid')) {
             $dur = max(7, (int)($s['duration_days'] ?? 30));
             @$conn->query("UPDATE sponsored_listings SET status='active', starts_at=NOW(), ends_at=DATE_ADD(NOW(), INTERVAL ".$dur." DAY) WHERE id=".(int)$s['id']);
         }
-        // Fallback: sponsored invoice without linkage (older sponsored flow)
-        if (empty($spRows) && $purpose==='sponsored' && $tenant_id) {
+        // Fallback: sponsored invoice without direct linkage
+        if (empty($spRows) && (strpos($purpose, 'sponsored') !== false || ($notes_data['stream'] ?? '') === 'sponsored') && $tenant_id) {
             $tierFromNotes = strtolower(trim($notes_data['tier'] ?? ''));
             $pendingSpon = sa_query($conn, "SELECT * FROM sponsored_listings WHERE tenant_id=".$tenant_id." AND status='pending' ORDER BY id DESC LIMIT 3", 'sponsored_listings');
             foreach ($pendingSpon as $psp) {
@@ -529,56 +550,34 @@ if (!function_exists('monetization_on_invoice_paid')) {
         foreach ($wRows as $w) {
             @$conn->query("UPDATE widget_configs SET status='active', expires_at=DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id=".(int)$w['id']);
         }
-        // Fallback: widget invoice created row as pending without direct invoice_id link (older widget flow)
-        if (empty($wRows) && $purpose==='widget' && $tenant_id) {
+        // Fallback: widget invoice without direct invoice_id link
+        if (empty($wRows) && (strpos($purpose, 'widget') !== false || ($notes_data['stream'] ?? '') === 'widget') && $tenant_id) {
             $tierFromNotes = strtolower(trim($notes_data['tier'] ?? 'pro'));
             $pendingWidgets = sa_query($conn, "SELECT * FROM widget_configs WHERE tenant_id=".$tenant_id." AND status IN ('pending','suspended') ORDER BY id DESC LIMIT 3", 'widget_configs');
             foreach ($pendingWidgets as $pw) {
-                // match tier if notes specifies it, else take first pending
                 if ($tierFromNotes && strtolower($pw['tier'] ?? '') !== $tierFromNotes) continue;
                 @$conn->query("UPDATE widget_configs SET status='active', invoice_id=".$iid.", expires_at=DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id=".(int)$pw['id']);
                 break;
             }
-            // if still none matched, activate the newest pending regardless of tier
-            if (!empty($pendingWidgets) && count($pendingWidgets)===1 && empty($wRows)) {
-                // already handled first iteration; safe
-            }
         }
 
         // 4) SMS credits — purchase tied to invoice (GHS credits packages)
-        $purpose = strtolower($inv['purpose'] ?? '');
-        if (strpos($purpose,'sms')!==false || !empty($notes_data['stream']) && $notes_data['stream']==='sms' || !empty($notes_data['credits'])) {
+        if (strpos($purpose,'sms')!==false || (!empty($notes_data['stream']) && $notes_data['stream']==='sms') || !empty($notes_data['credits'])) {
             $credits = 0;
             if (!empty($notes_data['credits'])) $credits = (int)$notes_data['credits'];
             elseif (!empty($notes_data['sms_credits'])) $credits = (int)$notes_data['sms_credits'];
-            elseif (!empty($inv['months'])) {
-                // fallback: derive from amount if credits not explicit — use price_per heuristics
-            }
-            // fallback mapping from amount: GHS 50=>100, 200=>500, 600=>2000
             if ($credits <= 0) {
                 $amt = (float)($inv['total'] ?? $inv['amount'] ?? 0);
                 if ($amt >= 550) $credits = 2000;
                 elseif ($amt >= 150) $credits = 500;
                 elseif ($amt >= 30) $credits = 100;
-                else $credits = (int)round($amt / 0.5); // 0.50 per SMS fallback
+                else $credits = (int)round($amt / 0.5);
             }
             if ($credits > 0 && $tenant_id) {
-                // ensure wallet exists
                 $w = sa_one($conn, "SELECT * FROM sms_credits_wallet WHERE tenant_id=".$tenant_id." LIMIT 1", 'sms_credits_wallet');
                 if (!$w) @$conn->query("INSERT IGNORE INTO sms_credits_wallet (tenant_id,balance,total_purchased,total_used) VALUES (".$tenant_id.",0,0,0)");
                 @$conn->query("UPDATE sms_credits_wallet SET balance = balance + ".(int)$credits.", total_purchased = total_purchased + ".(int)$credits.", last_topup_at=NOW() WHERE tenant_id=".$tenant_id);
             }
-        }
-
-        // 5) Generic sponsored queue: if invoice was for sponsored but listing row already created via admin flow, the above already activated.
-
-        // 6) Mark invoice paid if not already (pay_invoice_apply may have done it)
-        if (($inv['status'] ?? '') !== 'paid') {
-            @$conn->query("UPDATE payment_invoices SET status='paid', paid_at=NOW(), updated_at=NOW() WHERE id=".$iid);
-        }
-        // Log the activation for audit
-        if (function_exists('pay_log_event')) {
-            @pay_log_event($conn, ['gateway_key'=>($inv['gateway_key'] ?? 'manual'),'event_type'=>'monetization.activated','reference'=>($inv['invoice_number'] ?? ''),'invoice_id'=>$iid,'payment_id'=>(int)$payment_id,'payload'=>'Monetization fulfilled for invoice '.$iid.' (purpose: '.($inv['purpose'] ?? '').')']);
         }
     }
 }

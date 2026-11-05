@@ -954,6 +954,17 @@ if (!function_exists('sa_metrics')) {
         $m['arr']           = $m['mrr'] * 12;
         $m['arpu']          = $m['paying'] > 0 ? $m['mrr'] / $m['paying'] : 0.0;
 
+        // Add-on subscriptions (Premium Profiles, Widgets, Sponsored)
+        $m['premium_active'] = (int) sa_scalar($conn, "SELECT COUNT(*) FROM premium_subscriptions WHERE status='active' AND (expires_at IS NULL OR expires_at > NOW())", 0, 'premium_subscriptions');
+        $m['premium_mrr'] = (float) sa_scalar($conn, "SELECT COALESCE(SUM(CASE WHEN billing_cycle='yearly' THEN price/12 ELSE price END),0) FROM premium_subscriptions WHERE status='active' AND (expires_at IS NULL OR expires_at > NOW())", 0, 'premium_subscriptions');
+        $m['widgets_active'] = (int) sa_scalar($conn, "SELECT COUNT(*) FROM widget_configs WHERE status='active' AND tier IN ('pro','agency') AND (expires_at IS NULL OR expires_at > NOW())", 0, 'widget_configs');
+        $m['widgets_mrr'] = (float) sa_scalar($conn, "SELECT COALESCE(SUM(CASE WHEN tier='agency' THEN 149 ELSE 79 END),0) FROM widget_configs WHERE status='active' AND tier IN ('pro','agency') AND (expires_at IS NULL OR expires_at > NOW())", 0, 'widget_configs');
+        $m['sponsored_active'] = (int) sa_scalar($conn, "SELECT COUNT(*) FROM sponsored_listings WHERE status='active' AND ends_at > NOW()", 0, 'sponsored_listings');
+        $m['sponsored_revenue'] = (float) sa_scalar($conn, "SELECT COALESCE(SUM(price),0) FROM sponsored_listings WHERE status='active'", 0, 'sponsored_listings');
+        $m['total_mrr'] = $m['mrr'] + $m['premium_mrr'] + $m['widgets_mrr'];
+        $m['total_arr'] = $m['total_mrr'] * 12;
+        $m['total_paying_subs'] = $m['paying'] + $m['premium_active'] + $m['widgets_active'] + $m['sponsored_active'];
+
         $m['customers_total'] = (int) sa_scalar($conn, "SELECT COUNT(*) FROM customers", 0, 'customers');
         $m['ratings_total']   = (int) sa_scalar($conn, "SELECT COUNT(*) FROM ratings", 0, 'ratings');
         $m['avg_rating']      = (float) sa_scalar($conn, "SELECT AVG(rating) FROM ratings", 0, 'ratings');

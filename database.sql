@@ -728,11 +728,11 @@ CREATE TABLE IF NOT EXISTS sponsored_listings (
 CREATE TABLE IF NOT EXISTS widget_configs (
   id INT AUTO_INCREMENT PRIMARY KEY, tenant_id INT NOT NULL, company_id INT NOT NULL,
   widget_key VARCHAR(32) NOT NULL, tier ENUM('free','pro','agency') NOT NULL DEFAULT 'free',
-  status ENUM('active','suspended','expired') NOT NULL DEFAULT 'active',
+  status ENUM('pending','active','suspended','expired') NOT NULL DEFAULT 'active',
   theme ENUM('light','dark','brand') NOT NULL DEFAULT 'light', layout ENUM('card','badge','carousel','grid') NOT NULL DEFAULT 'card',
   limit_count INT NOT NULL DEFAULT 5, hide_low_rating TINYINT(1) NOT NULL DEFAULT 1, show_verified_only TINYINT(1) NOT NULL DEFAULT 0,
   custom_css TEXT NULL, allowed_domains TEXT NULL, api_key VARCHAR(64) NULL,
-  views_total INT NOT NULL DEFAULT 0, clicks_total INT NOT NULL DEFAULT 0, expires_at DATETIME NULL,
+  views_total INT NOT NULL DEFAULT 0, clicks_total INT NOT NULL DEFAULT 0, invoice_id INT NULL, payment_id INT NULL, expires_at DATETIME NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_widget_key (widget_key),
   INDEX idx_widget_tenant (tenant_id), INDEX idx_widget_company (company_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

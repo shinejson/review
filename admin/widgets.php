@@ -35,16 +35,16 @@ if(($_SERVER['REQUEST_METHOD']??'')==='POST'){
       $iid=(int)$res['id'];
       $key=strtoupper(bin2hex(random_bytes(8)));
       $exp=date('Y-m-d H:i:s', strtotime('+30 days'));
-      $st=$conn->prepare("INSERT INTO widget_configs (tenant_id,company_id,widget_key,tier,status,theme,layout,limit_count, expires_at) VALUES (?,?,?,?,?,?, ?,?,?)");
-      $theme='light'; $layout='card'; $limit=5; $status='pending';
-      $st->bind_param("iissssis s", $tenant_id,$company_id,$key,$tier,$status,$theme,$layout,$limit,$exp);
-      // use simpler
-      $stmt2=$conn->prepare("INSERT INTO widget_configs (tenant_id, company_id, widget_key, tier, status, theme, layout, limit_count, allowed_domains, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?)");
-      if($stmt2){ $lim=5; $dom=''; $stmt2->bind_param("iisssssiss",$tenant_id,$company_id,$key,$tier,$status,$theme,$layout,$lim,$dom,$exp); $stmt2->execute(); $stmt2->close(); 
-        // link invoice to widget by updating expires? keep mapping via notes
+      if ($existingWidget) {
+        $st = $conn->prepare("UPDATE widget_configs SET tier=?, status='pending', invoice_id=?, expires_at=? WHERE id=?");
+        $st->bind_param("sisi", $tier, $iid, $exp, $existingWidget['id']);
+        $st->execute(); $st->close();
+      } else {
+        $theme='light'; $layout='card'; $limit=5; $status='pending'; $domains='';
+        $st = $conn->prepare("INSERT INTO widget_configs (tenant_id, company_id, widget_key, tier, status, theme, layout, limit_count, allowed_domains, invoice_id, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+        $st->bind_param("iisssssisis", $tenant_id, $company_id, $key, $tier, $status, $theme, $layout, $limit, $domains, $iid, $exp);
+        $st->execute(); $st->close();
       }
-      // store widget pending referencing invoice
-      @$conn->query("UPDATE widget_configs SET api_key='".$conn->real_escape_string($key)."' WHERE widget_key='".$conn->real_escape_string($key)."'");
       header('Location: payment_checkout.php?invoice='.$iid); exit;
     } else { $_SESSION['error']=$res['message']; header('Location: widgets.php'); exit; }
   }
