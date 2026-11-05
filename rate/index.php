@@ -303,17 +303,23 @@ if ($tenant_id > 0) {
 // Fetch the company's active services with their rating stats (star avg + review count)
 $services = [];
 if ($tenant_id > 0) {
-    $svc_stmt = $conn->prepare("
-        SELECT s.*,
-            (SELECT COUNT(*) FROM ratings r WHERE r.service_id = s.id AND r.company_id = ?) AS review_count,
-            (SELECT COALESCE(AVG(r.rating), 0) FROM ratings r WHERE r.service_id = s.id AND r.company_id = ?) AS avg_score
-          FROM services s
-         WHERE s.tenant_id = ? AND s.status = 'active'
-         ORDER BY s.sort_order ASC, s.id ASC
-    ");
-    $svc_stmt->bind_param("iii", $company_id, $company_id, $tenant_id);
-    $svc_stmt->execute();
-    $services = $svc_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    try {
+        $svc_stmt = $conn->prepare("
+            SELECT s.*,
+                (SELECT COUNT(*) FROM ratings r WHERE r.service_id = s.id AND r.company_id = ?) AS review_count,
+                (SELECT COALESCE(AVG(r.rating), 0) FROM ratings r WHERE r.service_id = s.id AND r.company_id = ?) AS avg_score
+              FROM services s
+             WHERE s.tenant_id = ? AND s.status = 'active'
+             ORDER BY s.sort_order ASC, s.id ASC
+        ");
+        if ($svc_stmt) {
+            $svc_stmt->bind_param("iii", $company_id, $company_id, $tenant_id);
+            $svc_stmt->execute();
+            $services = $svc_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        }
+    } catch (Throwable $e) {
+        $services = [];
+    }
 }
 
 // Fetch GENERAL customer reviews (no question) - shown in the "Reviews" tab

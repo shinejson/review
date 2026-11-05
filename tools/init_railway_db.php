@@ -99,6 +99,7 @@ ensure_col($conn, 'ratings', 'verification_type', 'VARCHAR(30) NULL');
 ensure_col($conn, 'ratings', 'momo_ref', 'VARCHAR(100) NULL');
 ensure_col($conn, 'ratings', 'receipt_photo', 'VARCHAR(255) NULL');
 ensure_col($conn, 'ratings', 'question_id', 'INT NULL');
+ensure_col($conn, 'ratings', 'service_id', 'INT NULL AFTER question_id');
 
 // Customers columns
 ensure_col($conn, 'customers', 'whatsapp_number', 'VARCHAR(30) NULL');
@@ -116,6 +117,32 @@ ensure_col($conn, 'customers', 'remove_competitor_ads', 'TINYINT(1) NOT NULL DEF
 ensure_col($conn, 'customers', 'verified_badge', 'TINYINT(1) NOT NULL DEFAULT 0');
 ensure_col($conn, 'customers', 'pinned_review_id', 'INT NULL');
 ensure_col($conn, 'customers', 'premium_badge_label', 'VARCHAR(40) NULL');
+
+// Ensure services table
+try {
+    @$conn->query("CREATE TABLE IF NOT EXISTS services (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT NOT NULL,
+        title VARCHAR(150) NOT NULL,
+        description TEXT NULL,
+        icon VARCHAR(80) DEFAULT 'fa-solid fa-star',
+        sort_order INT NOT NULL DEFAULT 0,
+        status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_services_tenant (tenant_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    echo "[DB Init] Services table ensured.\n";
+} catch (Throwable $e) {}
+
+// Ensure admin helpers schema (social_posts, social_accounts, tenant_ad_configs)
+$adminHelpers = dirname(__DIR__) . '/includes/admin_helpers.php';
+if (file_exists($adminHelpers)) {
+    require_once $adminHelpers;
+    if (function_exists('admin_ensure_schema')) {
+        admin_ensure_schema($conn);
+        echo "[DB Init] Admin helper tables ensured.\n";
+    }
+}
 
 // Ensure review_trust helper tables if file exists
 $reviewTrustFile = dirname(__DIR__) . '/includes/review_trust.php';

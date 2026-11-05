@@ -44,9 +44,9 @@ if (!function_exists('monetization_ensure_schema')) {
                 ]);
             }
         } else {
-            @$conn->query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_claimed TINYINT(1) NOT NULL DEFAULT 0");
-            @$conn->query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS premium_tier ENUM('none','essential','growth','authority') NOT NULL DEFAULT 'none'");
-            @$conn->query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS premium_status ENUM('inactive','active','expired','cancelled') NOT NULL DEFAULT 'inactive'");
+            try { @$conn->query("ALTER TABLE customers ADD COLUMN is_claimed TINYINT(1) NOT NULL DEFAULT 0"); } catch (Throwable $e) {}
+            try { @$conn->query("ALTER TABLE customers ADD COLUMN premium_tier ENUM('none','essential','growth','authority') NOT NULL DEFAULT 'none'"); } catch (Throwable $e) {}
+            try { @$conn->query("ALTER TABLE customers ADD COLUMN premium_status ENUM('inactive','active','expired','cancelled') NOT NULL DEFAULT 'inactive'"); } catch (Throwable $e) {}
         }
 
         // Premium claims workflow
@@ -147,8 +147,8 @@ if (!function_exists('monetization_ensure_schema')) {
             INDEX idx_widget_company (company_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         // migrate older installs that missed invoice_id/payment_id
-        @$conn->query("ALTER TABLE widget_configs ADD COLUMN IF NOT EXISTS invoice_id INT NULL AFTER clicks_total");
-        @$conn->query("ALTER TABLE widget_configs ADD COLUMN IF NOT EXISTS payment_id INT NULL AFTER invoice_id");
+        try { @$conn->query("ALTER TABLE widget_configs ADD COLUMN invoice_id INT NULL AFTER clicks_total"); } catch (Throwable $e) {}
+        try { @$conn->query("ALTER TABLE widget_configs ADD COLUMN payment_id INT NULL AFTER invoice_id"); } catch (Throwable $e) {}
 
         // SMS providers
         @$conn->query("CREATE TABLE IF NOT EXISTS sms_providers (
