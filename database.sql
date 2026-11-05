@@ -56,6 +56,9 @@ CREATE TABLE IF NOT EXISTS tenants (
     subscription_start_date DATE,
     subscription_end_date DATE,
     auto_renew BOOLEAN DEFAULT TRUE,
+    logo VARCHAR(500) NULL,
+    banner VARCHAR(500) NULL,
+    favicon VARCHAR(500) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_tenant_public_id (public_id),
     INDEX idx_tenant_setup_token (setup_token),
@@ -659,15 +662,15 @@ CREATE TABLE IF NOT EXISTS notifications (
 -- LOGIN ATTEMPT TRACKING (Security: Block after 3 failed tries)
 -- ============================================================
 -- Alter team_members to add login attempt tracking
-ALTER TABLE IF EXISTS team_members ADD COLUMN IF NOT EXISTS failed_login_attempts INT NOT NULL DEFAULT 0;
-ALTER TABLE IF EXISTS team_members ADD COLUMN IF NOT EXISTS last_failed_attempt_at DATETIME NULL;
-ALTER TABLE IF EXISTS team_members ADD COLUMN IF NOT EXISTS account_locked_until DATETIME NULL;
+ALTER TABLE team_members ADD COLUMN IF NOT EXISTS failed_login_attempts INT NOT NULL DEFAULT 0;
+ALTER TABLE team_members ADD COLUMN IF NOT EXISTS last_failed_attempt_at DATETIME NULL;
+ALTER TABLE team_members ADD COLUMN IF NOT EXISTS account_locked_until DATETIME NULL;
 
 -- Alter tenants to add login attempt tracking
-ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS failed_login_attempts INT NOT NULL DEFAULT 0;
-ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS last_failed_attempt_at DATETIME NULL;
-ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS account_locked_until DATETIME NULL;
-ALTER TABLE IF EXISTS tenants ADD COLUMN IF NOT EXISTS favicon VARCHAR(500) NULL AFTER banner;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS failed_login_attempts INT NOT NULL DEFAULT 0;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS last_failed_attempt_at DATETIME NULL;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS account_locked_until DATETIME NULL;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS favicon VARCHAR(500) NULL AFTER banner;
 
 -- ============================================================
 -- MONETIZATION ENGINE (4 Revenue Streams)
