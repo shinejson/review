@@ -1,5 +1,8 @@
 FROM php:8.2-apache
 
+# Force IPv4 for apt to prevent transient IPv6 network unreachable errors
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+
 # Install required system packages and PHP extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpng-dev \
