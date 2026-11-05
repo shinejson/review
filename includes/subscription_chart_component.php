@@ -13,6 +13,28 @@ if (!function_exists('render_subscription_access_chart')) {
 
     function render_subscription_access_chart($conn, $context = 'public', $options = [])
     {
+        $dedupe_plans = function($items) {
+            $unique = [];
+            $seen = [];
+
+            foreach ($items as $plan) {
+                $plan_name = trim((string)($plan['plan_name'] ?? ''));
+                $price = (string)((float)($plan['price'] ?? 0));
+                $ratings = (string)((int)($plan['max_ratings'] ?? 0));
+                $customers = (string)((int)($plan['max_customers'] ?? 0));
+                $features = trim((string)($plan['features'] ?? ''));
+
+                $key = strtolower($plan_name) . '|' . $price . '|' . $ratings . '|' . $customers . '|' . $features;
+                if ($key === '' || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $unique[] = $plan;
+            }
+
+            return $unique;
+        };
+
         // 1. Fetch active plans from database
         $plans = [];
         if ($conn instanceof mysqli) {
@@ -24,6 +46,8 @@ if (!function_exists('render_subscription_access_chart')) {
                 }
             }
         }
+
+        $plans = $dedupe_plans($plans);
 
         // Fallback if no active plans in DB
         if (empty($plans)) {
