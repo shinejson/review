@@ -32,24 +32,40 @@ if ($rawSql === false) {
     exit(0);
 }
 
-// Remove CREATE DATABASE and USE statements so everything goes into current DB_NAME
-$cleanSql = preg_replace('/CREATE DATABASE IF NOT EXISTS [^;]+;/i', '', $rawSql);
-$cleanSql = preg_replace('/USE [^;]+;/i', '', $cleanSql);
-
-if ($conn->multi_query($cleanSql)) {
-    $count = 0;
-    do {
-        $count++;
-        if ($res = $conn->store_result()) {
-            $res->free();
-        }
-    } while ($conn->more_results() && $conn->next_result());
-
-    if ($conn->errno) {
-        echo "[DB Init] Completed with warnings/notice: " . $conn->error . "\n";
-    } else {
-        echo "[DB Init] Successfully imported schema ({$count} queries executed).\n";
-    }
-} else {
-    echo "[DB Init] Error executing schema: " . $conn->error . "\n";
+// Strip comments
+$lines = explode("\n", $rawSql);
+$cleanLines = [];
+foreach ($lines as $line) {
+    $trimmed = trim($line);
+    if (strpos($trimmed, '--') === 0) continue;
+    if (strpos($trimmed, '/*') === 0) continue;
+    $cleanLines[] = $line;
 }
+$filteredSql = implode("\n", $cleanLines);
+
+// Split into statements
+$statements = explode(';', $filteredSql);
+$success = 0;
+$skipped = 0;
+
+foreach ($statements as $stmt) {
+    $stmt = trim($stmt);
+    if ($stmt === '') continue;
+
+    // Skip CREATE DATABASE and USE statements
+    if (preg_match('/^(?:CREATE\s+DATABASE|USE\s+)/i', $stmt)) {
+        continue;
+    }
+
+    try {
+        if (@$conn->query($stmt)) {
+            $success++;
+        } else {
+            $skipped++;
+        }
+    } catch (Throwable $e) {
+        $skipped++;
+    }
+}
+
+echo "[DB Init] Schema initialization complete: {$success} statements executed, {$skipped} skipped.\n";
