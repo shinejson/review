@@ -116,6 +116,12 @@ function optibiz_otp_delivery_configured($conn, $channel)
                 && trim((string) ($cfg['smtp_username'] ?? '')) !== ''
                 && (string) ($cfg['smtp_password'] ?? '') !== '';
         }
+        if ($driver === 'resend') {
+            return trim((string) ($cfg['resend_api_key'] ?? '')) !== '';
+        }
+        if ($driver === 'brevo') {
+            return trim((string) ($cfg['brevo_api_key'] ?? '')) !== '';
+        }
         return true; // native mail() is a real transport; failure is reported honestly
     }
 

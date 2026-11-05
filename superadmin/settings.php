@@ -204,7 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'save_email_settings') {
-        $driver          = in_array($_POST['mail_driver'] ?? 'smtp', ['smtp', 'mail'], true) ? $_POST['mail_driver'] : 'smtp';
+        $driver          = in_array($_POST['mail_driver'] ?? 'smtp', ['smtp', 'resend', 'brevo', 'mail'], true) ? $_POST['mail_driver'] : 'smtp';
         $from_name       = trim(sanitize($_POST['mail_from_name'] ?? 'Optibiz'));
         $from_email      = trim(sanitize($_POST['mail_from_email'] ?? ''));
         $smtp_host       = trim(sanitize($_POST['smtp_host'] ?? ''));
@@ -212,6 +212,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $smtp_encryption = in_array($_POST['smtp_encryption'] ?? 'tls', ['tls', 'ssl', 'none'], true) ? $_POST['smtp_encryption'] : 'tls';
         $smtp_username   = trim($_POST['smtp_username'] ?? '');
         $smtp_password   = (string) ($_POST['smtp_password'] ?? '');
+        $resend_api_key  = trim($_POST['resend_api_key'] ?? '');
+        $brevo_api_key   = trim($_POST['brevo_api_key'] ?? '');
 
         if ($from_email !== '' && !filter_var($from_email, FILTER_VALIDATE_EMAIL)) {
             sa_flash('error', 'From Email must be a valid email address.');
@@ -226,6 +228,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'smtp_port'       => (string) $smtp_port,
             'smtp_encryption' => $smtp_encryption,
             'smtp_username'   => $smtp_username,
+            'resend_api_key'  => $resend_api_key,
+            'brevo_api_key'   => $brevo_api_key,
         ];
 
         // Only update password if a new one is typed
@@ -261,15 +265,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $site_name = sa_setting($conn, 'site_name', 'Optibiz');
         $subject = 'Test message from ' . $site_name . ' Control Center';
+        $driver = sa_setting($conn, 'mail_driver', 'smtp');
+        $driverDetail = '<tr><td style="color:#94a3b8;font-weight:600;">Sending Driver:</td><td>' . strtoupper($driver) . '</td></tr>';
+        if ($driver === 'smtp') {
+            $driverDetail .= '<tr><td style="color:#94a3b8;font-weight:600;">SMTP Host:</td><td>' . htmlspecialchars(sa_setting($conn, 'smtp_host', 'localhost')) . ':' . sa_setting($conn, 'smtp_port', '587') . '</td></tr>'
+                          .  '<tr><td style="color:#94a3b8;font-weight:600;">Encryption:</td><td>' . strtoupper(sa_setting($conn, 'smtp_encryption', 'tls')) . '</td></tr>';
+        } elseif ($driver === 'resend') {
+            $driverDetail .= '<tr><td style="color:#94a3b8;font-weight:600;">Transport:</td><td>Resend HTTPS REST API (Port 443)</td></tr>';
+        } elseif ($driver === 'brevo') {
+            $driverDetail .= '<tr><td style="color:#94a3b8;font-weight:600;">Transport:</td><td>Brevo HTTPS REST API (Port 443)</td></tr>';
+        }
+
         $body = '<p>Hello,</p>'
               . '<p>This is a <strong>live test message</strong> sent from your <strong>' . htmlspecialchars($site_name) . '</strong> platform control center.</p>'
               . '<p>If you are reading this email, your outgoing email delivery and SMTP configuration are active and working properly!</p>'
               . '<div style="margin:20px 0;padding:16px;background:rgba(255,255,255,0.04);border:1px solid rgba(148,163,184,0.2);border-radius:10px;">'
               . '<table role="presentation" cellpadding="4" cellspacing="0" border="0" style="width:100%;font-size:13px;color:#cbd5e1;">'
               . '<tr><td style="width:130px;color:#94a3b8;font-weight:600;">Sent at:</td><td>' . date('Y-m-d H:i:s T') . '</td></tr>'
-              . '<tr><td style="color:#94a3b8;font-weight:600;">Sending Driver:</td><td>' . strtoupper(sa_setting($conn, 'mail_driver', 'smtp')) . '</td></tr>'
-              . '<tr><td style="color:#94a3b8;font-weight:600;">SMTP Host:</td><td>' . htmlspecialchars(sa_setting($conn, 'smtp_host', 'localhost')) . ':' . sa_setting($conn, 'smtp_port', '587') . '</td></tr>'
-              . '<tr><td style="color:#94a3b8;font-weight:600;">Encryption:</td><td>' . strtoupper(sa_setting($conn, 'smtp_encryption', 'tls')) . '</td></tr>'
+              . $driverDetail
               . '<tr><td style="color:#94a3b8;font-weight:600;">From:</td><td>' . htmlspecialchars(sa_setting($conn, 'mail_from_name', $site_name) . ' <' . sa_setting($conn, 'mail_from_email', 'noreply@localhost') . '>') . '</td></tr>'
               . '</table>'
               . '</div>'
@@ -886,7 +899,9 @@ include __DIR__ . '/_shell.php';
                     <div class="sa-field" style="margin-bottom:0;min-width:260px;">
                         <label for="mail_driver" style="font-weight:700;">Mail sending driver</label>
                         <select id="mail_driver" name="mail_driver" class="sa-select" onchange="toggleMailDriver(this.value)" style="width:100%;padding:9px 12px;border-radius:var(--sa-radius-xs);border:1px solid var(--sa-line);background:var(--sa-surface-2);color:var(--sa-text);font-family:inherit;font-size:13.5px;">
-                            <option value="smtp" <?php echo ($mail_cfg['mail_driver'] === 'smtp') ? 'selected' : ''; ?>>SMTP Server (Recommended — Gmail, Outlook, cPanel, SendGrid, Mailgun)</option>
+                            <option value="resend" <?php echo ($mail_cfg['mail_driver'] === 'resend') ? 'selected' : ''; ?>>Resend HTTPS API (Recommended for Railway — 3,000 free/mo, Port 443)</option>
+                            <option value="brevo" <?php echo ($mail_cfg['mail_driver'] === 'brevo') ? 'selected' : ''; ?>>Brevo HTTPS API (Recommended for Railway — 300 free/day, Port 443)</option>
+                            <option value="smtp" <?php echo ($mail_cfg['mail_driver'] === 'smtp') ? 'selected' : ''; ?>>SMTP Server (Requires Railway Pro plan; Port 587 is blocked on Free/Hobby)</option>
                             <option value="mail" <?php echo ($mail_cfg['mail_driver'] === 'mail') ? 'selected' : ''; ?>>PHP mail() (Built-in server sendmail)</option>
                         </select>
                     </div>
@@ -914,8 +929,44 @@ include __DIR__ . '/_shell.php';
                     </div>
                 </div>
 
-                <!-- SMTP credentials (hidden when PHP mail active) -->
-                <div id="smtpSettingsWrapper" style="<?php echo ($mail_cfg['mail_driver'] === 'mail') ? 'display:none;' : ''; ?>">
+                <!-- Resend API Credentials -->
+                <div id="resendSettingsWrapper" style="<?php echo ($mail_cfg['mail_driver'] === 'resend') ? '' : 'display:none;'; ?>margin-bottom:22px;">
+                    <div class="sa-section-title" style="margin:0 0 14px;">Resend HTTPS API configuration</div>
+                    <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#93c5fd;">
+                        <strong>🚀 Works on all Railway plans (Free, Trial, Hobby, Pro):</strong> Resend sends over secure HTTPS (Port 443), completely bypassing Railway's SMTP port restrictions.
+                        Get your free API key at <a href="https://resend.com/api-keys" target="_blank" style="color:#60a5fa;text-decoration:underline;font-weight:700;">resend.com</a> (includes 3,000 free emails/month).
+                    </div>
+                    <div class="sa-form-grid" style="grid-template-columns:1fr;gap:16px;">
+                        <div class="sa-field">
+                            <label for="resend_api_key">Resend API Key</label>
+                            <input id="resend_api_key" type="password" name="resend_api_key" value="<?php echo sa_e($mail_cfg['resend_api_key'] ?? ''); ?>" placeholder="re_123456789abcdef..." autocomplete="off">
+                            <span class="sa-hint">Note: When testing without a custom domain, set <strong>From Email</strong> to <code>onboarding@resend.dev</code> and send test emails to your registered Resend account email.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Brevo API Credentials -->
+                <div id="brevoSettingsWrapper" style="<?php echo ($mail_cfg['mail_driver'] === 'brevo') ? '' : 'display:none;'; ?>margin-bottom:22px;">
+                    <div class="sa-section-title" style="margin:0 0 14px;">Brevo (Sendinblue) HTTPS API configuration</div>
+                    <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#86efac;">
+                        <strong>✨ Send from your Gmail on Railway:</strong> Brevo lets you verify your own Gmail (e.g. shineakakpo08@gmail.com) as the sender and sends via HTTPS REST API (Port 443).
+                        Get your free API key at <a href="https://app.brevo.com/settings/keys/api" target="_blank" style="color:#4ade80;text-decoration:underline;font-weight:700;">app.brevo.com</a> (300 free emails/day forever).
+                    </div>
+                    <div class="sa-form-grid" style="grid-template-columns:1fr;gap:16px;">
+                        <div class="sa-field">
+                            <label for="brevo_api_key">Brevo API Key (v3)</label>
+                            <input id="brevo_api_key" type="password" name="brevo_api_key" value="<?php echo sa_e($mail_cfg['brevo_api_key'] ?? ''); ?>" placeholder="xkeysib-..." autocomplete="off">
+                            <span class="sa-hint">Paste your Brevo API key here. Make sure your <strong>From Email</strong> above matches your verified sender in Brevo.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SMTP credentials -->
+                <div id="smtpSettingsWrapper" style="<?php echo ($mail_cfg['mail_driver'] === 'smtp') ? '' : 'display:none;'; ?>">
+                    <div style="background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12.8px;color:#fde047;">
+                        <strong>⚠️ Railway Network Port Restriction:</strong> Railway blocks raw outbound SMTP ports (25, 465, 587, 2525) on Free, Trial, and Hobby plans, returning <code>Connection timed out (code 110)</code>.
+                        If you are not on Railway Pro ($20/mo), select <strong>Resend HTTPS API</strong> or <strong>Brevo HTTPS API</strong> above to send emails freely over port 443!
+                    </div>
                     <div class="sa-section-title" style="margin:0 0 14px;">SMTP connection credentials</div>
                     <div class="sa-form-grid" style="grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:16px;margin-bottom:16px;">
                         <div class="sa-field">
@@ -1216,10 +1267,15 @@ function saTab(id) {
 
 /* ---- Email/SMTP helpers ---- */
 function toggleMailDriver(driver) {
-    var wrapper = document.getElementById('smtpSettingsWrapper');
-    var presets = document.getElementById('smtpPresets');
-    if (wrapper) wrapper.style.display = (driver === 'mail') ? 'none' : 'block';
-    if (presets) presets.style.display = (driver === 'mail') ? 'none' : 'flex';
+    var smtpWrap   = document.getElementById('smtpSettingsWrapper');
+    var resendWrap = document.getElementById('resendSettingsWrapper');
+    var brevoWrap  = document.getElementById('brevoSettingsWrapper');
+    var presets    = document.getElementById('smtpPresets');
+
+    if (smtpWrap)   smtpWrap.style.display   = (driver === 'smtp') ? 'block' : 'none';
+    if (resendWrap) resendWrap.style.display = (driver === 'resend') ? 'block' : 'none';
+    if (brevoWrap)  brevoWrap.style.display  = (driver === 'brevo') ? 'block' : 'none';
+    if (presets)    presets.style.display    = (driver === 'smtp') ? 'flex' : 'none';
 }
 
 function applySmtpPreset(type) {

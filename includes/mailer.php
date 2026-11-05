@@ -28,6 +28,8 @@ if (!function_exists('sa_get_mail_config')) {
             'smtp_username'   => '',
             'smtp_password'   => '',
             'smtp_timeout'    => 12,
+            'resend_api_key'  => '',
+            'brevo_api_key'   => '',
         ];
 
         if (!$conn) {
@@ -155,7 +157,11 @@ if (!function_exists('sa_send_mail')) {
 
         $driver = strtolower(trim($cfg['mail_driver'] ?? 'smtp'));
 
-        if ($driver === 'smtp') {
+        if ($driver === 'resend') {
+            return sa_resend_send($cfg, $to, $subject, $htmlContent);
+        } elseif ($driver === 'brevo') {
+            return sa_brevo_send($cfg, $to, $subject, $htmlContent);
+        } elseif ($driver === 'smtp') {
             return sa_smtp_send($cfg, $to, $subject, $htmlContent);
         } else {
             return sa_native_mail_send($cfg, $to, $subject, $htmlContent);
@@ -412,5 +418,117 @@ if (!function_exists('sa_native_mail_send')) {
             'message' => "PHP mail() failed: $errMsg",
             'debug'   => $errMsg,
         ];
+    }
+}
+
+if (!function_exists('sa_resend_send')) {
+    /**
+     * Send email via Resend HTTPS REST API (Port 443 — works on all cloud hosts, never blocked).
+     */
+    function sa_resend_send($cfg, $to, $subject, $htmlContent)
+    {
+        $apiKey = trim($cfg['resend_api_key'] ?? '');
+        if (!$apiKey) {
+            return ['success' => false, 'message' => 'Resend API key is missing. Please enter your Resend API key in Superadmin Settings.'];
+        }
+
+        $fromEmail = trim($cfg['mail_from_email'] ?? 'onboarding@resend.dev');
+        $fromName  = trim($cfg['mail_from_name'] ?? 'Optibiz');
+
+        $payload = [
+            'from'    => $fromName . ' <' . $fromEmail . '>',
+            'to'      => [$to],
+            'subject' => $subject,
+            'html'    => $htmlContent,
+        ];
+
+        $ch = curl_init('https://api.resend.com/emails');
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER     => [
+                'Authorization: Bearer ' . $apiKey,
+                'Content-Type: application/json',
+            ],
+            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr) {
+            return ['success' => false, 'message' => 'Resend API connection error: ' . $curlErr, 'debug' => $curlErr];
+        }
+
+        $json = json_decode($response, true);
+        if ($httpCode >= 200 && $httpCode < 300) {
+            $id = $json['id'] ?? 'sent';
+            return ['success' => true, 'message' => "Email sent successfully via Resend API (ID: {$id}).", 'debug' => $response];
+        }
+
+        $errMsg = $json['message'] ?? ($json['name'] ?? ('HTTP ' . $httpCode . ': ' . $response));
+        return ['success' => false, 'message' => 'Resend API error: ' . $errMsg, 'debug' => $response];
+    }
+}
+
+if (!function_exists('sa_brevo_send')) {
+    /**
+     * Send email via Brevo HTTPS REST API (Port 443 — works on all cloud hosts, never blocked).
+     */
+    function sa_brevo_send($cfg, $to, $subject, $htmlContent)
+    {
+        $apiKey = trim($cfg['brevo_api_key'] ?? '');
+        if (!$apiKey) {
+            return ['success' => false, 'message' => 'Brevo API key is missing. Please enter your Brevo API key in Superadmin Settings.'];
+        }
+
+        $fromEmail = trim($cfg['mail_from_email'] ?? '');
+        $fromName  = trim($cfg['mail_from_name'] ?? 'Optibiz');
+        if (!$fromEmail) {
+            return ['success' => false, 'message' => 'Sender email is required for Brevo.'];
+        }
+
+        $payload = [
+            'sender'      => ['name' => $fromName, 'email' => $fromEmail],
+            'to'          => [['email' => $to]],
+            'subject'     => $subject,
+            'htmlContent' => $htmlContent,
+        ];
+
+        $ch = curl_init('https://api.brevo.com/v3/smtp/email');
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER     => [
+                'api-key: ' . $apiKey,
+                'Content-Type: application/json',
+                'Accept: application/json',
+            ],
+            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr) {
+            return ['success' => false, 'message' => 'Brevo API connection error: ' . $curlErr, 'debug' => $curlErr];
+        }
+
+        $json = json_decode($response, true);
+        if ($httpCode >= 200 && $httpCode < 300) {
+            $msgId = $json['messageId'] ?? 'sent';
+            return ['success' => true, 'message' => "Email sent successfully via Brevo API (ID: {$msgId}).", 'debug' => $response];
+        }
+
+        $errMsg = $json['message'] ?? ('HTTP ' . $httpCode . ': ' . $response);
+        return ['success' => false, 'message' => 'Brevo API error: ' . $errMsg, 'debug' => $response];
     }
 }
