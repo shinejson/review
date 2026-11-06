@@ -83,6 +83,12 @@ function getCurrentUserName() {
  */
 function requireLogin($conn = null) {
     if (!isLoggedIn()) {
+        if (!empty($_SERVER['REQUEST_URI'])) {
+            if (session_status() === PHP_SESSION_NONE) {
+                @session_start();
+            }
+            $_SESSION['auth_redirect'] = $_SERVER['REQUEST_URI'];
+        }
         header('Location: login.php');
         exit();
     }
@@ -121,6 +127,12 @@ function checkTenantSubscription($conn = null) {
     if (!$tenant) {
         // Tenant not found, logout
         session_destroy();
+        if (!empty($_SERVER['REQUEST_URI'])) {
+            if (session_status() === PHP_SESSION_NONE) {
+                @session_start();
+            }
+            $_SESSION['auth_redirect'] = $_SERVER['REQUEST_URI'];
+        }
         header('Location: login.php');
         exit();
     }
@@ -177,6 +189,12 @@ function isSuperAdminLoggedIn() {
 
 function requireSuperAdminLogin($conn = null) {
     if (!isSuperAdminLoggedIn()) {
+        if (!empty($_SERVER['REQUEST_URI'])) {
+            if (session_status() === PHP_SESSION_NONE) {
+                @session_start();
+            }
+            $_SESSION['auth_redirect'] = $_SERVER['REQUEST_URI'];
+        }
         header('Location: login.php');
         exit();
     }

@@ -43,6 +43,19 @@ foreach($companies as $c) {
         break;
     }
 }
+if (!$active && $activeId > 0) {
+    $sc = $conn->prepare("SELECT * FROM customers WHERE id = ? LIMIT 1");
+    if ($sc) {
+        $sc->bind_param("i", $activeId);
+        $sc->execute();
+        $targetComp = $sc->get_result()->fetch_assoc();
+        $sc->close();
+        if ($targetComp) {
+            $active = $targetComp;
+            $companies[] = $active;
+        }
+    }
+}
 if(!$active) $active=$companies[0] ?? null;
 $company_id = (int)($active['id'] ?? 0);
 

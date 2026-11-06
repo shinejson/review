@@ -3974,7 +3974,7 @@ if ($total_ratings > 0) {
         <?php if ($is_premium_active===false): ?>
         <div style="margin-top:12px; padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; font-size:12px; color:#92400e; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
             <span><strong>Own this profile?</strong> Claim it from GHS 149/mo to remove competitor suggestions, pin reviews & add your banner.</span>
-            <a href="<?php echo htmlspecialchars(($app_web_root!==''?$app_web_root:'').'/admin/premium_profiles.php?company_id='.(int)$company_id); ?>" style="background:#0f172a; color:#fff; padding:6px 12px; border-radius:8px; text-decoration:none; font-weight:700;">Claim Profile →</a>
+            <a href="<?php echo htmlspecialchars(($app_web_root !== '' ? $app_web_root : '') . '/' . admin_url('premium_profiles.php') . '?company_id=' . (int)$company_id); ?>" style="background:#0f172a; color:#fff; padding:6px 12px; border-radius:8px; text-decoration:none; font-weight:700;">Claim Profile →</a>
         </div>
         <?php endif; ?>
     </section>

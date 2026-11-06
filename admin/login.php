@@ -7,8 +7,19 @@ require_once dirname(__DIR__) . '/includes/two_factor.php';
 
 ensureRealIdSchema($conn);
 
+function get_auth_redirect_target($default = 'index.php') {
+    if (!empty($_SESSION['auth_redirect'])) {
+        $dest = $_SESSION['auth_redirect'];
+        unset($_SESSION['auth_redirect']);
+        if (strpos($dest, '://') === false && (strpos($dest, '/') === 0 || strpos($dest, '.php') !== false)) {
+            return $dest;
+        }
+    }
+    return $default;
+}
+
 if (isLoggedIn()) {
-    redirect('index.php');
+    redirect(get_auth_redirect_target('index.php'));
 }
 
 $error  = '';
@@ -62,7 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $_SESSION[$k] = $v;
                         }
                         auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['username'] ?: $tenant['company_name'], 'tenant');
-                        redirect('index.php');
+                        redirect(get_auth_redirect_target('index.php'));
                     }
                     $tfaRow = tfa_get_user_2fa($conn, 'tenant', (int)$tenant['id']);
                     $method = $tfaRow['method'] ?? 'totp';
@@ -89,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION[$k] = $v;
                     }
                     auth_login_session($conn, 'admin', (int)$tenant['id'], $tenant['username'] ?: $tenant['company_name'], 'tenant');
-                    redirect('index.php');
+                    redirect(get_auth_redirect_target('index.php'));
                 }
             } else {
                 // Record failed attempt
@@ -151,7 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 auth_login_session($conn, 'admin', (int)$member['id'], $member['full_name'], 'team');
                                 $ll = $conn->prepare("UPDATE team_members SET last_login_at = NOW() WHERE id = ?");
                                 if ($ll) { $ll->bind_param("i", $member['id']); $ll->execute(); $ll->close(); }
-                                redirect('index.php');
+                                redirect(get_auth_redirect_target('index.php'));
                             }
                             $tfaRow = tfa_get_user_2fa($conn, 'team_member', (int)$member['id']);
                             $method = $tfaRow['method'] ?? 'totp';
@@ -180,7 +191,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             auth_login_session($conn, 'admin', (int)$member['id'], $member['full_name'], 'team');
                             $ll = $conn->prepare("UPDATE team_members SET last_login_at = NOW() WHERE id = ?");
                             if ($ll) { $ll->bind_param("i", $member['id']); $ll->execute(); $ll->close(); }
-                            redirect('index.php');
+                            redirect(get_auth_redirect_target('index.php'));
                         }
                     }
                 }
@@ -214,7 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $_SESSION[$k] = $v;
                                 }
                                 auth_login_session($conn, 'admin', (int)$admin['id'], $admin['username'], 'admin');
-                                redirect('index.php');
+                                redirect(get_auth_redirect_target('index.php'));
                             }
                             $tfaRow = tfa_get_user_2fa($conn, 'admin', (int)$admin['id']);
                             $method = $tfaRow['method'] ?? 'totp';
@@ -232,7 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $_SESSION[$k] = $v;
                                 }
                                 auth_login_session($conn, 'admin', (int)$admin['id'], $admin['username'], 'admin');
-                                redirect('index.php');
+                                redirect(get_auth_redirect_target('index.php'));
                             }
                         } else {
                             $error = 'Invalid credentials. Please verify your password.';

@@ -6,7 +6,15 @@ require_once dirname(__DIR__) . '/includes/two_factor.php';
 
 // If already fully signed in, proceed to dashboard
 if (isLoggedIn()) {
-    redirect('index.php');
+    $target = 'index.php';
+    if (!empty($_SESSION['auth_redirect'])) {
+        $dest = $_SESSION['auth_redirect'];
+        unset($_SESSION['auth_redirect']);
+        if (strpos($dest, '://') === false && (strpos($dest, '/') === 0 || strpos($dest, '.php') !== false)) {
+            $target = $dest;
+        }
+    }
+    redirect($target);
 }
 
 $pending = tfa_get_pending_session();
@@ -192,7 +200,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (!isset($_POST['action']) || $_POST
 
                 // Clear pending 2FA state
                 tfa_clear_pending_session();
-                redirect('index.php');
+                $target = 'index.php';
+    if (!empty($_SESSION['auth_redirect'])) {
+        $dest = $_SESSION['auth_redirect'];
+        unset($_SESSION['auth_redirect']);
+        if (strpos($dest, '://') === false && (strpos($dest, '/') === 0 || strpos($dest, '.php') !== false)) {
+            $target = $dest;
+        }
+    }
+    redirect($target);
             } else {
                 $remaining = max(0, 5 - $attempts);
                 $error = "Invalid verification code. Please check and try again. ({$remaining} attempt" . ($remaining === 1 ? '' : 's') . " remaining)";
