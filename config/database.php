@@ -127,10 +127,14 @@ $publicDomain = optibiz_env('RAILWAY_PUBLIC_DOMAIN', '');
 $defaultBaseUrl = $publicDomain ? ('https://' . $publicDomain) : '';
 $resolvedBaseUrl = optibiz_env('APP_BASE_URL', $defaultBaseUrl);
 
-// If running on localhost but APP_BASE_URL points to remote rf.gd domain, automatically adjust for localhost
-if ($isLocalhost && ($resolvedBaseUrl === '' || strpos($resolvedBaseUrl, 'optibiz.rf.gd') !== false)) {
+// If running on localhost, automatically align APP_BASE_URL to the active request host and port
+if ($isLocalhost) {
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $resolvedBaseUrl = $rawHttpHost ? ($scheme . '://' . $rawHttpHost . '/rate') : 'http://localhost/rate';
+    if ($rawHttpHost !== '') {
+        $resolvedBaseUrl = $scheme . '://' . $rawHttpHost . '/rate';
+    } elseif ($resolvedBaseUrl === '' || strpos($resolvedBaseUrl, 'optibiz.rf.gd') !== false) {
+        $resolvedBaseUrl = 'http://localhost:8080/rate';
+    }
 }
 if (!defined('APP_BASE_URL')) define('APP_BASE_URL', $resolvedBaseUrl);
 
