@@ -11,6 +11,7 @@
 if (!function_exists('sa_get_mail_config')) {
     /**
      * Retrieve all active email configuration settings.
+     * Supports environment variables (Railway, Docker, .env) with database fallbacks.
      */
     function sa_get_mail_config($conn = null, $reload = false)
     {
@@ -18,28 +19,73 @@ if (!function_exists('sa_get_mail_config')) {
         $site_name = function_exists('sa_setting') && $conn ? sa_setting($conn, 'site_name', 'Optibiz', $reload) : 'Optibiz';
         $admin_mail = function_exists('sa_setting') && $conn ? sa_setting($conn, 'admin_email', 'admin@example.com', $reload) : 'admin@example.com';
 
+        $readEnv = function ($keys, $default = '') {
+            foreach ((array) $keys as $k) {
+                if (function_exists('optibiz_env')) {
+                    $v = optibiz_env($k, '');
+                    if ($v !== '') return $v;
+                }
+                if (isset($_ENV[$k]) && $_ENV[$k] !== '') return $_ENV[$k];
+                if (isset($_SERVER[$k]) && $_SERVER[$k] !== '') return $_SERVER[$k];
+                if (function_exists('getenv')) {
+                    $v = @getenv($k);
+                    if ($v !== false && $v !== '') return $v;
+                }
+            }
+            return $default;
+        };
+
+        // Environment variable values
+        $envResendKey  = $readEnv(['RESEND_API_KEY', 'OPTIBIZ_RESEND_API_KEY']);
+        $envBrevoKey   = $readEnv(['BREVO_API_KEY', 'OPTIBIZ_BREVO_API_KEY']);
+        $envDriver     = $readEnv(['MAIL_DRIVER', 'OPTIBIZ_MAIL_DRIVER']);
+        $envFromEmail  = $readEnv(['MAIL_FROM_EMAIL', 'OPTIBIZ_MAIL_FROM_EMAIL']);
+        $envFromName   = $readEnv(['MAIL_FROM_NAME', 'OPTIBIZ_MAIL_FROM_NAME']);
+        $envSmtpHost   = $readEnv(['SMTP_HOST', 'OPTIBIZ_SMTP_HOST']);
+        $envSmtpPort   = $readEnv(['SMTP_PORT', 'OPTIBIZ_SMTP_PORT']);
+        $envSmtpEnc    = $readEnv(['SMTP_ENCRYPTION', 'OPTIBIZ_SMTP_ENCRYPTION']);
+        $envSmtpUser   = $readEnv(['SMTP_USERNAME', 'OPTIBIZ_SMTP_USERNAME']);
+        $envSmtpPass   = $readEnv(['SMTP_PASSWORD', 'OPTIBIZ_SMTP_PASSWORD']);
+
         $defaults = [
-            'mail_driver'     => 'smtp',
-            'mail_from_name'  => $site_name,
-            'mail_from_email' => $admin_mail,
-            'smtp_host'       => 'smtp.gmail.com',
-            'smtp_port'       => '587',
-            'smtp_encryption' => 'tls',
-            'smtp_username'   => '',
-            'smtp_password'   => '',
+            'mail_driver'     => $envDriver !== '' ? $envDriver : ($envResendKey !== '' ? 'resend' : 'smtp'),
+            'mail_from_name'  => $envFromName !== '' ? $envFromName : $site_name,
+            'mail_from_email' => $envFromEmail !== '' ? $envFromEmail : $admin_mail,
+            'smtp_host'       => $envSmtpHost !== '' ? $envSmtpHost : 'smtp.gmail.com',
+            'smtp_port'       => $envSmtpPort !== '' ? $envSmtpPort : '587',
+            'smtp_encryption' => $envSmtpEnc !== '' ? $envSmtpEnc : 'tls',
+            'smtp_username'   => $envSmtpUser !== '' ? $envSmtpUser : '',
+            'smtp_password'   => $envSmtpPass !== '' ? $envSmtpPass : '',
             'smtp_timeout'    => 12,
-            'resend_api_key'  => '',
-            'brevo_api_key'   => '',
+            'resend_api_key'  => $envResendKey !== '' ? $envResendKey : '',
+            'brevo_api_key'   => $envBrevoKey !== '' ? $envBrevoKey : '',
         ];
 
         if (!$conn) {
-            return $defaults;
+            $res = $defaults;
+        } else {
+            $res = [];
+            foreach ($defaults as $k => $def) {
+                $val = function_exists('sa_setting') ? sa_setting($conn, $k, '', $reload) : '';
+                $res[$k] = ($val !== '') ? $val : $def;
+            }
+
+            // Environment overrides take priority if explicitly set
+            if ($envResendKey !== '') $res['resend_api_key'] = $envResendKey;
+            if ($envBrevoKey !== '')  $res['brevo_api_key']  = $envBrevoKey;
+            if ($envDriver !== '')    $res['mail_driver']    = $envDriver;
+            if ($envFromEmail !== '') $res['mail_from_email'] = $envFromEmail;
+            if ($envFromName !== '')  $res['mail_from_name']  = $envFromName;
+            if ($envSmtpHost !== '')  $res['smtp_host']       = $envSmtpHost;
+            if ($envSmtpPort !== '')  $res['smtp_port']       = $envSmtpPort;
+            if ($envSmtpEnc !== '')   $res['smtp_encryption'] = $envSmtpEnc;
+            if ($envSmtpUser !== '')  $res['smtp_username']   = $envSmtpUser;
+            if ($envSmtpPass !== '')  $res['smtp_password']   = $envSmtpPass;
         }
 
-        $res = [];
-        foreach ($defaults as $k => $def) {
-            $val = function_exists('sa_setting') ? sa_setting($conn, $k, '', $reload) : '';
-            $res[$k] = ($val !== '') ? $val : $def;
+        // Auto-select Resend driver when an API key is available and driver is default/empty
+        if (!empty($res['resend_api_key']) && (empty($res['mail_driver']) || $res['mail_driver'] === 'smtp' && empty($res['smtp_username']))) {
+            $res['mail_driver'] = 'resend';
         }
 
         // Google app passwords are shown as 4 groups of 4 letters and are often
@@ -57,6 +103,15 @@ if (!function_exists('sa_get_mail_config')) {
         if (in_array($fromEmail, ['', 'admin@example.com', 'noreply@localhost'], true)
             && filter_var($username, FILTER_VALIDATE_EMAIL)) {
             $res['mail_from_email'] = $username;
+        }
+
+        // Resend requires sending from onboarding@resend.dev or a custom verified domain.
+        // If from address is a generic example/placeholder, fall back to onboarding@resend.dev
+        if (($res['mail_driver'] ?? '') === 'resend') {
+            $from = strtolower(trim((string)($res['mail_from_email'] ?? '')));
+            if (empty($from) || in_array($from, ['admin@example.com', 'noreply@localhost'], true) || strpos($from, 'example.com') !== false) {
+                $res['mail_from_email'] = 'onboarding@resend.dev';
+            }
         }
 
         return $res;
@@ -429,45 +484,74 @@ if (!function_exists('sa_resend_send')) {
     {
         $apiKey = trim($cfg['resend_api_key'] ?? '');
         if (!$apiKey) {
-            return ['success' => false, 'message' => 'Resend API key is missing. Please enter your Resend API key in Superadmin Settings.'];
+            return ['success' => false, 'message' => 'Resend API key is missing. Please set RESEND_API_KEY or enter your key in Superadmin Settings.'];
         }
 
-        $fromEmail = trim($cfg['mail_from_email'] ?? 'onboarding@resend.dev');
+        $fromEmail = trim($cfg['mail_from_email'] ?? '');
+        if (empty($fromEmail) || in_array(strtolower($fromEmail), ['admin@example.com', 'noreply@localhost'], true) || strpos($fromEmail, 'example.com') !== false) {
+            $fromEmail = 'onboarding@resend.dev';
+        }
         $fromName  = trim($cfg['mail_from_name'] ?? 'Optibiz');
+
+        $recipients = is_array($to) ? array_values(array_filter($to)) : [trim($to)];
 
         $payload = [
             'from'    => $fromName . ' <' . $fromEmail . '>',
-            'to'      => [$to],
+            'to'      => $recipients,
             'subject' => $subject,
             'html'    => $htmlContent,
         ];
 
-        $ch = curl_init('https://api.resend.com/emails');
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER     => [
-                'Authorization: Bearer ' . $apiKey,
-                'Content-Type: application/json',
-            ],
-            CURLOPT_POSTFIELDS     => json_encode($payload),
-            CURLOPT_TIMEOUT        => 15,
-            CURLOPT_SSL_VERIFYPEER => true,
-        ]);
+        $postData = json_encode($payload);
 
-        $response = curl_exec($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlErr  = curl_error($ch);
-        curl_close($ch);
+        if (function_exists('curl_init')) {
+            $ch = curl_init('https://api.resend.com/emails');
+            curl_setopt_array($ch, [
+                CURLOPT_POST           => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER     => [
+                    'Authorization: Bearer ' . $apiKey,
+                    'Content-Type: application/json',
+                ],
+                CURLOPT_POSTFIELDS     => $postData,
+                CURLOPT_TIMEOUT        => 15,
+                CURLOPT_SSL_VERIFYPEER => true,
+            ]);
 
-        if ($curlErr) {
-            return ['success' => false, 'message' => 'Resend API connection error: ' . $curlErr, 'debug' => $curlErr];
+            $response = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlErr  = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlErr) {
+                return ['success' => false, 'message' => 'Resend API connection error: ' . $curlErr, 'debug' => $curlErr];
+            }
+        } else {
+            $ctx = stream_context_create([
+                'http' => [
+                    'method'        => 'POST',
+                    'header'        => "Authorization: Bearer {$apiKey}\r\nContent-Type: application/json\r\n",
+                    'content'       => $postData,
+                    'timeout'       => 15,
+                    'ignore_errors' => true,
+                ],
+                'ssl' => [
+                    'verify_peer' => true,
+                ],
+            ]);
+            $response = @file_get_contents('https://api.resend.com/emails', false, $ctx);
+            $httpCode = 200;
+            if (isset($http_response_header) && is_array($http_response_header)) {
+                if (preg_match('#HTTP/\S+\s+(\d+)#', $http_response_header[0], $m)) {
+                    $httpCode = (int) $m[1];
+                }
+            }
         }
 
         $json = json_decode($response, true);
         if ($httpCode >= 200 && $httpCode < 300) {
             $id = $json['id'] ?? 'sent';
-            return ['success' => true, 'message' => "Email sent successfully via Resend API (ID: {$id}).", 'debug' => $response];
+            return ['success' => true, 'message' => "Email sent successfully via Resend API (ID: {$id}).", 'debug' => $response, 'id' => $id];
         }
 
         $errMsg = $json['message'] ?? ($json['name'] ?? ('HTTP ' . $httpCode . ': ' . $response));

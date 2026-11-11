@@ -295,4 +295,35 @@ if ($checkHotel && $checkHotel->num_rows === 0) {
     }
 }
 
+// 5. Ensure Mail Driver & Resend Settings from Environment
+$resendEnvKey = function_exists('optibiz_env') ? optibiz_env('RESEND_API_KEY') : getenv('RESEND_API_KEY');
+if (!empty($resendEnvKey)) {
+    echo "[DB Init] Configuring Resend API settings in database...\n";
+    $mailSettingsToSync = [
+        'mail_driver'     => function_exists('optibiz_env') ? optibiz_env('MAIL_DRIVER', 'resend') : 'resend',
+        'resend_api_key'  => $resendEnvKey,
+        'mail_from_email' => function_exists('optibiz_env') ? optibiz_env('MAIL_FROM_EMAIL', 'onboarding@resend.dev') : 'onboarding@resend.dev',
+        'mail_from_name'  => function_exists('optibiz_env') ? optibiz_env('MAIL_FROM_NAME', 'Optibiz') : 'Optibiz',
+    ];
+    foreach ($mailSettingsToSync as $mKey => $mVal) {
+        $checkSetting = @$conn->query("SELECT 1 FROM settings WHERE setting_key = '" . $conn->real_escape_string($mKey) . "'");
+        if ($checkSetting && $checkSetting->num_rows > 0) {
+            $stmt = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
+            if ($stmt) {
+                $stmt->bind_param("ss", $mVal, $mKey);
+                $stmt->execute();
+                $stmt->close();
+            }
+        } else {
+            $stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)");
+            if ($stmt) {
+                $stmt->bind_param("ss", $mKey, $mVal);
+                $stmt->execute();
+                $stmt->close();
+            }
+        }
+    }
+    echo "[DB Init] Resend API key and driver successfully configured in database.\n";
+}
+
 echo "[DB Init] Database initialization complete!\n";
